@@ -1,0 +1,17 @@
+# Normalisation des fins de lignes
+* text=auto
+
+# Forcer LF pour le code source (Python, shell, etc.)
+*.py   text eol=lf
+*.sh   text eol=lf
+
+# Garder CRLF pour certains fichiers Windows si besoin (ex: .bat)
+*.bat  text eol=crlf
+
+# Conserver le binaire tel quel
+*.png  binary
+*.jpg  binary
+*.gif  binary
+*.pdf  binary
+*.hdf5 binary
+*.vtu  binary
