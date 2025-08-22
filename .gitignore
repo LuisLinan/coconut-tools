@@ -12,10 +12,14 @@ __pycache__/
 # === VSCode / IDE ===
 .vscode/
 .idea/
+.DS_Store
 
 # === Build / dist ===
 build/
 dist/
 
-# === Sphinx docs build ===
+# Sphinx (ta build locale)
+docs/build/
+docs/source/_autosummary/
+# (au cas où tu utilises l'autre nom)
 docs/_build/
