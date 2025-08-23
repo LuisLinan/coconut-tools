@@ -42,3 +42,23 @@ autodoc_default_options = {
     "undoc-members": True,
     "show-inheritance": True,
 }
+
+# Évite d'installer des dépendances lourdes/non disponibles sur RTD
+autodoc_mock_imports = [
+    "vtk",
+    "pyvista",
+    "pyevtk",
+    "sunpy",
+    "astropy",
+    "sklearn",        # alias courant; scikit-learn sera aussi mocké
+    "scikit-learn",
+    "cmocean",
+    "solarmach",
+    "natsort",
+    "h5py",
+    "matplotlib",
+    "pandas",
+    "numpy",
+    "bs4",
+    "requests",
+]
