@@ -16,7 +16,7 @@ Author:
 
 import numpy as np
 import math
-from .utils import ComputeRot
+from coconut_tools.pyTDM.core_td.COCONUT.utils import ComputeRot
 
 def x_Sph2Car(r0,theta0,phi0):
     return(r0 * np.sin(theta0) * np.cos(phi0))

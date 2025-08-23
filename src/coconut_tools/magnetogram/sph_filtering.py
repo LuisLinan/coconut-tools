@@ -24,7 +24,7 @@ from astropy.io import fits
 from scipy import interpolate
 from scipy import special as scisp
 import matplotlib.pyplot as plt
-from logger_config import setup_logger
+from coconut_tools.logger_config import setup_logger
 
 logger = setup_logger(__name__)
 

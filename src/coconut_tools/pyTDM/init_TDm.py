@@ -22,8 +22,8 @@ import os
 import shutil
 import logging
 
-import core_td.myconfig as myc
-import core_td.core as pytdm
+from coconut_tools.pyTDM.core_td import myconfig as myc
+from coconut_tools.pyTDM.core_td import core as pytdm
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

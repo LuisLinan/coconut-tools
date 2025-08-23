@@ -14,7 +14,7 @@ Functions:
 
 import os
 import requests
-from logger_config import setup_logger
+from coconut_tools.logger_config import setup_logger
 from bs4 import BeautifulSoup
 from pathlib import Path
 

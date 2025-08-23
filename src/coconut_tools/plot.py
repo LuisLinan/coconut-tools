@@ -22,13 +22,13 @@ Note:
 import os
 import cmocean as cm
 from typing import Literal
-from read_dat_files import read_data
+from coconut_tools.read_dat_files import read_data
 import matplotlib.pyplot as plt
 import numpy as np
 import h5py
 from matplotlib.ticker import AutoMinorLocator
 from sklearn.linear_model import LinearRegression
-from logger_config import setup_logger
+from coconut_tools.logger_config import setup_logger
 logger = setup_logger(__name__)
 
 def plot_boundary_profil(inputdir, outputfile, label_dict, color_map):

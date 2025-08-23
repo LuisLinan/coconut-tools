@@ -1,7 +1,7 @@
 ##
 import numpy as np
 from scipy.special import ellipk,ellipe
-from . import utils
+from coconut_tools.pyTDM.core_td import utils
 ##
 
 def compute_Is(B_p,R,a):

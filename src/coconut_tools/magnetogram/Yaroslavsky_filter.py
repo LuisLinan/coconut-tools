@@ -11,8 +11,8 @@ Cleaned and modularized by: Luis
 import numpy as np
 import scipy.ndimage
 import logging
-from local_weigh_filter import filter3
-from sph_filtering import (
+from coconut_tools.magnetogram.local_weigh_filter import filter3
+from coconut_tools.magnetogram.sph_filtering import (
     read_magnetogram,
     generate_output_and_map_names,
     write_bc_file,

@@ -11,14 +11,14 @@ import logging
 
 import numpy as np
 import scipy.ndimage
-from nonlinear_diffusion_filter import nonlinearDiffusionFilter
-from sph_filtering import (
+from coconut_tools.magnetogram.nonlinear_diffusion_filter import nonlinearDiffusionFilter
+from coconut_tools.magnetogram.sph_filtering import (
     read_magnetogram,
     generate_output_and_map_names,
     write_bc_file,
     plot_maps
 )
-from logger_config import setup_logger
+from coconut_tools.logger_config import setup_logger
 
 logger = setup_logger(__name__)
 

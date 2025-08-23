@@ -201,7 +201,7 @@ def plot_synoptic_aligned(fits_path, prefer_filename_for_gong=True, vmin=None, v
 # -------------------------------------------------------------
 if __name__ == "__main__":
     # Example files (edit paths as needed)
-    hmi_file = "hmi.Synoptic_Mr_small.2134.fits"
+    hmi_file = "C:/Users/luisl/Desktop/hmi.Synoptic_Mr_small.2134.fits"
     gong_file = "mrzqs170404t1814c2189_268.fits.gz"
 
     # --- HMI (header-only) ---

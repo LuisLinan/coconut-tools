@@ -12,7 +12,7 @@ import scipy.sparse.linalg
 import scipy.stats
 import time
 import datetime
-from logger_config import setup_logger
+from coconut_tools.logger_config import setup_logger
 
 logger = setup_logger(__name__)
 

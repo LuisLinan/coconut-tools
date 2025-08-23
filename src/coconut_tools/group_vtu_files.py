@@ -16,7 +16,7 @@ import os
 from os.path import exists
 from multiprocessing import Pool
 import pyvista as pv
-from logger_config import setup_logger
+from coconut_tools.logger_config import setup_logger
 
 logger = setup_logger(__name__)
 

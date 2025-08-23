@@ -14,10 +14,10 @@ import os
 import math
 import logging
 
-from . import formula_TDm
-from .COCONUT import coconut
-from .COCONUT import RBSL_util
-from . import myconfig as mc
+from coconut_tools.pyTDM.core_td import formula_TDm
+from coconut_tools.pyTDM.core_td.COCONUT import coconut
+from coconut_tools.pyTDM.core_td.COCONUT import RBSL_util
+from coconut_tools.pyTDM.core_td import myconfig as mc
 
 from pyevtk.hl import gridToVTK
 from scipy.interpolate import griddata

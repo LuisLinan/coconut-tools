@@ -24,8 +24,8 @@ from scipy.interpolate import RBFInterpolator
 import matplotlib.pyplot as plt
 from scipy.signal import savgol_filter
 import matplotlib.gridspec as gridspec
-from download_tomo_file import download_tomography_file
-from logger_config import setup_logger
+from coconut_tools.download_tomo_file import download_tomography_file
+from coconut_tools.logger_config import setup_logger
 
 logger = setup_logger(__name__)
 
