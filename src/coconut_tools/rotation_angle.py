@@ -18,8 +18,7 @@ from astropy.coordinates import SkyCoord
 import astropy.units as u
 from datetime import datetime
 import os
-from logger_config import setup_logger
-
+from coconut_tools.logger_config import setup_logger
 logger = setup_logger(__name__)
 
 def compute_rotation_angle(mag_name_path: str, date_hmi: str = None) -> float:
