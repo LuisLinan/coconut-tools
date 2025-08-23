@@ -1,15 +1,29 @@
 from __future__ import annotations
 import os
 import sys
+from pathlib import Path
+import importlib.metadata as ilm
 
 # -- Path setup: rendre le package importable par Sphinx ---------------------
-PROJECT_ROOT = os.path.abspath(os.path.join(__file__, "..", ".."))
-sys.path.insert(0, os.path.join(PROJECT_ROOT, "src"))
+# Ce fichier est dans docs/source/conf.py -> on remonte à la racine du repo
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 # -- Project information -----------------------------------------------------
 project = "coconut-tools"
 author = "Luis Linan"
-release = "0.1.0"
+
+# Tente de récupérer la version du paquet installé (si dispo), sinon fallback
+def _detect_version() -> str:
+    for dist_name in ("coconut-tools", "coconut_tools"):
+        try:
+            return ilm.version(dist_name)
+        except Exception:
+            pass
+    return os.environ.get("PROJECT_VERSION", "0.1.0")
+
+release = _detect_version()
+version = release
 
 # -- General configuration ---------------------------------------------------
 extensions = [
@@ -42,23 +56,5 @@ autodoc_default_options = {
     "undoc-members": True,
     "show-inheritance": True,
 }
-
-# Évite d'installer des dépendances lourdes/non disponibles sur RTD
-autodoc_mock_imports = [
-    "vtk",
-    "pyvista",
-    "pyevtk",
-    "sunpy",
-    "astropy",
-    "sklearn",        # alias courant; scikit-learn sera aussi mocké
-    "scikit-learn",
-    "cmocean",
-    "solarmach",
-    "natsort",
-    "h5py",
-    "matplotlib",
-    "pandas",
-    "numpy",
-    "bs4",
-    "requests",
-]
+# Optionnel mais utile : afficher les hints dans la description
+autodoc_typehints = "description"
