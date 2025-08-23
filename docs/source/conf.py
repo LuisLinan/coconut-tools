@@ -58,3 +58,5 @@ autodoc_default_options = {
 }
 # Optionnel mais utile : afficher les hints dans la description
 autodoc_typehints = "description"
+
+autodoc_mock_imports = ["numpy", "scipy", "matplotlib", "pyvista"]
