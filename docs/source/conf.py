@@ -59,4 +59,8 @@ autodoc_default_options = {
 # Optionnel mais utile : afficher les hints dans la description
 autodoc_typehints = "description"
 
-autodoc_mock_imports = ["numpy", "scipy", "matplotlib", "pyvista"]
+if os.environ.get("READTHEDOCS") == "True":
+    autodoc_mock_imports = [
+        "numpy", "scipy", "matplotlib", "pyvista", "vtk",
+        "pandas", "cmocean", "sunpy", "astropy", "skimage",
+    ]
