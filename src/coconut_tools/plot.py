@@ -20,14 +20,11 @@ Note:
 """
 
 import os
-import cmocean as cm
 from typing import Literal
 from coconut_tools.read_dat_files import read_data
 import matplotlib.pyplot as plt
 import numpy as np
-import h5py
 from matplotlib.ticker import AutoMinorLocator
-from sklearn.linear_model import LinearRegression
 from coconut_tools.logger_config import setup_logger
 logger = setup_logger(__name__)
 
@@ -50,6 +47,8 @@ def plot_boundary_profil(inputdir, outputfile, label_dict, color_map):
             3. Density [m⁻³]
             4. Temperature [K]
     """
+
+    import h5py
     fig, axs = plt.subplots(4, 1, figsize=(8, 12), constrained_layout=True)
     fig.suptitle(r'Magnetic and thermodynamic quantities from dat files', fontsize=16)
 
@@ -125,7 +124,7 @@ def Surface_2D_onetime(inputfile: str, outputfile: str, mode: Literal['all', 're
     Returns:
         None
     """
-
+    import cmocean as cm
     fig, axs = plt.subplots(4, 2, figsize=(15, 10), constrained_layout=True)
 
     clat_ticks = [0, 45, 90, 135, 180]
@@ -198,6 +197,7 @@ def create_plot_B(
     Returns:
         None
     """
+    import h5py
     fig, ax = plt.subplots(2, 1, figsize=(7, 10))
 
     for i, (title, filepath, sheath_indices, me_indices) in enumerate([
@@ -260,6 +260,7 @@ def create_plot_comparison(
     Returns:
         None
     """
+    import h5py
     fig, ax = plt.subplots(3, 1, figsize=(7, 10), sharex=False)
 
     # Setup colormap
@@ -325,6 +326,7 @@ def create_plot_max_quantities_vs_b0(
     Returns:
         None
     """
+    import h5py
     cm = plt.get_cmap('gist_rainbow')
 
     B0min, B0max = [], []
@@ -366,8 +368,15 @@ def create_plot_max_quantities_vs_b0(
 
     # --- Linear fits and plots ---
     def fit_and_plot(ax, x, y, color, label=None):
-        model = LinearRegression().fit(np.array(x).reshape(-1, 1), y)
-        intercept, slope = model.intercept_, model.coef_[0]
+        x = np.asarray(x, dtype=float)
+        y = np.asarray(y, dtype=float)
+        try:
+            from sklearn.linear_model import LinearRegression  # local import
+            model = LinearRegression().fit(x.reshape(-1, 1), y)
+            slope = float(model.coef_[0]);
+            intercept = float(model.intercept_)
+        except Exception:
+            slope, intercept = np.polyfit(x, y, 1)
         y_fit = slope * np.array(x) + intercept
         ax.plot(x, y_fit, linestyle='--', color=color, label=label)
         return model
