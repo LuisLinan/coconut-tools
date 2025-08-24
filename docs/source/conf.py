@@ -61,6 +61,6 @@ autodoc_typehints = "description"
 
 if os.environ.get("READTHEDOCS") == "True":
     autodoc_mock_imports = [
-        "numpy", "scipy", "matplotlib", "pyvista", "vtk",
+         "scipy", "matplotlib", "pyvista", "vtk",
         "pandas", "cmocean", "sunpy", "astropy", "skimage",
     ]

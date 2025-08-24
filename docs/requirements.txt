@@ -2,3 +2,4 @@ sphinx
 furo
 sphinx-autodoc-typehints
 sphinx-copybutton
+numpy>=1.23,<2
