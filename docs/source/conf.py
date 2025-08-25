@@ -50,6 +50,11 @@ html_title = f"{project} {release}"
 html_static_path = ["_static"]
 html_last_updated_fmt = "%Y-%m-%d"
 
+html_theme_options = {
+    "source_repository": "https://github.com/LuisLinan/coconut-tools/",
+    "source_branch": "main",
+    "source_directory": "docs/source/",
+}
 
 # -- Autodoc options ---------------------------------------------------------
 autodoc_default_options = {
