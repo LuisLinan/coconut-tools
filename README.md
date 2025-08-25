@@ -1,5 +1,8 @@
 # coconut-tools
 
+[![Documentation Status](https://readthedocs.org/projects/coconut-tools/badge/?version=latest)](https://coconut-tools.readthedocs.io/en/latest/?badge=latest)
+
+
 Tools for **COCONUT**: utilities to read and visualize 3D coronal simulation results, compare with observations, and prepare inputs for heliospheric models such as EUHFORIA.
 
 ---
@@ -64,6 +67,12 @@ Each script can be:
   ```bash
   python src/coconut_tools/plot.py
   ```
+
+---
+
+## Documentation
+
+The full documentation is hosted on [Read the Docs](https://coconut-tools.readthedocs.io/en/latest/).
 
 ---
 

@@ -50,6 +50,7 @@ html_title = f"{project} {release}"
 html_static_path = ["_static"]
 html_last_updated_fmt = "%Y-%m-%d"
 
+
 # -- Autodoc options ---------------------------------------------------------
 autodoc_default_options = {
     "members": True,
@@ -64,3 +65,4 @@ if os.environ.get("READTHEDOCS") == "True":
          "scipy", "matplotlib", "pyvista", "vtk",
         "pandas", "cmocean", "sunpy", "astropy", "skimage",
     ]
+

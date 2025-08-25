@@ -23,3 +23,10 @@ docs/build/
 docs/source/_autosummary/
 # (au cas où tu utilises l'autre nom)
 docs/_build/
+
+# coverage reports
+htmlcov/
+.coverage
+
+# pytest
+.pytest_cache/
