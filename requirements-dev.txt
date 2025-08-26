@@ -1,0 +1,10 @@
+# Development dependencies for coconut-tools
+
+# Testing
+pytest
+pytest-cov
+pooch
+
+# Documentation
+sphinx
+sphinx-autodoc-typehints

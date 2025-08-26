@@ -30,3 +30,6 @@ htmlcov/
 
 # pytest
 .pytest_cache/
+tests/_bigdata_cache/
+tests/_outputs/
+

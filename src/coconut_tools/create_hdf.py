@@ -167,7 +167,7 @@ def readstruct(lines: List[str]) -> Tuple[int, int, int, int, int, int, List[Tup
                 idx1 = i + 1
             elif line.startswith("!LIST_STATE 1"):
                 idx2 = i + 1
-            elif line.startswith("!NB_ELEM"):
+            elif line.startswith("!NB_ELEM "):
                 match = exp.search(line)
                 if match:
                     nbelements = int(match.group(1))
@@ -246,39 +246,97 @@ def find_closest_index_cf(x: np.ndarray, y: np.ndarray, z: np.ndarray, target_co
     distances = np.linalg.norm(points - target, axis=1)
     return np.argmin(distances)
 
+def _spherical_unit_vectors_from_cartesian(pos: Tuple[float, float, float]):
+    """Return spherical basis (r̂, θ̂, φ̂) at a Cartesian position.
+
+    Notes
+    -----
+    - θ (colatitude) is measured from +Z (0 at north pole, π/2 at equator).
+    - φ (longitude) is measured in the XY-plane from +X toward +Y via atan2(y, x).
+    - Only *direction* matters for the basis; pos can be in solar radii (R☉).
+    """
+    x, y, z = pos
+    r = np.sqrt(x*x + y*y + z*z)
+    if r == 0:
+        # Degenerate; return canonical basis to avoid NaNs
+        return np.array([1.0, 0.0, 0.0]), np.array([0.0, 0.0, -1.0]), np.array([0.0, 1.0, 0.0])
+
+    # Angles
+    theta = np.arccos(np.clip(z / r, -1.0, 1.0))  # colatitude
+    phi = np.arctan2(y, x)                        # longitude
+
+    # Unit vectors in Cartesian components
+    r_hat = np.array([np.sin(theta) * np.cos(phi),
+                      np.sin(theta) * np.sin(phi),
+                      np.cos(theta)])
+
+    theta_hat = np.array([np.cos(theta) * np.cos(phi),
+                          np.cos(theta) * np.sin(phi),
+                          -np.sin(theta)])
+
+    phi_hat = np.array([-np.sin(phi),
+                        np.cos(phi),
+                        0.0])
+
+    return r_hat, theta_hat, phi_hat
+
+
 def create_hdf_from_cfmesh(
     satellite_positions: Dict[str, Tuple[float, float, float]],
     folder_patterns: Dict[str, str],
     output_dir: Path,
     delta_t: float,
     time_step: float,
-    method: str = "nearest"
+    method: str = "nearest",
 ) -> None:
-    """Extracts plasma quantities from CFmesh files at satellite positions or via interpolation.
+    """Extract plasma quantities from CFmesh files and save time series (incl. spherical components).
 
-    Args:
-        satellite_positions (Dict[str, Tuple[float, float, float]]): Satellite positions in (x, y, z) Cartesian coordinates.
-        folder_patterns (Dict[str, str]): Mapping of case names to glob patterns of CFmesh files.
-        output_dir (Path): Directory to store output HDF5 files.
-        delta_t (float): Time step duration (in code units).
-        time_step (float): Output time step multiplier.
-        method (str): 'nearest' to extract the closest point or 'interpolate' to interpolate at satellite position.
+    Parameters
+    ----------
+    satellite_positions : Dict[str, Tuple[float, float, float]]
+        Satellite positions in Cartesian coordinates (x, y, z) **in solar radii (R☉)**.
+    folder_patterns : Dict[str, str]
+        Mapping of case names to glob patterns of CFmesh files.
+    output_dir : Path
+        Directory to store output HDF5 files.
+    delta_t : float
+        Base time step duration (code units).
+    time_step : float
+        Output time step multiplier.
+    method : str, optional
+        'nearest' to extract at closest mesh node, or 'interpolate' to RBF-interpolate
+        the fields at the satellite position.
 
-    Returns:
-        None
+    Produces
+    --------
+    For each case, an HDF5 file with datasets:
+        Bx, By, Bz, Vx, Vy, Vz, rho, T, P, time,
+        vr, vclt, vlon, br, bclt, blon
+
+    Notes
+    -----
+    - Spherical components follow (r, θ, φ) with θ the **colatitude**.
+    - The time array uses the user's original scaling ``i * delta_t * time_step * 0.402``.
     """
 
-    output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(exist_ok=True, parents=True)
 
     for sat_name, sat_coord in satellite_positions.items():
         logger.info(f"Processing satellite: {sat_name}")
 
-        # Use first file of the first case to get reference mesh
+        # Use first file of the first case to get reference mesh (for 'nearest')
         first_case = next(iter(folder_patterns))
-        first_file = natsort.natsorted(glob.glob(folder_patterns[first_case]))[0]
+        first_files = natsort.natsorted(glob.glob(folder_patterns[first_case]))
+        if not first_files:
+            raise FileNotFoundError(f"No files match pattern for first case '{first_case}': {folder_patterns[first_case]}")
+        first_file = first_files[0]
+
         x, y, z, *_ = read_cfmesh(first_file)
         closest_index = find_closest_index_cf(x, y, z, sat_coord) if method == "nearest" else None
-        logger.info(f'the closest point is {x[closest_index]} {y[closest_index]} {z[closest_index]}')
+        if method == "nearest":
+            logger.info(
+                f"Closest mesh point (R☉): x={x[closest_index]:.6g} y={y[closest_index]:.6g} z={z[closest_index]:.6g}"
+            )
 
         for case_name, pattern in folder_patterns.items():
             logger.info(f"\tProcessing case: {case_name}")
@@ -287,54 +345,95 @@ def create_hdf_from_cfmesh(
             Vx_list, Vy_list, Vz_list = [], [], []
             rho_list, T_list, P_list, time_list = [], [], [], []
 
+            # New: spherical components
+            vr_list, vclt_list, vlon_list = [], [], []
+            br_list, bclt_list, blon_list = [], [], []
+
             files = natsort.natsorted(glob.glob(pattern))
+            if not files:
+                logger.warning(f"\tNo files for case '{case_name}' with pattern: {pattern}")
+                continue
+
             for i, file in enumerate(files):
                 logger.info(f"\t\tReading {file}")
                 x, y, z, Bx, By, Bz, rho, Vx, Vy, Vz, P, T = read_cfmesh(file)
-                grid = np.stack((x, y, z), axis=1)
 
+                # Selection / interpolation
                 if method == "nearest":
                     idx = closest_index
-                    bx, by, bz = Bx[idx], By[idx], Bz[idx]
-                    vx, vy, vz = Vx[idx], Vy[idx], Vz[idx]
-                    rho_val, t_val, p_val = rho[idx], T[idx], P[idx]
+                    bx, by, bz = float(Bx[idx]), float(By[idx]), float(Bz[idx])
+                    vx, vy, vz = float(Vx[idx]), float(Vy[idx]), float(Vz[idx])
+                    rho_val, t_val, p_val = float(rho[idx]), float(T[idx]), float(P[idx])
+                    pos = (float(x[idx]), float(y[idx]), float(z[idx]))
 
                 elif method == "interpolate":
-                    bx = RBFInterpolator(grid, Bx, kernel='linear', neighbors=20)([sat_coord])[0]
-                    by = RBFInterpolator(grid, By, kernel='linear', neighbors=20)([sat_coord])[0]
-                    bz = RBFInterpolator(grid, Bz, kernel='linear', neighbors=20)([sat_coord])[0]
-                    vx = RBFInterpolator(grid, Vx, kernel='linear', neighbors=20)([sat_coord])[0]
-                    vy = RBFInterpolator(grid, Vy, kernel='linear', neighbors=20)([sat_coord])[0]
-                    vz = RBFInterpolator(grid, Vz, kernel='linear', neighbors=20)([sat_coord])[0]
-                    rho_val = RBFInterpolator(grid, rho, kernel='linear', neighbors=20)([sat_coord])[0]
-                    t_val = RBFInterpolator(grid, T, kernel='linear', neighbors=20)([sat_coord])[0]
-                    p_val = RBFInterpolator(grid, P, kernel='linear', neighbors=20)([sat_coord])[0]
+                    grid = np.column_stack((x, y, z))
+                    sat = np.asarray(sat_coord)[None, :]
+                    bx = float(RBFInterpolator(grid, Bx, kernel='linear', neighbors=20)(sat)[0])
+                    by = float(RBFInterpolator(grid, By, kernel='linear', neighbors=20)(sat)[0])
+                    bz = float(RBFInterpolator(grid, Bz, kernel='linear', neighbors=20)(sat)[0])
+                    vx = float(RBFInterpolator(grid, Vx, kernel='linear', neighbors=20)(sat)[0])
+                    vy = float(RBFInterpolator(grid, Vy, kernel='linear', neighbors=20)(sat)[0])
+                    vz = float(RBFInterpolator(grid, Vz, kernel='linear', neighbors=20)(sat)[0])
+                    rho_val = float(RBFInterpolator(grid, rho, kernel='linear', neighbors=20)(sat)[0])
+                    t_val = float(RBFInterpolator(grid, T, kernel='linear', neighbors=20)(sat)[0])
+                    p_val = float(RBFInterpolator(grid, P, kernel='linear', neighbors=20)(sat)[0])
+                    pos = tuple(map(float, sat_coord))
+                else:
+                    raise ValueError("method must be 'nearest' or 'interpolate'")
 
-                Bx_list.append(bx)
-                By_list.append(by)
-                Bz_list.append(bz)
-                Vx_list.append(vx)
-                Vy_list.append(vy)
-                Vz_list.append(vz)
-                rho_list.append(rho_val)
-                T_list.append(t_val)
-                P_list.append(p_val)
+                # Append Cartesian & scalar quantities
+                Bx_list.append(bx); By_list.append(by); Bz_list.append(bz)
+                Vx_list.append(vx); Vy_list.append(vy); Vz_list.append(vz)
+                rho_list.append(rho_val); T_list.append(t_val); P_list.append(p_val)
                 time_list.append(i * delta_t * time_step * 0.402)
 
-            output_file = output_dir / f"CFData_{case_name}.hdf5"
-            with h5py.File(output_file, 'w') as hdf:
-                hdf.create_dataset('Bx', data=np.array(Bx_list))
-                hdf.create_dataset('By', data=np.array(By_list))
-                hdf.create_dataset('Bz', data=np.array(Bz_list))
-                hdf.create_dataset('Vx', data=np.array(Vx_list))
-                hdf.create_dataset('Vy', data=np.array(Vy_list))
-                hdf.create_dataset('Vz', data=np.array(Vz_list))
-                hdf.create_dataset('rho', data=np.array(rho_list))
-                hdf.create_dataset('T', data=np.array(T_list))
-                hdf.create_dataset('P', data=np.array(P_list))
-                hdf.create_dataset('time', data=np.array(time_list))
+                # Compute spherical components at 'pos' (R☉), project V and B
+                r_hat, theta_hat, phi_hat = _spherical_unit_vectors_from_cartesian(pos)
+                v_vec = np.array([vx, vy, vz], dtype=float)
+                b_vec = np.array([bx, by, bz], dtype=float)
 
-            logger.info(f"\tSaved data to {output_file}")
+                vr = float(v_vec @ r_hat)
+                v_theta = float(v_vec @ theta_hat)
+                v_phi = float(v_vec @ phi_hat)
+                br = float(b_vec @ r_hat)
+                b_theta = float(b_vec @ theta_hat)
+                b_phi = float(b_vec @ phi_hat)
+
+                # Store using requested names: vr, vclt(θ), vlon(φ); br, bclt(θ), blon(φ)
+                vr_list.append(vr)
+                vclt_list.append(v_theta)
+                vlon_list.append(v_phi)
+                br_list.append(br)
+                bclt_list.append(b_theta)
+                blon_list.append(b_phi)
+
+            # Write HDF5 for this case & satellite
+            if files:
+                # Include satellite name in file to avoid overwriting between satellites
+                output_file = output_dir / f"CFData_{case_name}_{sat_name}.hdf5"
+                with h5py.File(output_file, 'w') as hdf:
+                    hdf.create_dataset('Bx', data=np.asarray(Bx_list))
+                    hdf.create_dataset('By', data=np.asarray(By_list))
+                    hdf.create_dataset('Bz', data=np.asarray(Bz_list))
+                    hdf.create_dataset('Vx', data=np.asarray(Vx_list))
+                    hdf.create_dataset('Vy', data=np.asarray(Vy_list))
+                    hdf.create_dataset('Vz', data=np.asarray(Vz_list))
+                    hdf.create_dataset('rho', data=np.asarray(rho_list))
+                    hdf.create_dataset('T', data=np.asarray(T_list))
+                    hdf.create_dataset('P', data=np.asarray(P_list))
+                    hdf.create_dataset('time', data=np.asarray(time_list))
+
+                    # New spherical components
+                    hdf.create_dataset('vr', data=np.asarray(vr_list))
+                    hdf.create_dataset('vclt', data=np.asarray(vclt_list))
+                    hdf.create_dataset('vlon', data=np.asarray(vlon_list))
+                    hdf.create_dataset('br', data=np.asarray(br_list))
+                    hdf.create_dataset('bclt', data=np.asarray(bclt_list))
+                    hdf.create_dataset('blon', data=np.asarray(blon_list))
+
+                logger.info(f"\tSaved data to {output_file}")
+
 
 def find_closest_indices(clt: np.ndarray, lon: np.ndarray, target_clt: float, target_lon: float) -> Tuple[int, int]:
     """Finds the indices in colatitude and longitude grids closest to the desired values (in degrees).

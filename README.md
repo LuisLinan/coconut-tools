@@ -35,6 +35,54 @@ pip install -e .
 
 ---
 
+## Development
+
+If you want to contribute or run the full test suite with documentation:
+
+```bash
+pip install -r requirements-dev.txt
+```
+
+This will install extra tools such as **pytest**, **pooch**, and **sphinx**.
+
+---
+
+## Testing the installation
+
+We use [pytest](https://docs.pytest.org/) for testing.  
+
+After installation, you can run the basic tests:
+
+```bash
+pytest -v
+```
+
+This will check that the package can be imported and that the test infrastructure works.
+
+---
+
+### Optional: tests with large data files
+
+Some tests rely on large simulation files (≈500 MB).  
+By default they are skipped unless you explicitly allow download:
+
+```bash
+pytest -v --prefetch-bigdata
+```
+
+- `--prefetch-bigdata` → downloads the large `.vtu` and `.CFmesh` test files into `tests/_bigdata_cache/`.  
+- `--cleanup-bigdata` → deletes them at the end of the test session.  
+- You can combine both:
+
+```bash
+pytest -v --prefetch-bigdata --cleanup-bigdata
+```
+
+⚠️ Downloading may take a few minutes depending on your connection.
+
+---
+
+
 ## Features
 
 ### Reading and visualization

@@ -51,8 +51,8 @@ def readstruct(lines: List[str]) -> Tuple[int, int, int, int, int, int, List[Tup
                 idx2 = i + 1
             elif line.startswith("!LIST_ELEM"):
                 idx0 = i + 1
-            elif line.startswith("!NB_ELEM"):
-                nbelements = int(exp.findall(line)[0])
+            elif line.startswith("!NB_ELEM "):
+                nbelements = int(exp.search(line).group(1))
             elif line.startswith("!TRS_NAME Outlet"):
                 idx3 = i
             elif line.startswith("!END"):

@@ -50,7 +50,7 @@ def plot_boundary_profil(inputdir, outputfile, label_dict, color_map):
 
     import h5py
     fig, axs = plt.subplots(4, 1, figsize=(8, 12), constrained_layout=True)
-    fig.suptitle(r'Magnetic and thermodynamic quantities from dat files', fontsize=16)
+    fig.suptitle(r'Magnetic and thermodynamic quantities from hdf files', fontsize=16)
 
     min_time, max_time = float('inf'), float('-inf')
     vlines_hours = [2, 4.2, 13]
@@ -62,8 +62,8 @@ def plot_boundary_profil(inputdir, outputfile, label_dict, color_map):
             # Extract data
             vr, vlon, vclt = hdf['vr'][:], hdf['vlon'][:], hdf['vclt'][:]
             br, blon, bclt = hdf['br'][:], hdf['blon'][:], hdf['bclt'][:]
-            density, temperature = hdf['density'][:], hdf['temperature'][:]
-            date = list(hdf['date'][:])
+            density, temperature = hdf['rho'][:], hdf['T'][:]
+            date = list(hdf['time'][:])
 
         # Compute derived quantities
         b = np.sqrt(br**2 + blon**2 + bclt**2) * 1e9
@@ -446,13 +446,13 @@ if __name__ == "__main__":
         color_map=color_map
     )
 
-    input_file = "./data_tests/solar_wind.dat"  # <-- à adapter
+    input_file = "./data_tests/test.dat"  # <-- à adapter
     output_file = "./data_tests/test_surface_plot.png"
 
     Surface_2D_onetime(
         inputfile=input_file,
         outputfile=output_file,
-        mode='reduced'  # ou 'all'
+        mode='all'  # ou 'reduced'
     )
 
     create_plot_comparison(

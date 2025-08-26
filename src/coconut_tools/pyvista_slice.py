@@ -21,6 +21,46 @@ import logging
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
+def _to_int(x, name: str):
+    try:
+        return int(x)
+    except Exception as e:
+        raise TypeError(f"{name} must be an integer-like value, got {x!r}") from e
+
+def make_streamlines(mesh,
+                     vectors="B",
+                     max_steps=1000,
+                     n_points=1000,
+                     source_radius=2.0,
+                     source_center=(0, 0, 0),
+                     initial_step_length=None,
+                     step_unit_val=None,
+                     max_error=None,
+                     max_step_length=None):
+    """
+    Wrapper that normalizes types for VTK/PyVista streamline settings.
+    - Casts step-like params to int where VTK expects integers.
+    - Uses `max_steps` (replacement for deprecated `max_time`).
+    """
+    # Ensure ints where VTK requires ints
+    max_steps = _to_int(max_steps, "max_steps")
+    n_points = _to_int(n_points, "n_points")
+
+    # Build streamlines via PyVista
+    stream = mesh.streamlines(
+        vectors=vectors,
+        max_steps=max_steps,      # must be int
+        n_points=n_points,        # must be int
+        source_radius=source_radius,
+        source_center=source_center,
+        # Note: the following kwargs are only passed if not None
+        **({} if initial_step_length is None else {"initial_step_length": initial_step_length}),
+        **({} if step_unit_val is None else {"integration_step_unit": step_unit_val}),
+        **({} if max_error is None else {"maximum_error": max_error}),
+        **({} if max_step_length is None else {"maximum_step_length": max_step_length}),
+    )
+    return stream
+
 def read_mesh(filename):
     """Load a VTU mesh file.
 
@@ -85,11 +125,15 @@ def convert_to_spherical(mesh):
     mesh['bphi'] = (-y*bx + x*by) / rxy
     return mesh
 
-def visualize(mesh, slice_normal='y'):
+def visualize(mesh, slice_normal='y', save_path=None, show=True):
     """Create a PyVista visualization of the MHD quantities.
 
     Args:
         mesh (pv.DataSet): The mesh with physical fields.
+        slice_normal (str): Normal direction of the slice ('x', 'y', 'z').
+        save_path (str | None): If given, path where the figure will be saved
+            (supports .png, .jpg, .pdf, .svg).
+        show (bool): If True, display the interactive scene.
     """
     logging.info('Creating plotter...')
     p = pv.Plotter()
@@ -118,8 +162,14 @@ def visualize(mesh, slice_normal='y'):
 
     logging.info('Adding magnetic field streamlines...')
     mesh['B'] = np.column_stack((mesh['bx_dim'], mesh['by_dim'], mesh['bz_dim']))
-    stream = mesh.streamlines(vectors='B', max_time=100., n_points=1000,
-                              source_radius=2.0, source_center=(0,0,0))
+    stream = make_streamlines(
+        mesh,
+        vectors="B",
+        max_steps=1000,  # ensure it's an int (not 1000.0)
+        n_points=1000,
+        source_radius=2.0,
+        source_center=(0, 0, 0),
+    )
     p.add_mesh(stream.tube(radius=0.01), cmap='binary', scalar_bar_args={
         'height': 0.25, 'vertical': True, 'title_font_size': 30, 'width': 0.05,
         'title': 'B-field Streamlines', 'position_x': 0.88, 'position_y': 0.65
@@ -129,11 +179,18 @@ def visualize(mesh, slice_normal='y'):
     iso = mesh.contour([1e-16], scalars='rho_dim')
     p.add_mesh(iso, scalars='rho_dim', cmap='plasma', opacity=0.4, scalar_bar_args={
         'height': 0.25, 'vertical': True, 'title_font_size': 30, 'width': 0.05,
-        'title': 'Isosurface of Density [g/cm^3]', 'position_x': 0.05, 'position_y': 0.85
+        'title': 'Isosurface of Density [g/cm^3]', 'position_x': 0.10, 'position_y': 0.65
     })
 
-    logging.info('Displaying scene...')
-    p.show(window_size=[1200, 1000], cpos=cpos)
+    if save_path:
+        logging.info(f'Saving figure to {save_path}...')
+        p.show(screenshot=save_path, cpos=cpos, window_size=[1800, 900], auto_close=False)
+
+    if show:
+        logging.info('Displaying scene...')
+        p.show(window_size=[1200, 1000], cpos=cpos)
+    else:
+        p.close()
 
 
 if __name__ == '__main__':
@@ -141,4 +198,4 @@ if __name__ == '__main__':
     mesh = read_mesh(input_path)
     mesh = convert_units(mesh)
     mesh = convert_to_spherical(mesh)
-    visualize(mesh, slice_normal='y')
+    visualize(mesh, slice_normal='y', save_path='pyvista_slice.png', show=False)
