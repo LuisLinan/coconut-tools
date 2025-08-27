@@ -22,6 +22,16 @@ def _detect_version() -> str:
             pass
     return os.environ.get("PROJECT_VERSION", "0.1.0")
 
+# --- Ensure README.md is available in docs/source for includes -------------
+def setup(app):
+    from shutil import copy2
+    src_readme = PROJECT_ROOT / "README.md"
+    dst_readme = Path(__file__).parent / "README.md"
+    try:
+        copy2(src_readme, dst_readme)
+    except Exception as e:
+        print(f"[conf.py] Warning: could not copy README.md -> {e}")
+
 release = _detect_version()
 version = release
 
@@ -33,6 +43,8 @@ extensions = [
     "sphinx.ext.viewcode",         # lien vers le code source
     "sphinx_copybutton",           # bouton copier les blocs de code
     "sphinx_autodoc_typehints",    # jolis hints de types
+    "myst_parser",  # lire du Markdown (README, etc.)
+    "sphinx_design",  # composants UI (cards, grids)
 ]
 
 autosummary_generate = True
@@ -71,3 +83,4 @@ if os.environ.get("READTHEDOCS") == "True":
         "pandas", "cmocean", "sunpy", "astropy", "skimage",
     ]
 
+myst_enable_extensions = ["colon_fence"]

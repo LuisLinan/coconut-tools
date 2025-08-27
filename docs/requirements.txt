@@ -3,3 +3,5 @@ furo
 sphinx-autodoc-typehints
 sphinx-copybutton
 numpy>=1.23,<2
+sphinx-design
+myst-parser

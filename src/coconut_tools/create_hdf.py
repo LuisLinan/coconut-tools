@@ -411,7 +411,7 @@ def create_hdf_from_cfmesh(
             # Write HDF5 for this case & satellite
             if files:
                 # Include satellite name in file to avoid overwriting between satellites
-                output_file = output_dir / f"CFData_{case_name}_{sat_name}.hdf5"
+                output_file = output_dir / f"CFData_{case_name}.hdf5"
                 with h5py.File(output_file, 'w') as hdf:
                     hdf.create_dataset('Bx', data=np.asarray(Bx_list))
                     hdf.create_dataset('By', data=np.asarray(By_list))
