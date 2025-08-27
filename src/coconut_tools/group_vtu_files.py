@@ -42,8 +42,8 @@ def initialize(index: int, input_dir: str, output_dir: str, timestep: int, start
         return
 
     filenames = [
-        #os.path.join(input_dir, f"corona-flow0-P{j}-iter_{start_time * timestep + timestep * index}.vtu")
-        os.path.join(input_dir, f"corona-flow0-P{j}.vtu")
+        os.path.join(input_dir, f"corona-flow0-P{j}-iter_{start_time * timestep + timestep * index}.vtu")
+        #os.path.join(input_dir, f"corona-flow0-P{j}.vtu")
         for j in range(nb_proc)
     ]
 
