@@ -7,3 +7,4 @@ Short, focused recipes for common tasks.
    :maxdepth: 2
 
    vis-analysis/index
+   boundary/index

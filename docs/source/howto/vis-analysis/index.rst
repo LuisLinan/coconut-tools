@@ -7,3 +7,4 @@ Recipes for preparing outputs for visualization and quick analysis.
    :maxdepth: 1
 
    merge-vtu
+   read-output
