@@ -18,6 +18,7 @@ Author: Luis
 import numpy as np
 import pyvista as pv
 import logging
+import os
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
@@ -136,8 +137,13 @@ def visualize(mesh, slice_normal='y', save_path=None, show=True):
         show (bool): If True, display the interactive scene.
     """
     logging.info('Creating plotter...')
-    p = pv.Plotter()
-    p.add_axes()
+    off = not show
+    # Optionnel mais pratique en CI:
+    if off:
+        os.environ.setdefault("PYVISTA_OFF_SCREEN", "1")
+        pv.OFF_SCREEN = True
+
+    p = pv.Plotter(off_screen=off)
 
     rr = 18.0  # reculer la caméra
     phi_rad = np.radians(60)
@@ -181,16 +187,16 @@ def visualize(mesh, slice_normal='y', save_path=None, show=True):
         'height': 0.25, 'vertical': True, 'title_font_size': 30, 'width': 0.05,
         'title': 'Isosurface of Density [g/cm^3]', 'position_x': 0.10, 'position_y': 0.65
     })
+    p.show(interactive=False, auto_close=False, window_size=[1800, 900])
+
 
     if save_path:
         logging.info(f'Saving figure to {save_path}...')
-        p.show(screenshot=save_path, cpos=cpos, window_size=[1800, 900], auto_close=False)
-
+        p.screenshot(save_path)
     if show:
         logging.info('Displaying scene...')
-        p.show(window_size=[1200, 1000], cpos=cpos)
-    else:
-        p.close()
+        p.show()
+    p.close()
 
 
 if __name__ == '__main__':

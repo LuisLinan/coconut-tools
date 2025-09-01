@@ -192,10 +192,10 @@ def readconfig(path: str) -> Tuple[float, float, float, float, float, float, flo
 
 if __name__ == '__main__':
     createconfig(
-        path_file='E:/haopeng_testcase/',
-        path_tdm='E:/haopeng_testcase/',
+        path_file='E:/test/',
+        path_tdm='E:/test/',
         path_save='C:/Users/luisl/Documents/Travail/COCONUT/pyTDM/config/',
-        name='Haopeng_35',
+        name='test',
         theta=1.57, phi=3.14, alpha=0, D=0.15, A=0.10, R=0.3, delta=0.01,
         zeta=5, case_tdm='first', geometry='spherical', solver='COCONUT',
         flux='Tdm', nb_proc=72, nb_r=200, nb_th=200, nb_phi=200, eps=0.01,

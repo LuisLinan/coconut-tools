@@ -33,3 +33,5 @@ htmlcov/
 tests/_bigdata_cache/
 tests/_outputs/
 
+# vscode
+.vscode/

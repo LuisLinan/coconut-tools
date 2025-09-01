@@ -8,3 +8,6 @@ Short, focused recipes for common tasks.
 
    vis-analysis/index
    boundary/index
+   comparisons/index
+   magnetogram/index
+   pytdm/index

@@ -8,3 +8,8 @@ Recipes for preparing outputs for visualization and quick analysis.
 
    merge-vtu
    read-output
+   create-hdf
+   plot-convergence
+   plot-synoptic-magnetogram
+   pyvista-threeD
+   plots-from-hdf
