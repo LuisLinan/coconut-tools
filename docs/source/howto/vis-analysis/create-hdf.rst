@@ -14,7 +14,11 @@ This How-To shows how to:
 - at **multiple positions** (e.g. multiple spacecraft),
 - and **save one HDF5 file per position** containing the time evolution of magnetic and thermodynamic quantities (and spherical components when reading CFmesh).
 
-Modules & functions
+Module
+------
+``coconut_tools.create_hdf``
+
+Functions
 -------------------
 Two entry points (you can use either CFmesh or VTU as data source):
 

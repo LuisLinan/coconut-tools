@@ -9,6 +9,10 @@ The helper script ``plot_convergence.py`` reads the per-run log file
 ``convergence.plt-P0.FlowNamespace`` (written by COCONUT) in multiple subfolders
 and generates side-by-side comparison plots.
 
+Module
+------
+``coconut_tools.plot_convergence``
+
 What it reads
 -------------
 Each case folder must contain a text file named e.g.::

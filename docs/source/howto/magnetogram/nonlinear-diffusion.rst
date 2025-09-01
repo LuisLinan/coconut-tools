@@ -6,6 +6,10 @@ Goal
 Apply edge-preserving nonlinear diffusion (Perona–Malik) to magnetograms,
 reducing noise while maintaining active region boundaries.
 
+Module
+------
+``coconut_tools.magnetogram.NLD_implicit_method``
+
 API
 ---
 .. code-block:: python

@@ -7,6 +7,10 @@ Filter synoptic magnetograms via spherical harmonic decomposition to smooth
 small-scale noise and control the intensity range, while keeping large-scale
 features that drive the corona.
 
+Module
+------
+``coconut_tools.magnetogram.sph_filtering``
+
 API
 ---
 .. code-block:: python

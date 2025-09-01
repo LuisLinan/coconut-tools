@@ -14,6 +14,10 @@ flux-rope models for COCONUT:
 - **TDM** (torus/TDm-type rope): see *Linan et al., 2023*.
 - **RBSL** (Regularized Biot-Savart Law): see *Guo et al., 2023*.
 
+Module
+------
+``coconut_tools.pyTDM``
+
 High-level workflow
 -------------------
 1. **Run steady-state COCONUT** → produce background ``corona.CFmesh``.

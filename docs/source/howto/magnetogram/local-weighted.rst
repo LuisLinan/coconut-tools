@@ -6,6 +6,10 @@ Goal
 Apply fast local weighted averaging to smooth magnetograms. The weight
 depends on both spatial distance and field intensity similarity.
 
+Module
+------
+``coconut_tools.magnetogram.Yaroslavsky_filter``
+
 API
 ---
 .. code-block:: python

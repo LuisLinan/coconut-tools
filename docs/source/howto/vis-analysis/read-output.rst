@@ -6,12 +6,18 @@ Goal
 Load **COCONUT** outputs either from the 3D **CFmesh** format or from the (merged) **VTU** files,
 and expose the main physical quantities in convenient Python dictionaries.
 
+Module
+------
+``coconut_tools.how_to_read_output``
+
 Prerequisites
 -------------
 - For VTU workflows, you usually want the **merged** files first (one per snapshot). See :doc:`merge-vtu`.
 - `how_to_read_output.py` provides two reader utilities:
   - ``read_cfmesh_file`` → parse CFmesh and return cartesian fields and metadata.
   - ``read_vtu_to_spherical_vectors`` → read VTU and convert to **spherical** components.
+
+
 
 CFmesh reader
 -------------

@@ -30,7 +30,7 @@ Full documentation: **https://coconut-tools.readthedocs.io/**
 - `create_dat.py`, `rotation_angle.py` – Prepare boundary/input data for coupling with heliospheric models (e.g. EUHFORIA)
 
 ### CME flux rope models (`pyTDM/`)
-- Adapted from the original package by Florian Regnault (for PLUTO), extended and modified by Luis Linan to inject CME models (RBSL, TDm) into COCONUT initial conditions
+- Adapted from the original package by Florian Regnault (for PLUTO), extended and modified by Luis Linan and Jinhan Guo to inject CME models (RBSL, TDm) into COCONUT initial conditions
 
 ### Inner boundary construction (`magnetogram/`)
 - Scripts to download and preprocess solar magnetograms  
