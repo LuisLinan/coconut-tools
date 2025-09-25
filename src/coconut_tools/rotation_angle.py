@@ -19,9 +19,12 @@ import astropy.units as u
 from datetime import datetime
 import os
 from coconut_tools.logger_config import setup_logger
+from typing import Tuple
+
+
 logger = setup_logger(__name__)
 
-def compute_rotation_angle(mag_name_path: str, date_hmi: str = None) -> float:
+def compute_rotation_angle(mag_name_path: str, date_hmi: str = None) -> Tuple[float, datetime]:
     """Compute the rotation angle from magnetogram filename.
 
     Supports GONG, ADAPT (CM and CAR), and HMI.
@@ -32,6 +35,7 @@ def compute_rotation_angle(mag_name_path: str, date_hmi: str = None) -> float:
 
     Returns:
         float: Rotation angle in degrees to convert from Carrington to Stonyhurst
+        datetime: The observation date of the magnetogram
     """
     mag_name = os.path.basename(mag_name_path)
     logger.info(f"The magnetogram name is: {mag_name}")
@@ -55,7 +59,7 @@ def compute_rotation_angle(mag_name_path: str, date_hmi: str = None) -> float:
             angle = CM_CAR_value - start_lon + 10
         else:
             angle = CM_CAR_value + (360 - start_lon) + 10
-        return angle % 360
+        return angle % 360 , date
 
     # ADAPT
     elif prefix == 'adapt':
@@ -69,7 +73,7 @@ def compute_rotation_angle(mag_name_path: str, date_hmi: str = None) -> float:
                                obstime=date, observer='earth')
             CM_CAR = CM_HEEQ.transform_to(frames.HeliographicCarrington(observer='earth', obstime=date))
             CM_CAR_value = CM_CAR.lon.value % 360
-            return (CM_CAR_value + 10) % 360
+            return (CM_CAR_value + 10) % 360 , date
 
         elif mode == '413':
             logger.info("The magnetogram is GONG ADAPT in CM frame")
@@ -87,7 +91,7 @@ def compute_rotation_angle(mag_name_path: str, date_hmi: str = None) -> float:
                            obstime=date, observer='earth')
         CM_CAR = CM_HEEQ.transform_to(frames.HeliographicCarrington(observer='earth', obstime=date))
         CM_CAR_value = CM_CAR.lon.value % 360
-        return (CM_CAR_value + 10) % 360
+        return (CM_CAR_value + 10) % 360, date
     else:
         logger.error("Magnetogram filename format not recognized: %s", mag_name)
         raise ValueError("Magnetogram filename format not recognized.")

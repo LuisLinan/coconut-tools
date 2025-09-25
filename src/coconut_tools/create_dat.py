@@ -221,6 +221,8 @@ def rotation(input_dat: str, output_dat: str, angle_degrees: float, full_output:
 
 if __name__ == "__main__":
 
+    """ Example usage of the module to process a series of CFmesh files and generate boundary .dat files.
+
     magnetogram_path = "../hmi.Synoptic_Mr_small.2238.fits"
     date_hmi = "2020-12-07T15:00:00"
     auto_compute_rotation = True
@@ -261,3 +263,41 @@ if __name__ == "__main__":
         create_boundary_fromcfmesh(file, time, rad_out, nb_th, nb_phi, eps, output_dat_temp, full_output=full_output)
         rotation(output_dat_temp, output_dat, angle, full_output=full_output)
         os.remove(output_dat_temp)
+
+"""
+
+    auto_compute_rotation = True
+    manual_rotation_angle = 180.0  # fallback if auto_compute_rotation is False
+
+    rad_out = 21.5
+    nb_th = 180
+    nb_phi = 360
+    eps = 0.01
+    full_output = True  
+
+    date_hmi = None
+
+    file = 'F:/GU V2/COCONUT_Simulation_Results/CFmeshes/corona_NoLim_PPDecEBC2_20140104GONGlt100G.CFmesh'
+    logger.info(f"Processing file {file}")
+
+    magnetogram_path = "F:/GU V2/magnetogram/mrzqs120923t0544c2128_142.fits.gz"
+
+
+    if auto_compute_rotation:
+        angle, date_dt = compute_rotation_angle(magnetogram_path, date_hmi)
+        logger.info(f"Computed rotation angle: {angle} degrees")
+        logger.info(f"Using date for rotation computation: {date_dt.isoformat()}")
+    else:
+        angle = manual_rotation_angle
+
+    timestamp_i = str(int(date_dt.timestamp()))
+
+    output_dat_temp = f'F:/GU V2/datfiles/20140104GONGlt100G/solar_wind_boundary_{timestamp_i}_temps.dat'
+    output_dat = f'F:/GU V2/datfiles/20140104GONGlt100G/solar_wind_boundary_{timestamp_i}.dat'
+
+    time = date_dt.strftime("%Y-%m-%dT%H:%M:%S")
+
+
+    create_boundary_fromcfmesh(file, time, rad_out, nb_th, nb_phi, eps, output_dat_temp, full_output=full_output)
+    rotation(output_dat_temp, output_dat, angle, full_output=full_output)
+    os.remove(output_dat_temp)
