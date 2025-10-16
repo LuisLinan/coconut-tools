@@ -426,34 +426,46 @@ def restart_coolfluid(path: str, vtsfile: str, path_save: str, alpha_0 :float, t
 
     outputfile = path_file + 'corona_restart.CFmesh'
 
-    MHDoutfile = open(outputfile, "w")
+    with open(outputfile, "w", newline="\n") as MHDoutfile:
 
-    for i in range(0, 15):
-        MHDoutfile.write(comment[i][1])
+        # 1. Header comments
+        for i in range(0, 15):
+            MHDoutfile.write(comment[i][1])
 
-    MHDoutfile.write("\n".join([" ".join(row) for row in connectivity.astype('str')]))
+        # 2. Connectivity
+        for row in connectivity.astype(str):
+            MHDoutfile.write(" ".join(row) + "\n")
 
-    for i in range(15, 21):
-        MHDoutfile.write(comment[i][1])
+        for i in range(15, 21):
+            MHDoutfile.write(comment[i][1])
 
-    MHDoutfile.write("\n".join([" ".join(row) for row in other.astype('str')]))
+        # 3. Other
+        for row in other.astype(str):
+            MHDoutfile.write(" ".join(row) + "\n")
 
-    for i in range(21, 26):
-        MHDoutfile.write(comment[i][1])
+        for i in range(21, 26):
+            MHDoutfile.write(comment[i][1])
 
-    MHDoutfile.write("\n".join([" ".join(row) for row in other2.astype('str')]))
+        # 4. Other2
+        for row in other2.astype(str):
+            MHDoutfile.write(" ".join(row) + "\n")
 
-    for i in range(26, 28):
-        MHDoutfile.write(comment[i][1])
+        for i in range(26, 28):
+            MHDoutfile.write(comment[i][1])
 
-    MHDoutfile.write("\n".join([" ".join(row) for row in coordinates.astype('str')]))
+        # 5. Coordinates
+        for row in coordinates.astype(str):
+            MHDoutfile.write(" ".join(row) + "\n")
 
-    MHDoutfile.write(comment[28][1])
+        # 6. Comment before Initialdata
+        MHDoutfile.write(comment[28][1])
 
-    MHDoutfile.write("\n".join([" ".join(row) for row in Initialdata.astype('str')]))
+        # 7. Initial data
+        for row in Initialdata.astype(str):
+            MHDoutfile.write(" ".join(row) + "\n")
 
-    MHDoutfile.write(comment[-1][1])
-    MHDoutfile.close()
+        # 8. Footer comment
+        MHDoutfile.write(comment[-1][1])
 
     now = datetime.now()
     current_time = now.strftime("%H:%M:%S")
