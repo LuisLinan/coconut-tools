@@ -416,7 +416,6 @@ def restart_coolfluid(path: str, vtsfile: str, path_save: str, alpha_0 :float, t
         grid.cell_data['Vy'] = Initialdata[:, 2]
         grid.cell_data['Vz'] = Initialdata[:, 3]
         grid.save(f'{path_file}TDM_after.vtk')
-
     # Now save the new file
     now = datetime.now()
     current_time = now.strftime("%H:%M:%S")
