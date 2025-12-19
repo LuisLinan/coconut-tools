@@ -2,13 +2,13 @@
 import numpy as np
 
 
-def read_data(filename, reduced=False):
+def read_data(filename, reduced=False, extended=False):
     """Reads physical simulation data from a formatted text file.
 
     Args:
         filename (str): Path to the file to be read.
         reduced (bool): Whether to only read vr, density, br, temperature.
-
+        extended (bool): radius or not
     Returns:
         tuple: Contains the parsed data arrays including date, clt, lon, and selected fields.
     """
@@ -30,6 +30,8 @@ def read_data(filename, reduced=False):
         'bp': 'Bp\n',
         'bt': 'Bt\n'
     }
+    if extended:
+    	all_headers['r'] = 'Radius of sphere:\n'
 
     # Filter headers depending on mode
     if reduced:
@@ -41,6 +43,10 @@ def read_data(filename, reduced=False):
     indices = {
         key: lines.index(all_headers[key]) for key in expected_headers if all_headers[key] in lines
     }
+    
+    if extended:
+    	idx_r = indices['r'] + 1
+    	r = float(lines[idx_r])
 
     idx_clt = indices['clt'] + 1
     idx_lon = indices['lon'] + 1
@@ -72,4 +78,7 @@ def read_data(filename, reduced=False):
         blon = read_array(indices['bp'] + 1, indices['bt'])
         bclt = read_array(indices['bt'] + 1, len(lines))
 
-    return date, clt, lon, vr / 1000, vlon / 1000, vclt / 1000, density, br, bclt, blon, temp
+    if extended:
+        return date, r, clt, lon, vr / 1000, vlon / 1000, vclt / 1000, density, br, bclt, blon, temp
+    else:
+        return date, clt, lon, vr / 1000, vlon / 1000, vclt / 1000, density, br, bclt, blon, temp

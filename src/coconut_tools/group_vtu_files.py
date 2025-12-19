@@ -21,7 +21,7 @@ from coconut_tools.logger_config import setup_logger
 logger = setup_logger(__name__)
 
 
-def initialize(index: int, input_dir: str, output_dir: str, timestep: int, start_time: int, nb_proc: int = 900) -> None:
+def initialize(index: int, input_dir: str, output_dir: str, timestep: int, start_time: int, nb_proc: int = 900, stat: bool = False, input_str: str = 'corona-flow0', remove: bool=True) -> None:
     """Merge distributed VTU files from Coolfluid into a single VTU file per time step.
 
     Args:
@@ -31,7 +31,9 @@ def initialize(index: int, input_dir: str, output_dir: str, timestep: int, start
         timestep (int): Time increment between snapshots.
         start_time (int): Starting snapshot index.
         nb_proc (int, optional): Number of processors used. Defaults to 900.
-
+        stat (bool, default False): consider as stationary run if True
+        input_str (str, 'corona-flow0'): expected input name for vtu files
+        remove (bool, True): remove splitted vtu if True
     Returns:
         None
     """
@@ -41,12 +43,17 @@ def initialize(index: int, input_dir: str, output_dir: str, timestep: int, start
         logger.info(f"Snapshot already exists: {output_filename}")
         return
 
-    filenames = [
-        os.path.join(input_dir, f"corona-flow0-P{j}-iter_{start_time * timestep + timestep * index}.vtu")
-        #os.path.join(input_dir, f"corona-flow0-P{j}.vtu")
-        for j in range(nb_proc)
-    ]
-
+    if stat:
+        filenames = [
+            os.path.join(input_dir, input_str+f"-P{j}.vtu")
+            for j in range(nb_proc)
+        ]
+    else:    
+        filenames = [
+            os.path.join(input_dir, input_str+f"-P{j}-iter_{start_time * timestep + timestep * index}.vtu")
+            for j in range(nb_proc)
+        ]
+        
     logger.info(f"Reading files for snapshot {index + start_time:04d}")
 
     try:
@@ -59,11 +66,13 @@ def initialize(index: int, input_dir: str, output_dir: str, timestep: int, start
     logger.info(f"Saving merged snapshot to {output_filename}")
     merged.save(output_filename)
 
-    for f in filenames:
-        try:
-            os.remove(f)
-        except Exception as e:
-            logger.warning(f"Failed to remove file {f}: {e}")
+    if remove:
+        print('remove')
+        for f in filenames:
+            try:
+                os.remove(f)
+            except Exception as e:
+                logger.warning(f"Failed to remove file {f}: {e}")
 
 def merge_all_snapshots(
     input_dir: str,
@@ -72,7 +81,10 @@ def merge_all_snapshots(
     timestep: int,
     nbmax: int,
     num_processes: int = 5,
-    nb_proc: int = 900
+    nb_proc: int = 900,
+    stat: bool=False,
+    input_str: str='corona-flow0',
+    remove: bool=True
 ) -> None:
     """Launch parallel merging of distributed VTU snapshots.
 
@@ -84,12 +96,14 @@ def merge_all_snapshots(
         nbmax (int): Total number of snapshots to process.
         num_processes (int, optional): Number of parallel processes. Defaults to 5.
         nb_proc (int, optional): Number of distributed files per snapshot. Defaults to 900.
-
+        stat (bool, default False): consider as stationary run if True
+        input_str (str, 'corona-flow0'): expected input name for vtu files
+        remove (bool, True): remove splitted vtu if True
     Returns:
         None
     """
     args = [
-        (idx, input_dir, output_dir, timestep, start_time, nb_proc)
+        (idx, input_dir, output_dir, timestep, start_time, nb_proc, stat, input_str, remove)
         for idx in range(nbmax)
     ]
 

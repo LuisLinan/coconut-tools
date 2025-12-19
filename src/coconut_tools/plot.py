@@ -112,7 +112,7 @@ def plot_boundary_profil(inputdir, outputfile, label_dict, color_map):
     plt.savefig(outputfile)
     plt.close()
 
-def Surface_2D_onetime(inputfile: str, outputfile: str, mode: Literal['all', 'reduced'] = 'all') -> None:
+def Surface_2D_onetime(inputfile: str, outputfile: str, mode: Literal['all', 'reduced'] = 'all', extended: bool = False, showP: bool = False) -> None:
     """Plot thermodynamic and magnetic quantities from a COCONUT output file.
 
     Args:
@@ -120,37 +120,44 @@ def Surface_2D_onetime(inputfile: str, outputfile: str, mode: Literal['all', 're
         outputfile (str): Path where the figure should be saved.
         mode (str, optional): Either 'all' to plot all 8 variables or 'reduced' to plot only
             density, temperature, Br, and Vr. Default is 'all'.
-
+        extended (bool, default False): look for radius in .dat
+        showP (bool, default False): wether it plots pressure
+    
     Returns:
         None
     """
     import cmocean as cm
     fig, axs = plt.subplots(4, 2, figsize=(15, 10), constrained_layout=True)
-
+    
     clat_ticks = [0, 45, 90, 135, 180]
     lon_ticks = [-180, -135, -90, -45, 0, 45, 90, 135, 180]
-
+    
     # Read and preprocess data
-    date, clt, lon, vr, vlon, vclt, density, br, bclt, blon, temp = read_data(inputfile)
-
+    if extended:
+        date, r, clt, lon, vr, vlon, vclt, density, br, bclt, blon, temp = read_data(inputfile,extended=extended)
+    else:
+        date, clt, lon, vr, vlon, vclt, density, br, bclt, blon, temp = read_data(inputfile,extended=extended)
+    
     vars_to_plot = [
         (density.T, cm.cm.thermal, 'Density [$m^{-3}$]'),
         (temp.T, cm.cm.haline, 'Temperature [K]'),
         (br.T * 1e9, cm.cm.balance, 'Br [nT]'),
         (bclt.T * 1e9, cm.cm.balance, 'Bclt [nT]'),
         (blon.T * 1e9, cm.cm.balance, 'Blon [nT]'),
-        (vr.T, cm.cm.matter_r, 'Vr [kg/s]'),
-        (vclt.T, cm.cm.balance, 'Vclt [kg/s]'),
-        (vlon.T, cm.cm.balance, 'Vlon [kg/s]')
+        (vr.T, cm.cm.matter_r, 'Vr [km/s]'),
+        (vclt.T, cm.cm.balance, 'Vclt [km/s]'),
+        (vlon.T, cm.cm.balance, 'Vlon [km/s]')
     ]
-
+    
     if mode == 'reduced':
         indices = [0, 1, 2, 5]  # density, temp, Br, Vr
     else:
         indices = list(range(8))
 
-    fig.suptitle(r'Magnetic and thermodynamic quantities from COCONUT', size=18)
-
+    tit = r'Magnetic and thermodynamic quantities from COCONUT'
+    if extended: tit += '\n'+r'at r={0:.2f} R$_\odot$'.format(r)
+    fig.suptitle(tit, size=18)
+    
     for idx, plot_idx in enumerate(indices):
         row = idx % 4
         col = idx // 4
@@ -176,6 +183,37 @@ def Surface_2D_onetime(inputfile: str, outputfile: str, mode: Literal['all', 're
         cbar.ax.yaxis.offsetText.set_fontsize(14)
 
     plt.savefig(outputfile, dpi=300)
+
+    if showP:
+        fig, ax = plt.subplots(1, 1, figsize=(15./2., 10./4.), constrained_layout=True)
+        rho, cmap, label = vars_to_plot[0]
+        temp, cmap, label = vars_to_plot[1]
+        kB = 1.38e-23
+        pressure = rho * temp * kB
+        data_shifted = np.roll(pressure, pressure.shape[1] // 2, axis=1)
+
+        im = ax.imshow(
+            data_shifted, aspect='auto', origin='lower', cmap=cmap,
+            extent=[lon_ticks[0], lon_ticks[-1], clat_ticks[-1], clat_ticks[0]]
+        )
+
+        ax.set_xticks(lon_ticks)
+        ax.set_yticks(clat_ticks)
+        ax.invert_yaxis()
+        ax.tick_params(axis='both', which='major', labelsize=12)
+        ax.set_xlabel('Longitude (degrees)', fontsize=14)
+        ax.set_ylabel('Colatitude (degrees)', fontsize=14)
+        
+        cbar = plt.colorbar(im, ax=ax)
+        cbar.set_label('Pressure [Pa]', fontsize=16)
+        cbar.ax.tick_params(labelsize=14)
+        cbar.ax.yaxis.offsetText.set_fontsize(14)
+
+        tit = r'Pressure from COCONUT'
+        if extended: tit += '\n'+r'at r={0:.2f} R$_\odot$'.format(r)
+        fig.suptitle(tit, size=18)
+        
+        plt.show()
     plt.close()
 
 def create_plot_B(
