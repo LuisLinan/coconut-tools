@@ -105,7 +105,7 @@ def read_cfmesh_file(input_cfmesh: str) -> dict:
 
     # Physical quantities
     r = np.linalg.norm(cell_centers, axis=1)
-    rho = Initialdata[:, 0] *
+    rho = Initialdata[:, 0] * 1.67e-13 / 1.67e-27
     V = Initialdata[:, 1:4] * 480248.0
     B = Initialdata[:, 4:7] * 2.2e-4
     P = Initialdata[:, 7] * 0.03851
