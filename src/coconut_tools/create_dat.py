@@ -77,7 +77,7 @@ def create_boundary_fromcfmesh(inputfile: str, time: str, rad_out: float, nb_th:
     Args:
         inputfile (str): Path to the input CFmesh file.
         time (str): Timestamp string in ISO format.
-        rad_out (float): Target radius for the boundary.
+        rad_out (float): Target radius for the boundary. ; Rsun
         nb_th (int): Number of colatitude grid points.
         nb_phi (int): Number of longitude grid points.
         eps (float): Small angle offset to avoid poles.
@@ -117,16 +117,16 @@ def create_boundary_fromcfmesh(inputfile: str, time: str, rad_out: float, nb_th:
     bf = comment[-nend][0]
     Initialdata = np.loadtxt(lines[bd:bf], dtype=np.float64)
 
-    rho0 = Initialdata[mask, 0] * 1.67e-13 / 1.67e-27
-    Vx0 = Initialdata[mask, 1] * 480248.0
-    Vy0 = Initialdata[mask, 2] * 480248.0
-    Vz0 = Initialdata[mask, 3] * 480248.0
-    Bx = Initialdata[mask, 4] * 2.2e-4
-    By = Initialdata[mask, 5] * 2.2e-4
-    Bz = Initialdata[mask, 6] * 2.2e-4
-    Pressure = Initialdata[mask, 7] * 0.03851
-    temp = Pressure / rho0 / 2 / 1.38e-23
-
+    rho0 = Initialdata[mask, 0] * 1.67e-13 / 1.67e-27 # n'=rho/mp=mu*n
+    Vx0 = Initialdata[mask, 1] * 480248.0 #m/s
+    Vy0 = Initialdata[mask, 2] * 480248.0 #m/s
+    Vz0 = Initialdata[mask, 3] * 480248.0 #m/s
+    Bx = Initialdata[mask, 4] * 2.2e-4 #T
+    By = Initialdata[mask, 5] * 2.2e-4 #T
+    Bz = Initialdata[mask, 6] * 2.2e-4 #T
+    Pressure = Initialdata[mask, 7] * 0.03851 # Pa
+    temp = Pressure / rho0 / 2 / 1.38e-23 # P*mu/n'/kb = T [K] with mu=0.5 already hardcoded here !!!
+    
     x, y, z = centers[mask].T
     r_bis = np.hypot(x, y)
     EPSILON = 1e-8
@@ -161,7 +161,7 @@ def create_boundary_fromcfmesh(inputfile: str, time: str, rad_out: float, nb_th:
         interpolated[key] = interp_vals
 
     with open(output_dat, 'w') as f:
-        f.write(f'Time:\n{time}\nRadius of sphere:\n14959787070.0\n')
+        f.write(f'Time:\n{time}\nRadius of sphere:\n{r_def}\n')
         f.write(f'Number of colatitude grid points:\n{nb_th}\nColatitude grid points:\n')
         f.write('\n'.join(f'{v:.19e}' for v in LAT) + '\n')
         f.write(f'Number of longitude grid points:\n{nb_phi}\nLongitude grid points:\n')
