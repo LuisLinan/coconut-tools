@@ -73,6 +73,12 @@ def read_mesh(filename):
     """
     logging.info('Reading file...')
     mesh = pv.read(filename)
+
+
+    print("Arrays in point_data:", list(mesh.point_data.keys()))
+    print("Arrays in cell_data:", list(mesh.cell_data.keys()))
+    print("Arrays in field_data:", list(mesh.field_data.keys()))
+
     logging.info('Done!')
     return mesh
 
@@ -126,7 +132,7 @@ def convert_to_spherical(mesh):
     mesh['bphi'] = (-y*bx + x*by) / rxy
     return mesh
 
-def visualize(mesh, slice_normal='y', save_path=None, show=True):
+def :(mesh, slice_normal='y', save_path=None, show=True):
     """Create a PyVista visualization of the MHD quantities.
 
     Args:
@@ -200,8 +206,8 @@ def visualize(mesh, slice_normal='y', save_path=None, show=True):
 
 
 if __name__ == '__main__':
-    input_path = 'C:/Users/luisl/Documents/Travail/processing_scripts/corona-mhd.vtu'
+    input_path = 'E:/GU V2/coconut_result_coriolis/result_2017-04-04_fullmhd/corona-mhd_0000.vtu'
     mesh = read_mesh(input_path)
     mesh = convert_units(mesh)
     mesh = convert_to_spherical(mesh)
-    visualize(mesh, slice_normal='y', save_path='pyvista_slice.png', show=False)
+    visualize(mesh, slice_normal='y', save_path='pyvista_slice.png', show=True)
