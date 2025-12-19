@@ -72,4 +72,5 @@ def execute_configs(path: str = None, cfmesh: bool = False) -> None:
 
 if __name__ == '__main__':
     # Example execution block
-    execute_configs(path='C:/Users/luisl/Documents/Travail/COCONUT/pyTDM/config/', cfmesh=True)
+    execute_configs(path='E:/coconut_cme/coriolis/config/', cfmesh=True)
+    execute_configs(path='E:/coconut_cme/config/', cfmesh=True)

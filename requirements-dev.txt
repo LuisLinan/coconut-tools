@@ -1,10 +1,12 @@
-# Development dependencies for coconut-tools
-
 # Testing
 pytest
 pytest-cov
 pooch
 
 # Documentation
-sphinx
+sphinx<9
 sphinx-autodoc-typehints
+myst-parser
+sphinx-copybutton
+sphinx-design
+furo

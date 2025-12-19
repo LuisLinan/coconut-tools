@@ -49,7 +49,7 @@ Click any thumbnail to open the corresponding how-to page.
      - .. figure:: Image6.png
           :alt: 3D PyVista visualization
           :width: 360px
-          :target: ../howto/vis-analysis/pyvista-3d.html
+          :target: ../howto/vis-analysis/pyvista-threeD.html
 
           **3D visualization (PyVista)** — slices, streamlines, isosurfaces.
 

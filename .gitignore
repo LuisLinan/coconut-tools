@@ -35,3 +35,7 @@ tests/_outputs/
 
 # vscode
 .vscode/
+
+# Python cache (global)
+**/__pycache__/
+**/*.pyc

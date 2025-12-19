@@ -222,32 +222,37 @@ def rotation(input_dat: str, output_dat: str, angle_degrees: float, full_output:
 if __name__ == "__main__":
 
     """ Example usage of the module to process a series of CFmesh files and generate boundary .dat files.
+    """
+    
 
-    magnetogram_path = "../hmi.Synoptic_Mr_small.2238.fits"
-    date_hmi = "2020-12-07T15:00:00"
+    magnetogram_path = "E:/GU V2/magnetogram/mrzqs170404t1814c2189_268.fits"
+    date_hmi = None
     auto_compute_rotation = True
     manual_rotation_angle = 180.0  # fallback if auto_compute_rotation is False
 
-    files = glob.glob('/dodrio/scratch/projects/2024_010/luisl/Time-evolving/CFmesh/*.CFmesh')
+    files = glob.glob('E:/coconut_cme/coriolis/fromfullmhd/CFmesh/*.CFmesh')
     files = sorted(files, key=extract_number)
 
-    first_time = '2024-04-09T05:04:00'
+    angle, date_dt = compute_rotation_angle(magnetogram_path, date_hmi)
+    print(angle, date_dt)
+
+    first_time = date_dt.strftime("%Y-%m-%dT%H:%M:%S")
     rad_out = 21.5
     nb_th = 180
     nb_phi = 360
     eps = 0.01
-    full_output = False  # <--- change this to True for full variable set
+    full_output = True  # <--- change this to True for full variable set
 
-
-
+    """
     for i, file in enumerate(files):
         logger.info(f"Processing file {i}: {file}")
         date_dt = datetime.strptime(first_time, '%Y-%m-%dT%H:%M:%S')
-        date_i = date_dt + timedelta(hours=1 * i * 0.2488 * 0.402)
+        #date_i = date_dt + timedelta(hours=20 * i * 0.005 * 0.402)
+        date_i = date_dt + timedelta(seconds=i*145)
         timestamp_i = str(int(date_i.timestamp()))
 
-        output_dat_temp = f'/dodrio/scratch/projects/2024_010/luisl/Time-evolving/dat/solar_wind_boundary_{timestamp_i}_temps.dat'
-        output_dat = f'/dodrio/scratch/projects/2024_010/luisl/Time-evolving/dat/solar_wind_boundary_{timestamp_i}.dat'
+        output_dat_temp = f'E:/coconut_cme/coriolis/fromfullmhd/dat/solar_wind_boundary_{timestamp_i}_temps.dat'
+        output_dat = f'E:/coconut_cme/coriolis/fromfullmhd/dat/solar_wind_boundary_{timestamp_i}.dat'
 
         time = date_i.strftime("%Y-%m-%dT%H:%M:%S")
 
@@ -255,49 +260,309 @@ if __name__ == "__main__":
             logger.info(f"Output already exists, skipping: {output_dat}")
             continue
 
-        if auto_compute_rotation:
-            angle = compute_rotation_angle(magnetogram_path, date_hmi)
-        else:
-            angle = manual_rotation_angle
-
         create_boundary_fromcfmesh(file, time, rad_out, nb_th, nb_phi, eps, output_dat_temp, full_output=full_output)
         rotation(output_dat_temp, output_dat, angle, full_output=full_output)
         os.remove(output_dat_temp)
+    """
 
-"""
+    ########################################################################
 
-    auto_compute_rotation = True
-    manual_rotation_angle = 180.0  # fallback if auto_compute_rotation is False
-
-    rad_out = 21.5
-    nb_th = 180
-    nb_phi = 360
-    eps = 0.01
-    full_output = True  
-
-    date_hmi = None
-
-    file = 'F:/GU V2/COCONUT_Simulation_Results/CFmeshes/corona_NoLim_PPDecEBC2_20140104GONGlt100G.CFmesh'
+    
+    file = 'E:/GU V2/coconut_result_coriolis/result_2017-04-04_fullmhd/corona.CFmesh'
     logger.info(f"Processing file {file}")
 
-    magnetogram_path = "F:/GU V2/magnetogram/mrzqs120923t0544c2128_142.fits.gz"
+    magnetogram_path = "E:/GU V2/magnetogram/mrzqs170404t1814c2189_268.fits.gz"
 
-
-    if auto_compute_rotation:
-        angle, date_dt = compute_rotation_angle(magnetogram_path, date_hmi)
-        logger.info(f"Computed rotation angle: {angle} degrees")
-        logger.info(f"Using date for rotation computation: {date_dt.isoformat()}")
-    else:
-        angle = manual_rotation_angle
+    angle, date_dt = compute_rotation_angle(magnetogram_path, date_hmi)
+    logger.info(f"Computed rotation angle: {angle} degrees")
+    logger.info(f"Using date for rotation computation: {date_dt.isoformat()}\n")
 
     timestamp_i = str(int(date_dt.timestamp()))
-
-    output_dat_temp = f'F:/GU V2/datfiles/20140104GONGlt100G/solar_wind_boundary_{timestamp_i}_temps.dat'
-    output_dat = f'F:/GU V2/datfiles/20140104GONGlt100G/solar_wind_boundary_{timestamp_i}.dat'
+    output_dat_temp = f'E:/GU V2/coconut_result_coriolis/result_2017-04-04_fullmhd/dat/solar_wind_boundary_{timestamp_i}_temps.dat'
+    output_dat = f'E:/GU V2/coconut_result_coriolis/result_2017-04-04_fullmhd/dat/solar_wind_boundary_{timestamp_i}.dat'
 
     time = date_dt.strftime("%Y-%m-%dT%H:%M:%S")
-
 
     create_boundary_fromcfmesh(file, time, rad_out, nb_th, nb_phi, eps, output_dat_temp, full_output=full_output)
     rotation(output_dat_temp, output_dat, angle, full_output=full_output)
     os.remove(output_dat_temp)
+
+    ########################################################################
+
+    file = 'E:/GU V2/coconut_result/result_2017-04-04/corona.CFmesh'
+    logger.info(f"Processing file {file}")
+
+    magnetogram_path = "E:/GU V2/magnetogram/mrzqs170404t1814c2189_268.fits.gz"
+
+    angle, date_dt = compute_rotation_angle(magnetogram_path, date_hmi)
+    logger.info(f"Computed rotation angle: {angle} degrees")
+    logger.info(f"Using date for rotation computation: {date_dt.isoformat()}\n")
+
+    timestamp_i = str(int(date_dt.timestamp()))
+    output_dat_temp = f'E:/GU V2/coconut_result/result_2017-04-04/dat/solar_wind_boundary_{timestamp_i}_temps.dat'
+    output_dat = f'E:/GU V2/coconut_result/result_2017-04-04/dat/solar_wind_boundary_{timestamp_i}.dat'
+
+    time = date_dt.strftime("%Y-%m-%dT%H:%M:%S")
+
+    create_boundary_fromcfmesh(file, time, rad_out, nb_th, nb_phi, eps, output_dat_temp, full_output=full_output)
+    rotation(output_dat_temp, output_dat, angle, full_output=full_output)
+    os.remove(output_dat_temp)
+
+    ########################################################################
+
+    file = 'E:/GU V2/coconut_result_coriolis/result_2011-09-04_fullmhd/corona.CFmesh'
+    logger.info(f"Processing file {file}")
+
+    magnetogram_path = "E:/GU V2/magnetogram/mrzqs110904t1154c2114_180.fits.gz"
+
+    angle, date_dt = compute_rotation_angle(magnetogram_path, date_hmi)
+    logger.info(f"Computed rotation angle: {angle} degrees")
+    logger.info(f"Using date for rotation computation: {date_dt.isoformat()}\n")
+
+    timestamp_i = str(int(date_dt.timestamp()))
+    output_dat_temp = f'E:/GU V2/coconut_result_coriolis/result_2011-09-04_fullmhd/dat/solar_wind_boundary_{timestamp_i}_temps.dat'
+    output_dat = f'E:/GU V2/coconut_result_coriolis/result_2011-09-04_fullmhd/dat/solar_wind_boundary_{timestamp_i}.dat'
+
+    time = date_dt.strftime("%Y-%m-%dT%H:%M:%S")
+
+    create_boundary_fromcfmesh(file, time, rad_out, nb_th, nb_phi, eps, output_dat_temp, full_output=full_output)
+    rotation(output_dat_temp, output_dat, angle, full_output=full_output)
+    os.remove(output_dat_temp)
+
+    ########################################################################
+
+    file = 'E:/GU V2/coconut_result_coriolis/result_2011-09-24_fullmhd/corona.CFmesh'
+    logger.info(f"Processing file {file}")
+
+    magnetogram_path = "E:/GU V2/magnetogram/mrzqs110924t1154c2115_276.fits.gz"
+
+    angle, date_dt = compute_rotation_angle(magnetogram_path, date_hmi)
+    logger.info(f"Computed rotation angle: {angle} degrees")
+    logger.info(f"Using date for rotation computation: {date_dt.isoformat()}\n")
+
+    timestamp_i = str(int(date_dt.timestamp()))
+    output_dat_temp = f'E:/GU V2/coconut_result_coriolis/result_2011-09-24_fullmhd/dat/solar_wind_boundary_{timestamp_i}_temps.dat'
+    output_dat = f'E:/GU V2/coconut_result_coriolis/result_2011-09-24_fullmhd/dat/solar_wind_boundary_{timestamp_i}.dat'
+
+    time = date_dt.strftime("%Y-%m-%dT%H:%M:%S")
+
+    create_boundary_fromcfmesh(file, time, rad_out, nb_th, nb_phi, eps, output_dat_temp, full_output=full_output)
+    rotation(output_dat_temp, output_dat, angle, full_output=full_output)
+    os.remove(output_dat_temp)
+
+    ########################################################################
+
+    
+    file = 'E:/GU V2/coconut_result_coriolis/result_2012-03-06_fullmhd/corona.CFmesh'
+    logger.info(f"Processing file {file}")
+
+    magnetogram_path = "E:/GU V2/magnetogram/mrzqs120306t2354c2121_269.fits.gz"
+
+    angle, date_dt = compute_rotation_angle(magnetogram_path, date_hmi)
+    logger.info(f"Computed rotation angle: {angle} degrees")
+    logger.info(f"Using date for rotation computation: {date_dt.isoformat()}\n")
+
+    timestamp_i = str(int(date_dt.timestamp()))
+    output_dat_temp = f'E:/GU V2/coconut_result_coriolis/result_2012-03-06_fullmhd/dat/solar_wind_boundary_{timestamp_i}_temps.dat'
+    output_dat = f'E:/GU V2/coconut_result_coriolis/result_2012-03-06_fullmhd/dat/solar_wind_boundary_{timestamp_i}.dat'
+
+    time = date_dt.strftime("%Y-%m-%dT%H:%M:%S")
+
+    create_boundary_fromcfmesh(file, time, rad_out, nb_th, nb_phi, eps, output_dat_temp, full_output=full_output)
+    rotation(output_dat_temp, output_dat, angle, full_output=full_output)
+    os.remove(output_dat_temp)
+
+    ########################################################################
+
+    
+    file = 'E:/GU V2/coconut_result_coriolis/result_2012-03-07_fullmhd/corona.CFmesh'
+    logger.info(f"Processing file {file}")
+
+    magnetogram_path = "E:/GU V2/magnetogram/mrzqs120307t1154c2121_262.fits.gz"
+
+    angle, date_dt = compute_rotation_angle(magnetogram_path, date_hmi)
+    logger.info(f"Computed rotation angle: {angle} degrees")
+    logger.info(f"Using date for rotation computation: {date_dt.isoformat()}\n")
+
+    timestamp_i = str(int(date_dt.timestamp()))
+    output_dat_temp = f'E:/GU V2/coconut_result_coriolis/result_2012-03-07_fullmhd/dat/solar_wind_boundary_{timestamp_i}_temps.dat'
+    output_dat = f'E:/GU V2/coconut_result_coriolis/result_2012-03-07_fullmhd/dat/solar_wind_boundary_{timestamp_i}.dat'
+
+    time = date_dt.strftime("%Y-%m-%dT%H:%M:%S")
+
+    create_boundary_fromcfmesh(file, time, rad_out, nb_th, nb_phi, eps, output_dat_temp, full_output=full_output)
+    rotation(output_dat_temp, output_dat, angle, full_output=full_output)
+    os.remove(output_dat_temp)
+
+    ########################################################################
+
+    file = 'E:/GU V2/coconut_result_coriolis/result_2012-05-10_fullmhd/corona.CFmesh'
+    logger.info(f"Processing file {file}")
+
+    magnetogram_path = "E:/GU V2/magnetogram/mrzqs120510t2354c2123_131.fits.gz"
+
+    angle, date_dt = compute_rotation_angle(magnetogram_path, date_hmi)
+    logger.info(f"Computed rotation angle: {angle} degrees")
+    logger.info(f"Using date for rotation computation: {date_dt.isoformat()}\n")
+
+    timestamp_i = str(int(date_dt.timestamp()))
+    output_dat_temp = f'E:/GU V2/coconut_result_coriolis/result_2012-05-10_fullmhd/dat/solar_wind_boundary_{timestamp_i}_temps.dat'
+    output_dat = f'E:/GU V2/coconut_result_coriolis/result_2012-05-10_fullmhd/dat/solar_wind_boundary_{timestamp_i}.dat'
+
+    time = date_dt.strftime("%Y-%m-%dT%H:%M:%S")
+
+    create_boundary_fromcfmesh(file, time, rad_out, nb_th, nb_phi, eps, output_dat_temp, full_output=full_output)
+    rotation(output_dat_temp, output_dat, angle, full_output=full_output)
+    os.remove(output_dat_temp)
+
+    ########################################################################
+
+    file = 'E:/GU V2/coconut_result_coriolis/result_2012-07-09_fullmhd/corona.CFmesh'
+    logger.info(f"Processing file {file}")
+
+    magnetogram_path = "E:/GU V2/magnetogram/mrzqs120709t2354c2125_057.fits.gz"
+
+    angle, date_dt = compute_rotation_angle(magnetogram_path, date_hmi)
+    logger.info(f"Computed rotation angle: {angle} degrees")
+    logger.info(f"Using date for rotation computation: {date_dt.isoformat()}\n")
+
+    timestamp_i = str(int(date_dt.timestamp()))
+    output_dat_temp = f'E:/GU V2/coconut_result_coriolis/result_2012-07-09_fullmhd/dat/solar_wind_boundary_{timestamp_i}_temps.dat'
+    output_dat = f'E:/GU V2/coconut_result_coriolis/result_2012-07-09_fullmhd/dat/solar_wind_boundary_{timestamp_i}.dat'
+
+    time = date_dt.strftime("%Y-%m-%dT%H:%M:%S")
+
+    create_boundary_fromcfmesh(file, time, rad_out, nb_th, nb_phi, eps, output_dat_temp, full_output=full_output)
+    rotation(output_dat_temp, output_dat, angle, full_output=full_output)
+    os.remove(output_dat_temp)
+
+    ########################################################################
+
+    file = 'E:/GU V2/coconut_result_coriolis/result_2012-09-23_fullmhd/corona.CFmesh'
+    logger.info(f"Processing file {file}")
+
+    magnetogram_path = "E:/GU V2/magnetogram/mrzqs120923t0544c2128_142.fits.gz"
+
+    angle, date_dt = compute_rotation_angle(magnetogram_path, date_hmi)
+    logger.info(f"Computed rotation angle: {angle} degrees")
+    logger.info(f"Using date for rotation computation: {date_dt.isoformat()}\n")
+
+    timestamp_i = str(int(date_dt.timestamp()))
+    output_dat_temp = f'E:/GU V2/coconut_result_coriolis/result_2012-09-23_fullmhd/dat/solar_wind_boundary_{timestamp_i}_temps.dat'
+    output_dat = f'E:/GU V2/coconut_result_coriolis/result_2012-09-23_fullmhd/dat/solar_wind_boundary_{timestamp_i}.dat'
+
+    time = date_dt.strftime("%Y-%m-%dT%H:%M:%S")
+
+    create_boundary_fromcfmesh(file, time, rad_out, nb_th, nb_phi, eps, output_dat_temp, full_output=full_output)
+    rotation(output_dat_temp, output_dat, angle, full_output=full_output)
+    os.remove(output_dat_temp)
+
+    ########################################################################
+    file = 'E:/GU V2/coconut_result_coriolis/result_2013-03-13_fullmhd/corona.CFmesh'
+    logger.info(f"Processing file {file}")
+
+    magnetogram_path = "E:/GU V2/magnetogram/mrzqs130313t1124c2134_046.fits.gz"
+
+    angle, date_dt = compute_rotation_angle(magnetogram_path, date_hmi)
+    logger.info(f"Computed rotation angle: {angle} degrees")
+    logger.info(f"Using date for rotation computation: {date_dt.isoformat()}\n")
+
+    timestamp_i = str(int(date_dt.timestamp()))
+    output_dat_temp = f'E:/GU V2/coconut_result_coriolis/result_2013-03-13_fullmhd/dat/solar_wind_boundary_{timestamp_i}_temps.dat'
+    output_dat = f'E:/GU V2/coconut_result_coriolis/result_2013-03-13_fullmhd/dat/solar_wind_boundary_{timestamp_i}.dat'
+
+    time = date_dt.strftime("%Y-%m-%dT%H:%M:%S")
+
+    create_boundary_fromcfmesh(file, time, rad_out, nb_th, nb_phi, eps, output_dat_temp, full_output=full_output)
+    rotation(output_dat_temp, output_dat, angle, full_output=full_output)
+    os.remove(output_dat_temp)
+
+    ########################################################################
+
+    file = 'E:/GU V2/coconut_result_coriolis/result_2013-04-08_fullmhd/corona.CFmesh'
+    logger.info(f"Processing file {file}")
+
+    magnetogram_path = "E:/GU V2/magnetogram/mrzqs130408t0604c2135_066.fits.gz"
+
+    angle, date_dt = compute_rotation_angle(magnetogram_path, date_hmi)
+    logger.info(f"Computed rotation angle: {angle} degrees")
+    logger.info(f"Using date for rotation computation: {date_dt.isoformat()}\n")
+
+    timestamp_i = str(int(date_dt.timestamp()))
+    output_dat_temp = f'E:/GU V2/coconut_result_coriolis/result_2013-04-08_fullmhd/dat/solar_wind_boundary_{timestamp_i}_temps.dat'
+    output_dat = f'E:/GU V2/coconut_result_coriolis/result_2013-04-08_fullmhd/dat/solar_wind_boundary_{timestamp_i}.dat'
+
+    time = date_dt.strftime("%Y-%m-%dT%H:%M:%S")
+
+    create_boundary_fromcfmesh(file, time, rad_out, nb_th, nb_phi, eps, output_dat_temp, full_output=full_output)
+    rotation(output_dat_temp, output_dat, angle, full_output=full_output)
+    os.remove(output_dat_temp)
+
+    ########################################################################
+
+
+    file = 'E:/GU V2/coconut_result_coriolis/result_2013-09-28_fullmhd/corona.CFmesh'
+    logger.info(f"Processing file {file}")
+
+    magnetogram_path = "E:/GU V2/magnetogram/mrzqs130928t1804c2142_292.fits.gz"
+
+    angle, date_dt = compute_rotation_angle(magnetogram_path, date_hmi)
+    logger.info(f"Computed rotation angle: {angle} degrees")
+    logger.info(f"Using date for rotation computation: {date_dt.isoformat()}\n")
+
+    timestamp_i = str(int(date_dt.timestamp()))
+    output_dat_temp = f'E:/GU V2/coconut_result_coriolis/result_2013-09-28_fullmhd/dat/solar_wind_boundary_{timestamp_i}_temps.dat'
+    output_dat = f'E:/GU V2/coconut_result_coriolis/result_2013-09-28_fullmhd/dat/solar_wind_boundary_{timestamp_i}.dat'
+
+    time = date_dt.strftime("%Y-%m-%dT%H:%M:%S")
+
+    create_boundary_fromcfmesh(file, time, rad_out, nb_th, nb_phi, eps, output_dat_temp, full_output=full_output)
+    rotation(output_dat_temp, output_dat, angle, full_output=full_output)
+    os.remove(output_dat_temp)
+
+    ########################################################################
+
+    file = 'E:/GU V2/coconut_result_coriolis/result_2014-01-04_fullmhd/corona.CFmesh'
+    logger.info(f"Processing file {file}")
+
+    magnetogram_path = "E:/GU V2/magnetogram/mrzqs140104t1804c2145_080.fits.gz"
+
+    angle, date_dt = compute_rotation_angle(magnetogram_path, date_hmi)
+    logger.info(f"Computed rotation angle: {angle} degrees")
+    logger.info(f"Using date for rotation computation: {date_dt.isoformat()}\n")
+
+    timestamp_i = str(int(date_dt.timestamp()))
+    output_dat_temp = f'E:/GU V2/coconut_result_coriolis/result_2014-01-04_fullmhd/dat/solar_wind_boundary_{timestamp_i}_temps.dat'
+    output_dat = f'E:/GU V2/coconut_result_coriolis/result_2014-01-04_fullmhd/dat/solar_wind_boundary_{timestamp_i}.dat'
+
+    time = date_dt.strftime("%Y-%m-%dT%H:%M:%S")
+
+    create_boundary_fromcfmesh(file, time, rad_out, nb_th, nb_phi, eps, output_dat_temp, full_output=full_output)
+    rotation(output_dat_temp, output_dat, angle, full_output=full_output)
+    os.remove(output_dat_temp)
+
+    ########################################################################
+    
+    file = 'E:/GU V2/coconut_result_coriolis/result_2014-09-06_fullmhd/corona.CFmesh'
+    logger.info(f"Processing file {file}")
+
+    magnetogram_path = "E:/GU V2/magnetogram/mrzqs140906t1804c2154_085.fits.gz"
+
+    angle, date_dt = compute_rotation_angle(magnetogram_path, date_hmi)
+    logger.info(f"Computed rotation angle: {angle} degrees")
+    logger.info(f"Using date for rotation computation: {date_dt.isoformat()}\n")
+
+    timestamp_i = str(int(date_dt.timestamp()))
+    output_dat_temp = f'E:/GU V2/coconut_result_coriolis/result_2014-09-06_fullmhd/dat/solar_wind_boundary_{timestamp_i}_temps.dat'
+    output_dat = f'E:/GU V2/coconut_result_coriolis/result_2014-09-06_fullmhd/dat/solar_wind_boundary_{timestamp_i}.dat'
+
+    time = date_dt.strftime("%Y-%m-%dT%H:%M:%S")
+
+    create_boundary_fromcfmesh(file, time, rad_out, nb_th, nb_phi, eps, output_dat_temp, full_output=full_output)
+    rotation(output_dat_temp, output_dat, angle, full_output=full_output)
+    os.remove(output_dat_temp)
+
+
+
+
+ 

@@ -37,6 +37,7 @@ def compute_rotation_angle(mag_name_path: str, date_hmi: str = None) -> Tuple[fl
         float: Rotation angle in degrees to convert from Carrington to Stonyhurst
         datetime: The observation date of the magnetogram
     """
+    print('test')
     mag_name = os.path.basename(mag_name_path)
     logger.info(f"The magnetogram name is: {mag_name}")
 
@@ -56,9 +57,9 @@ def compute_rotation_angle(mag_name_path: str, date_hmi: str = None) -> Tuple[fl
         CM_CAR_value = CM_CAR.lon.value % 360
 
         if CM_CAR_value > start_lon:
-            angle = CM_CAR_value - start_lon + 10
+            angle = CM_CAR_value - start_lon 
         else:
-            angle = CM_CAR_value + (360 - start_lon) + 10
+            angle = CM_CAR_value + (360 - start_lon) + 0
         return angle % 360 , date
 
     # ADAPT
@@ -73,7 +74,7 @@ def compute_rotation_angle(mag_name_path: str, date_hmi: str = None) -> Tuple[fl
                                obstime=date, observer='earth')
             CM_CAR = CM_HEEQ.transform_to(frames.HeliographicCarrington(observer='earth', obstime=date))
             CM_CAR_value = CM_CAR.lon.value % 360
-            return (CM_CAR_value + 10) % 360 , date
+            return (CM_CAR_value + 0) % 360 , date
 
         elif mode == '413':
             logger.info("The magnetogram is GONG ADAPT in CM frame")
@@ -91,7 +92,7 @@ def compute_rotation_angle(mag_name_path: str, date_hmi: str = None) -> Tuple[fl
                            obstime=date, observer='earth')
         CM_CAR = CM_HEEQ.transform_to(frames.HeliographicCarrington(observer='earth', obstime=date))
         CM_CAR_value = CM_CAR.lon.value % 360
-        return (CM_CAR_value + 10) % 360, date
+        return (CM_CAR_value + 0) % 360, date
     else:
         logger.error("Magnetogram filename format not recognized: %s", mag_name)
         raise ValueError("Magnetogram filename format not recognized.")
