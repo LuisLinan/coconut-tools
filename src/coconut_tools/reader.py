@@ -24,11 +24,12 @@ from coconut_tools.pyvista_slice import (
     visualizeQ,
 )
 
-# Physical constants (cgs)
+# Physical constants
 KB_SI = 1.380649e-23    # Boltzmann constant [J/K]
 MP_SI = 1.6726219e-27  # Proton mass [kg]
 MU_MEAN = 0.6           # Mean molecular weight (≈ fully ionized coronal plasma)
 MU0_SI = 4.*np.pi*1.e-7 # Perméabilité du vide
+Rsun = 6.9599e8
 
 def run_coconut_reader(
     base_path=".",
@@ -265,7 +266,7 @@ def run_coconut_reader(
     	    _ = create_boundary_fromcfmesh(
     	        inputfile=str(cfmesh_path),
     	        time=when_str,
-    	        rad_out=R,
+    	        rad_out=R*Rsun,
     	        nb_th=ntheta,
     	        nb_phi=nphi,
     	        eps=dr,
@@ -672,7 +673,7 @@ def _inner_bc_check_from_cfmesh(
         create_boundary_fromcfmesh(
             inputfile=str(cfmesh_path),
             time=when_str,
-            rad_out=R,
+            rad_out=R*Rsun,
             nb_th=ntheta,
             nb_phi=nphi,
             eps=dr,
@@ -760,7 +761,7 @@ def _outer_bc_check_from_cfmesh(
         create_boundary_fromcfmesh(
             inputfile=str(cfmesh_path),
             time=when_str,
-            rad_out=R,
+            rad_out=R*Rsun,
             nb_th=ntheta,
             nb_phi=nphi,
             eps=dr,
