@@ -136,7 +136,7 @@ def convert_to_spherical(mesh):
     mesh['bphi'] = (-y*bx + x*by) / rxy
     return mesh
 
-def :(mesh, slice_normal='y', save_path=None, show=True):
+def visualize(mesh, slice_normal='y', save_path=None, show=True):
     """Create a PyVista visualization of the MHD quantities.
 
     Args:
