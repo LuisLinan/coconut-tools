@@ -72,13 +72,13 @@ def extract_number(file_name: str) -> int:
     match = re.search(r'corona-iter_(\d+)\.CFmesh$', file_name)
     return int(match.group(1)) if match else 0
 
-def create_boundary_fromcfmesh(inputfile: str, time: str, rad_out: float, nb_th: int, nb_phi: int, eps: float, output_dat: str, full_output: bool = True) -> None:
+def create_boundary_fromcfmesh(inputfile: str, time: str, nb_th: int, nb_phi: int, eps: float, rad_out: float=14959787070.0, output_dat: str, full_output: bool = True) -> None:
     """Creates a boundary file by interpolating CFmesh volume data onto a spherical grid.
 
     Args:
         inputfile (str): Path to the input CFmesh file.
         time (str): Timestamp string in ISO format.
-        rad_out (float): Target radius for the boundary. ; Rsun
+        rad_out (float): Target radius for the boundary. ; (m, 0.1 AU by default)
         nb_th (int): Number of colatitude grid points.
         nb_phi (int): Number of longitude grid points.
         eps (float): Small angle offset to avoid poles.
@@ -174,7 +174,7 @@ def create_boundary_fromcfmesh(inputfile: str, time: str, rad_out: float, nb_th:
                 '\n'.join(f'{interpolated[key][j, k]:.19e}' for j in range(nb_th))
                 for k in range(nb_phi)) + '\n')
 
-def rotation(input_dat: str, output_dat: str, angle_degrees: float, full_output: bool = True) -> None:
+def rotation(input_dat: str, output_dat: str, angle_degrees: float, full_output: bool = True, rad_out: float=14959787070.0) -> None:
     """Rotates the longitude data in a boundary file and adjusts selected fields accordingly.
 
     Args:
@@ -211,7 +211,7 @@ def rotation(input_dat: str, output_dat: str, angle_degrees: float, full_output:
     data_arrays = {key: shift_data(key) for key in keys}
 
     with open(output_dat, 'w') as fp:
-        fp.write(f"Time:\n{date}\nRadius of sphere:\n14959787070.0\n")
+        fp.write(f"Time:\n{date}\nRadius of sphere:\n{rad_out}\n")
         fp.write(f"Number of colatitude grid points:\n{len(clt)}\nColatitude grid points:\n")
         np.savetxt(fp, clt)
         fp.write(f"Number of longitude grid points:\n{len(lon)}\nLongitude grid points:\n")
