@@ -43,12 +43,17 @@ def initialize(index: int, input_dir: str, output_dir: str, timestep: int, start
         logger.info(f"Snapshot already exists: {output_filename}")
         return
 
-    filenames = [
-        #os.path.join(input_dir, f"corona-flow0-P{j}-iter_{start_time * timestep + timestep * index}.vtu")
-        os.path.join(input_dir, f"corona-flow0-P{j}.vtu")
-        for j in range(nb_proc)
-    ]
-
+    if stat:
+        filenames = [
+            os.path.join(input_dir, input_str+f"-P{j}.vtu")
+            for j in range(nb_proc)
+        ]
+    else:    
+        filenames = [
+            os.path.join(input_dir, input_str+f"-P{j}-iter_{start_time * timestep + timestep * index}.vtu")
+            for j in range(nb_proc)
+        ]
+        
     logger.info(f"Reading files for snapshot {index + start_time:04d}")
 
     try:
@@ -79,6 +84,9 @@ def merge_all_snapshots(
     num_processes: int = 5,
     nb_proc: int = 900,
     use_pool: bool = True,
+    stat: bool=False,
+    input_str: str='corona-flow0',
+    remove: bool=True
 ) -> None:
     """Launch merging of distributed VTU snapshots, optionally using multiprocessing.
 
@@ -91,6 +99,9 @@ def merge_all_snapshots(
         num_processes (int, optional): Number of parallel processes. Defaults to 5.
         nb_proc (int, optional): Number of distributed files per snapshot. Defaults to 900.
         use_pool (bool, optional): If True, use multiprocessing. If False, run sequentially. Defaults to True.
+        stat (bool, default False): consider as stationary run if True
+        input_str (str, 'corona-flow0'): expected input name for vtu files
+        remove (bool, True): remove splitted vtu if True
 
     Returns:
         None
