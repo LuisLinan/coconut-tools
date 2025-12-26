@@ -217,9 +217,9 @@ def visualizeQ(
     vr_clim: tuple[float, float] | None = None,
     br_clim: tuple[float, float] | None = None,
     stream_clim: tuple[float, float] | None = None,
+    volumic_vr: float | None = None,
     rho_iso: float = 1e-13,
     AlfvSurf: bool = False,
-    volumic_vr: bool = False,
     # ---- Camera parameters ----
     camera_radius: float = 18.0,
     camera_phi_deg: float = 60.0,
@@ -241,6 +241,8 @@ def visualizeQ(
         Show interactive viewer (True) or off-screen only (False).
     vr_clim, br_clim, stream_clim : tuple(float,float) or None
         Colorbar limits for vr, br, and streamline magnitude.
+    volumic_vr: flt
+        vr iso-surface if != None
     rho_iso : float
         Density isosurface value (g/cm^3).
     camera_radius : float
@@ -323,10 +325,9 @@ def visualizeQ(
         AlfSurf=mesh.contour(scalars="Ma",isosurfaces=[1.])
         AlfvenSurf=p.add_mesh(AlfSurf,opacity=0.4,color='lightblue')
 
-    if volumic_vr:
+    if volumic_vr != None:
         scalar='vr'
-        vlim=500.
-        VrSurf=mesh.contour(scalars=scalar,isosurfaces=[vlim])
+        VrSurf=mesh.contour(scalars=scalar,isosurfaces=[volumic_vr])
         VradialSurf=p.add_mesh(VrSurf,opacity=0.4,color='red')
         #opacity='geom'
         #logging.info("Adding volumic rendering ("+scalar+")…")

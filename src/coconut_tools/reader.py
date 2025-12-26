@@ -404,7 +404,7 @@ def Quick_Vr_Viewer(
 def Quick_Ra_viewer(
     base_path=".",
     vtu_relpath="vtu/corona-mhd_0000.vtu",
-    volumic_vr=False,
+    volumic_vr=None,
     off_screen=False,
 ):
     """

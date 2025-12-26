@@ -72,7 +72,7 @@ def extract_number(file_name: str) -> int:
     match = re.search(r'corona-iter_(\d+)\.CFmesh$', file_name)
     return int(match.group(1)) if match else 0
 
-def create_boundary_fromcfmesh(inputfile: str, time: str, nb_th: int, nb_phi: int, eps: float, rad_out: float=14959787070.0, output_dat: str, full_output: bool = True) -> None:
+def create_boundary_fromcfmesh(inputfile: str, time: str, nb_th: int, nb_phi: int, eps: float, output_dat: str, rad_out: float=14959787070.0, full_output: bool = True) -> None:
     """Creates a boundary file by interpolating CFmesh volume data onto a spherical grid.
 
     Args:
