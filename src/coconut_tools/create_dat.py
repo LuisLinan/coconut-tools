@@ -226,16 +226,15 @@ if __name__ == "__main__":
     """
     
 
-    magnetogram_path = "E:/GU V2/magnetogram/mrzqs170404t1814c2189_268.fits"
-    date_hmi = None
+    magnetogram_path = "C:/Users/luisl/Documents/Travail/Article_COCORIA/Mr_polfil_20190702T120437000.fits"
+    date_hmi = '2019-07-02T12:04:37'
     auto_compute_rotation = True
     manual_rotation_angle = 180.0  # fallback if auto_compute_rotation is False
 
-    files = glob.glob('E:/coconut_cme/coriolis/fromfullmhd/CFmesh/*.CFmesh')
+    files = glob.glob('"E:/euhforia/CFmesh/*.CFmesh')
     files = sorted(files, key=extract_number)
 
     angle, date_dt = compute_rotation_angle(magnetogram_path, date_hmi)
-    print(angle, date_dt)
 
     first_time = date_dt.strftime("%Y-%m-%dT%H:%M:%S")
     rad_out = 21.5
@@ -243,6 +242,29 @@ if __name__ == "__main__":
     nb_phi = 360
     eps = 0.01
     full_output = True  # <--- change this to True for full variable set
+
+    logger.info(f"Computed rotation angle: {angle} degrees")
+    logger.info(f"Using date for rotation computation: {date_dt.isoformat()}\n")
+
+    timestamp_i = str(int(date_dt.timestamp()))
+    output_dat_temp = f'E:/euhforia/dat8/solar_wind_boundary_{timestamp_i}_temps.dat'
+    output_dat = f'E:/euhforia/dat8/solar_wind_boundary_{timestamp_i}.dat'
+
+    time = date_dt.strftime("%Y-%m-%dT%H:%M:%S")
+
+    create_boundary_fromcfmesh(files[0], time, rad_out, nb_th, nb_phi, eps, output_dat_temp, full_output=full_output)
+    rotation(output_dat_temp, output_dat, angle, full_output=full_output)
+    os.remove(output_dat_temp)
+
+
+    output_dat_temp = f'E:/euhforia/dat4/solar_wind_boundary_{timestamp_i}_temps.dat'
+    output_dat = f'E:/euhforia/dat4/solar_wind_boundary_{timestamp_i}.dat'
+
+    full_output = False  # <--- change this to True for full variable set
+
+    create_boundary_fromcfmesh(files[0], time, rad_out, nb_th, nb_phi, eps, output_dat_temp, full_output=full_output)
+    rotation(output_dat_temp, output_dat, angle, full_output=full_output)
+    os.remove(output_dat_temp)
 
     """
     for i, file in enumerate(files):
@@ -264,7 +286,7 @@ if __name__ == "__main__":
         create_boundary_fromcfmesh(file, time, rad_out, nb_th, nb_phi, eps, output_dat_temp, full_output=full_output)
         rotation(output_dat_temp, output_dat, angle, full_output=full_output)
         os.remove(output_dat_temp)
-    """
+    
 
     ########################################################################
 
@@ -562,7 +584,7 @@ if __name__ == "__main__":
     create_boundary_fromcfmesh(file, time, rad_out, nb_th, nb_phi, eps, output_dat_temp, full_output=full_output)
     rotation(output_dat_temp, output_dat, angle, full_output=full_output)
     os.remove(output_dat_temp)
-
+    """
 
 
 
