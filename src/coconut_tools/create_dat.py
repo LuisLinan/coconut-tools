@@ -28,6 +28,23 @@ from coconut_tools.logger_config import setup_logger
 
 logger = setup_logger(__name__)
 
+def rsun_to_m(x: float) -> float:
+    """Convert a distance expressed in solar radii to meters.
+
+    The conversion assumes 1 astronomical unit equals 215 solar radii,
+    which implies 1 Rsun = 149597870700 / 215 meters.
+
+    Args:
+        x (float): Distance in solar radii.
+
+    Returns:
+        float: Distance in meters.
+    """
+    AU = 149597870700.0
+    RSUN_PER_AU = 215.0
+    return x * AU / RSUN_PER_AU
+
+
 
 def readstruct(lines: List[str]) -> Tuple[int, int, int, int, int, int, List[Tuple[int, str]]]:
     """Reads the structure of a CFmesh file.
@@ -72,7 +89,7 @@ def extract_number(file_name: str) -> int:
     match = re.search(r'corona-iter_(\d+)\.CFmesh$', file_name)
     return int(match.group(1)) if match else 0
 
-def create_boundary_fromcfmesh(inputfile: str, time: str, nb_th: int, nb_phi: int, eps: float, output_dat: str, rad_out: float=14959787070.0, full_output: bool = True) -> None:
+def create_boundary_fromcfmesh(inputfile: str, time: str, rad_out: float, nb_th: int, nb_phi: int, eps: float, output_dat: str, full_output: bool = True) -> None:
     """Creates a boundary file by interpolating CFmesh volume data onto a spherical grid.
 
     Args:
@@ -162,7 +179,7 @@ def create_boundary_fromcfmesh(inputfile: str, time: str, nb_th: int, nb_phi: in
         interpolated[key] = interp_vals
 
     with open(output_dat, 'w') as f:
-        f.write(f'Time:\n{time}\nRadius of sphere:\n{r_def}\n')
+        f.write(f'Time:\n{time}\nRadius of sphere:\n{str(rsun_to_m(rad_out))}\n')
         f.write(f'Number of colatitude grid points:\n{nb_th}\nColatitude grid points:\n')
         f.write('\n'.join(f'{v:.19e}' for v in LAT) + '\n')
         f.write(f'Number of longitude grid points:\n{nb_phi}\nLongitude grid points:\n')
@@ -174,7 +191,7 @@ def create_boundary_fromcfmesh(inputfile: str, time: str, nb_th: int, nb_phi: in
                 '\n'.join(f'{interpolated[key][j, k]:.19e}' for j in range(nb_th))
                 for k in range(nb_phi)) + '\n')
 
-def rotation(input_dat: str, output_dat: str, angle_degrees: float, full_output: bool = True, rad_out: float=14959787070.0) -> None:
+def rotation(input_dat: str, output_dat: str, angle_degrees: float, full_output: bool = True, rad_out: float=21.5) -> None:
     """Rotates the longitude data in a boundary file and adjusts selected fields accordingly.
 
     Args:
@@ -194,7 +211,7 @@ def rotation(input_dat: str, output_dat: str, angle_degrees: float, full_output:
     reduced_keys = ['vr', 'number_density', 'temperature', 'Br']
     keys = full_keys if full_output else reduced_keys
 
-    indices = {key: lines.index(key) for key in full_keys}
+    indices = {key: lines.index(key) for key in keys}
 
     clt = [float(x) for x in lines[clt_start + 1:lon_start - 2]]
     lon_before = [float(x) + np.radians(angle_degrees) for x in lines[lon_start + 1:indices['vr']]]
@@ -203,15 +220,14 @@ def rotation(input_dat: str, output_dat: str, angle_degrees: float, full_output:
     lon = np.roll(lon, -min_index)
 
     def shift_data(key):
-        all_keys = full_keys
-        next_key_index = indices[all_keys[all_keys.index(key)+1]] if key != 'Bt' else None
+        next_key_index = indices[keys[keys.index(key) + 1]] if key != keys[-1] else None
         data = [float(x) for x in lines[indices[key] + 1:next_key_index]] if next_key_index else [float(x) for x in lines[indices[key] + 1:]]
         return np.roll(data, -min_index * len(clt))
 
     data_arrays = {key: shift_data(key) for key in keys}
 
     with open(output_dat, 'w') as fp:
-        fp.write(f"Time:\n{date}\nRadius of sphere:\n{rad_out}\n")
+        fp.write(f"Time:\n{date}\nRadius of sphere:\n{str(rsun_to_m(rad_out))}\n")
         fp.write(f"Number of colatitude grid points:\n{len(clt)}\nColatitude grid points:\n")
         np.savetxt(fp, clt)
         fp.write(f"Number of longitude grid points:\n{len(lon)}\nLongitude grid points:\n")
@@ -231,8 +247,8 @@ if __name__ == "__main__":
     auto_compute_rotation = True
     manual_rotation_angle = 180.0  # fallback if auto_compute_rotation is False
 
-    files = glob.glob('"E:/euhforia/CFmesh/*.CFmesh')
-    files = sorted(files, key=extract_number)
+    file='E:/euhforia/CFmesh/corona.CFmesh'
+
 
     angle, date_dt = compute_rotation_angle(magnetogram_path, date_hmi)
 
@@ -252,7 +268,7 @@ if __name__ == "__main__":
 
     time = date_dt.strftime("%Y-%m-%dT%H:%M:%S")
 
-    create_boundary_fromcfmesh(files[0], time, rad_out, nb_th, nb_phi, eps, output_dat_temp, full_output=full_output)
+    create_boundary_fromcfmesh(file, time, rad_out, nb_th, nb_phi, eps, output_dat_temp, full_output=full_output)
     rotation(output_dat_temp, output_dat, angle, full_output=full_output)
     os.remove(output_dat_temp)
 
@@ -262,11 +278,14 @@ if __name__ == "__main__":
 
     full_output = False  # <--- change this to True for full variable set
 
-    create_boundary_fromcfmesh(files[0], time, rad_out, nb_th, nb_phi, eps, output_dat_temp, full_output=full_output)
+    create_boundary_fromcfmesh(file, time, rad_out, nb_th, nb_phi, eps, output_dat_temp, full_output=full_output)
     rotation(output_dat_temp, output_dat, angle, full_output=full_output)
     os.remove(output_dat_temp)
 
     """
+
+    files = glob.glob('"E:/euhforia/CFmesh/*.CFmesh')
+    files = sorted(files, key=extract_number)
     for i, file in enumerate(files):
         logger.info(f"Processing file {i}: {file}")
         date_dt = datetime.strptime(first_time, '%Y-%m-%dT%H:%M:%S')

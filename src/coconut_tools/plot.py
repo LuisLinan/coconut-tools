@@ -20,6 +20,7 @@ Note:
 """
 
 import os
+import math
 from typing import Literal
 from coconut_tools.read_dat_files import read_data
 import matplotlib.pyplot as plt
@@ -27,6 +28,23 @@ import numpy as np
 from matplotlib.ticker import AutoMinorLocator
 from coconut_tools.logger_config import setup_logger
 logger = setup_logger(__name__)
+
+def m_to_rsun(x: float) -> float:
+    """Convert a distance expressed in meters to solar radii.
+
+    The conversion assumes 1 astronomical unit equals 215 solar radii,
+    which implies 1 Rsun = 149597870700 / 215 meters.
+
+    Args:
+        x (float): Distance in meters.
+
+    Returns:
+        float: Distance in solar radii.
+    """
+    AU = 149597870700.0
+    RSUN_PER_AU = 215.0
+    return x * RSUN_PER_AU / AU
+
 
 def plot_boundary_profil(inputdir, outputfile, label_dict, color_map):
     """Plot magnetic and thermodynamic quantities from HDF5 files.
@@ -112,109 +130,143 @@ def plot_boundary_profil(inputdir, outputfile, label_dict, color_map):
     plt.savefig(outputfile)
     plt.close()
 
-def Surface_2D_onetime(inputfile: str, outputfile: str, mode: Literal['all', 'reduced'] = 'all', extended: bool = False, showP: bool = False) -> None:
+def Surface_2D_onetime(
+    inputfile: str,
+    outputfile: str,
+    mode: Literal["all", "reduced"] = "all",
+    extended: bool = False,
+    showP: bool = False,
+) -> None:
     """Plot thermodynamic and magnetic quantities from a COCONUT output file.
 
     Args:
         inputfile (str): Path to the input directory containing COCONUT binary output.
         outputfile (str): Path where the figure should be saved.
-        mode (str, optional): Either 'all' to plot all 8 variables or 'reduced' to plot only
-            density, temperature, Br, and Vr. Default is 'all'.
-        extended (bool, default False): look for radius in .dat
-        showP (bool, default False): wether it plots pressure
-    
+        mode (Literal["all", "reduced"], optional): "all" plots 8 variables, "reduced"
+            plots only density, temperature, Br, and Vr. Default is "all".
+        extended (bool, optional): If True, read radius from the .dat file. Default is False.
+        showP (bool, optional): If True, also plot pressure and include it in the saved figure.
+            Default is False.
+
     Returns:
         None
     """
     import cmocean as cm
-    fig, axs = plt.subplots(4, 2, figsize=(15, 10), constrained_layout=True)
-    
+
     clat_ticks = [0, 45, 90, 135, 180]
     lon_ticks = [-180, -135, -90, -45, 0, 45, 90, 135, 180]
-    
-    # Read and preprocess data
-    if extended:
-        date, r, clt, lon, vr, vlon, vclt, density, br, bclt, blon, temp = read_data(inputfile,extended=extended)
-    else:
-        date, clt, lon, vr, vlon, vclt, density, br, bclt, blon, temp = read_data(inputfile,extended=extended)
-    
-    vars_to_plot = [
-        (density.T, cm.cm.thermal, 'Density [$m^{-3}$]'),
-        (temp.T, cm.cm.haline, 'Temperature [K]'),
-        (br.T * 1e9, cm.cm.balance, 'Br [nT]'),
-        (bclt.T * 1e9, cm.cm.balance, 'Bclt [nT]'),
-        (blon.T * 1e9, cm.cm.balance, 'Blon [nT]'),
-        (vr.T, cm.cm.matter_r, 'Vr [km/s]'),
-        (vclt.T, cm.cm.balance, 'Vclt [km/s]'),
-        (vlon.T, cm.cm.balance, 'Vlon [km/s]')
-    ]
-    
-    if mode == 'reduced':
-        indices = [0, 1, 2, 5]  # density, temp, Br, Vr
-    else:
-        indices = list(range(8))
 
-    tit = r'Magnetic and thermodynamic quantities from COCONUT'
-    if extended: tit += '\n'+r'at r={0:.2f} R$_\odot$'.format(r)
-    fig.suptitle(tit, size=18)
-    
-    for idx, plot_idx in enumerate(indices):
-        row = idx % 4
-        col = idx // 4
-        data, cmap, label = vars_to_plot[plot_idx]
-        data_shifted = np.roll(data, data.shape[1] // 2, axis=1)
+    reduced = (mode == "reduced")
+    date, r, clt, lon, vr, vlon, vclt, density, br, bclt, blon, temp = read_data(
+        inputfile, reduced=reduced, extended=extended
+    )
 
-        im = axs[row][col].imshow(
-            data_shifted, aspect='auto', origin='lower', cmap=cmap,
-            extent=[lon_ticks[0], lon_ticks[-1], clat_ticks[-1], clat_ticks[0]]
+    vars_to_plot = {
+        "number_density": (density.T, cm.cm.thermal, "Density [$m^{-3}$]"),
+        "temperature": (temp.T, cm.cm.haline, "Temperature [K]"),
+        "Br": (br.T * 1e9, cm.cm.balance, "Br [nT]"),
+        "Vr": (vr.T, cm.cm.matter_r, "Vr [km/s]"),
+    }
+
+    if not reduced:
+        if any(x is None for x in (bclt, blon, vclt, vlon)):
+            raise ValueError(
+                "Expected full vector fields (Bclt/Blon/Vclt/Vlon) but some are missing (None)."
+            )
+        vars_to_plot.update(
+            {
+                "Bclt": (bclt.T * 1e9, cm.cm.balance, "Bclt [nT]"),
+                "Blon": (blon.T * 1e9, cm.cm.balance, "Blon [nT]"),
+                "Vclt": (vclt.T, cm.cm.balance, "Vclt [km/s]"),
+                "Vlon": (vlon.T, cm.cm.balance, "Vlon [km/s]"),
+            }
         )
 
-        axs[row][col].set_xticks(lon_ticks)
-        axs[row][col].set_yticks(clat_ticks)
-        axs[row][col].invert_yaxis()
-        axs[row][col].tick_params(axis='both', which='major', labelsize=12)
-        if row == 3:
-            axs[row][col].set_xlabel('Longitude (degrees)', fontsize=14)
-        axs[row][col].set_ylabel('Colatitude (degrees)', fontsize=14)
-
-        cbar = plt.colorbar(im, ax=axs[row][col])
-        cbar.set_label(label, fontsize=16)
-        cbar.ax.tick_params(labelsize=14)
-        cbar.ax.yaxis.offsetText.set_fontsize(14)
-
-    plt.savefig(outputfile, dpi=300)
+    if reduced:
+        plot_order = ["number_density", "temperature", "Br", "Vr"]
+    else:
+        plot_order = ["number_density", "temperature", "Br", "Bclt", "Blon", "Vr", "Vclt", "Vlon"]
 
     if showP:
-        fig, ax = plt.subplots(1, 1, figsize=(15./2., 10./4.), constrained_layout=True)
-        rho, cmap, label = vars_to_plot[0]
-        temp, cmap, label = vars_to_plot[1]
         kB = 1.38e-23
-        pressure = rho * temp * kB
-        data_shifted = np.roll(pressure, pressure.shape[1] // 2, axis=1)
+        pressure = (density.T * temp.T) * kB
+        vars_to_plot["pressure"] = (pressure, cm.cm.haline, "Pressure [Pa]")
 
-        im = ax.imshow(
-            data_shifted, aspect='auto', origin='lower', cmap=cmap,
-            extent=[lon_ticks[0], lon_ticks[-1], clat_ticks[-1], clat_ticks[0]]
-        )
+    tit = r"Magnetic and thermodynamic quantities from COCONUT"
+    if extended and r is not None:
+        tit += "\n" + r"at r={0:.2f} R$_\odot$".format(m_to_rsun(r))
 
+    ncols = 2
+    n_main = len(plot_order)
+    nrows_main = math.ceil(n_main / ncols)
+    total_rows = nrows_main + (1 if showP else 0)
+
+    fig = plt.figure(figsize=(15, 2.8 * total_rows), constrained_layout=True)
+    gs = fig.add_gridspec(total_rows, ncols)
+    fig.suptitle(tit, size=18)
+
+    def _format_axes(ax):
         ax.set_xticks(lon_ticks)
         ax.set_yticks(clat_ticks)
         ax.invert_yaxis()
-        ax.tick_params(axis='both', which='major', labelsize=12)
-        ax.set_xlabel('Longitude (degrees)', fontsize=14)
-        ax.set_ylabel('Colatitude (degrees)', fontsize=14)
-        
-        cbar = plt.colorbar(im, ax=ax)
-        cbar.set_label('Pressure [Pa]', fontsize=16)
-        cbar.ax.tick_params(labelsize=14)
-        cbar.ax.yaxis.offsetText.set_fontsize(14)
+        ax.tick_params(axis="both", which="major", labelsize=10)
+        ax.set_ylabel("Colatitude [deg]", fontsize=11)
 
-        tit = r'Pressure from COCONUT'
-        if extended: tit += '\n'+r'at r={0:.2f} R$_\odot$'.format(r)
-        fig.suptitle(tit, size=18)
-        
+
+    def _plot_panel(ax, data, cmap, label, show_xlabel: bool):
+        data_shifted = np.roll(data, data.shape[1] // 2, axis=1)
+        im = ax.imshow(
+            data_shifted,
+            aspect="auto",
+            origin="lower",
+            cmap=cmap,
+            extent=[lon_ticks[0], lon_ticks[-1], clat_ticks[-1], clat_ticks[0]],
+        )
+        _format_axes(ax)
+        if show_xlabel:
+            ax.set_xlabel("Longitude [deg]", fontsize=11)
+
+        cbar = fig.colorbar(im, ax=ax, fraction=0.045, pad=0.03)
+        cbar.set_label(label, fontsize=12)
+        cbar.ax.tick_params(labelsize=10)
+        cbar.ax.yaxis.offsetText.set_fontsize(10)
+    # Main panels
+    for i, name in enumerate(plot_order):
+        row = i // ncols
+        col = i % ncols
+        ax = fig.add_subplot(gs[row, col])
+
+        data, cmap, label = vars_to_plot[name]
+
+        # If pressure exists, only pressure gets xlabel (cleaner).
+        show_xlabel = (not showP) and (row == nrows_main - 1)
+        _plot_panel(ax, data, cmap, label, show_xlabel=show_xlabel)
+
+    # Pressure panel: create it spanning both columns (so layout reserves space cleanly),
+    # then shrink width and center it.
+    if showP:
+        # Sous grille sur la dernière ligne pour centrer la pression sans set_position
+        sub = gs[nrows_main, :].subgridspec(
+            1, 3, width_ratios=[1.0, 1.25, 1.0]
+        )
+
+        # Axes vides gauche et droite pour réserver l espace et centrer le panneau
+        fig.add_subplot(sub[0, 0]).axis("off")
+        fig.add_subplot(sub[0, 2]).axis("off")
+
+        # Panneau pression centré, taille comparable aux autres
+        axp = fig.add_subplot(sub[0, 1])
+
+        data, cmap, label = vars_to_plot["pressure"]
+        _plot_panel(axp, data, cmap, label, show_xlabel=True)
+
+        plt.savefig(outputfile, dpi=300)
+
+    if showP:
         plt.show()
-    plt.close()
+
+    plt.close(fig)
+
 
 def create_plot_B(
     path_min: str,
@@ -464,6 +516,51 @@ def create_plot_max_quantities_vs_b0(
     logger.info(f"Max quantities plot saved to {output_path}")
 
 if __name__ == "__main__":
+
+    input_file = "E:/euhforia/dat4/solar_wind_boundary_1562061877.dat"  # <-- à adapter
+    output_file = "E:/euhforia/image/4_P_extended.png"
+
+    Surface_2D_onetime(
+        inputfile=input_file,
+        outputfile=output_file,
+        mode='reduced',  # all ou 'reduced'
+        extended = True,
+        showP= True
+    )
+
+    output_file = "E:/euhforia/image/4.png"
+
+    Surface_2D_onetime(
+        inputfile=input_file,
+        outputfile=output_file,
+        mode='reduced',  # all ou 'reduced'
+        extended = False,
+        showP= False
+    )
+
+    input_file = "E:/euhforia/dat8/solar_wind_boundary_1562061877.dat"  # <-- à adapter
+    output_file = "E:/euhforia/image/8_P_extended.png"
+
+    Surface_2D_onetime(
+        inputfile=input_file,
+        outputfile=output_file,
+        mode='all',  # all ou 'reduced'
+        extended = True,
+        showP= True
+    )
+
+    output_file = "E:/euhforia/image/8.png"
+
+    Surface_2D_onetime(
+        inputfile=input_file,
+        outputfile=output_file,
+        mode='all',  # all ou 'reduced'
+        extended = False,
+        showP= False
+    )
+
+
+    """
     input_dir = "./data_tests/"
 
     label_dict = {
@@ -513,3 +610,4 @@ if __name__ == "__main__":
         input_dir="/run/media/luis/TOSHIBA EXT/Coolfluid_bj/",
         output_dir="/run/media/luis/TOSHIBA EXT/Coolfluid_bj/plots/"
     )
+    """

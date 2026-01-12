@@ -78,9 +78,9 @@ def read_mesh(filename):
     mesh = pv.read(filename)
 
 
-    print("Arrays in point_data:", list(mesh.point_data.keys()))
-    print("Arrays in cell_data:", list(mesh.cell_data.keys()))
-    print("Arrays in field_data:", list(mesh.field_data.keys()))
+    logging.info("Arrays in point_data:", list(mesh.point_data.keys()))
+    logging.info("Arrays in cell_data:", list(mesh.cell_data.keys()))
+    logging.info("Arrays in field_data:", list(mesh.field_data.keys()))
 
     logging.info('Done!')
     return mesh
@@ -107,6 +107,8 @@ def convert_units(mesh):
     mesh['bx_dim'] = mesh['Bx'] * 2.2 # G
     mesh['by_dim'] = mesh['By'] * 2.2 # G
     mesh['bz_dim'] = mesh['Bz'] * 2.2 # G
+
+
     return mesh
 
 def convert_to_spherical(mesh):
@@ -119,6 +121,7 @@ def convert_to_spherical(mesh):
         pv.DataSet: Updated mesh with spherical quantities.
     """
     logging.info('Converting to spherical coordinates...')
+
     x, y, z = mesh['x'], mesh['y'], mesh['z']
     vx, vy, vz = mesh['vx_dim'], mesh['vy_dim'], mesh['vz_dim']
     bx, by, bz = mesh['bx_dim'], mesh['by_dim'], mesh['bz_dim']
@@ -136,79 +139,8 @@ def convert_to_spherical(mesh):
     mesh['bphi'] = (-y*bx + x*by) / rxy
     return mesh
 
-def visualize(mesh, slice_normal='y', save_path=None, show=True):
-    """Create a PyVista visualization of the MHD quantities.
 
-    Args:
-        mesh (pv.DataSet): The mesh with physical fields.
-        slice_normal (str): Normal direction of the slice ('x', 'y', 'z').
-        save_path (str | None): If given, path where the figure will be saved
-            (supports .png, .jpg, .pdf, .svg).
-        show (bool): If True, display the interactive scene.
-    """
-    logging.info('Creating plotter...')
-    off = not show
-    # Optionnel mais pratique en CI:
-    if off:
-        os.environ.setdefault("PYVISTA_OFF_SCREEN", "1")
-        pv.OFF_SCREEN = True
-
-    p = pv.Plotter(off_screen=off)
-
-    rr = 18.0  # reculer la caméra
-    phi_rad = np.radians(60)
-    cpos = [(rr*np.cos(phi_rad), rr*np.sin(phi_rad), 4.0),  # vue légèrement décalée en z
-            (0.0, 0.0, 0.0),
-            (0.0, 0.0, 1.0)]
-
-    logging.info('Adding slice plot (vr)...')
-    slice_plane = mesh.slice(normal=slice_normal)
-    p.add_mesh(slice_plane, scalars='vr', cmap='coolwarm', scalar_bar_args={
-        'height': 0.25, 'vertical': True, 'title_font_size': 30, 'width': 0.05,
-        'title': 'Radial Velocity (vr) [km/s]', 'position_x': 0.85, 'position_y': 0.05
-    })
-
-    logging.info('Adding clipped sphere (br)...')
-    sphere = pv.Sphere(center=(0,0,0), radius=1.01)
-    clipped = mesh.clip_surface(sphere)
-    p.add_mesh(clipped, scalars='br', cmap='seismic', clim=[-1,1], scalar_bar_args={
-        'height': 0.25, 'vertical': True, 'title_font_size': 30, 'width': 0.05,
-        'title': 'Radial Magnetic Field (br) [G]', 'position_x': 0.88, 'position_y': 0.35
-    })
-
-    logging.info('Adding magnetic field streamlines...')
-    mesh['B'] = np.column_stack((mesh['bx_dim'], mesh['by_dim'], mesh['bz_dim']))
-    stream = make_streamlines(
-        mesh,
-        vectors="B",
-        max_steps=1000,  # ensure it's an int (not 1000.0)
-        n_points=1000,
-        source_radius=2.0,
-        source_center=(0, 0, 0),
-    )
-    p.add_mesh(stream.tube(radius=0.01), cmap='binary', scalar_bar_args={
-        'height': 0.25, 'vertical': True, 'title_font_size': 30, 'width': 0.05,
-        'title': 'B-field Streamlines', 'position_x': 0.88, 'position_y': 0.65
-    })
-
-    logging.info('Adding density isosurface...')
-    iso = mesh.contour([1e-16], scalars='rho_dim')
-    p.add_mesh(iso, scalars='rho_dim', cmap='plasma', opacity=0.4, scalar_bar_args={
-        'height': 0.25, 'vertical': True, 'title_font_size': 30, 'width': 0.05,
-        'title': 'Isosurface of Density [g/cm^3]', 'position_x': 0.10, 'position_y': 0.65
-    })
-    p.show(interactive=False, auto_close=False, window_size=[1800, 900])
-
-
-    if save_path:
-        logging.info(f'Saving figure to {save_path}...')
-        p.screenshot(save_path)
-    if show:
-        logging.info('Displaying scene...')
-        p.show()
-    p.close()
-
-def visualizeQ(
+def visualize(
     mesh,
     slice_normal: str = "y",
     slice_plane_scalar: str = "vr",
@@ -220,37 +152,45 @@ def visualizeQ(
     volumic_vr: float | None = None,
     rho_iso: float = 1e-13,
     AlfvSurf: bool = False,
-    # ---- Camera parameters ----
     camera_radius: float = 18.0,
     camera_phi_deg: float = 60.0,
     camera_z: float = 4.0,
 ):
-    """Create a PyVista visualization of the MHD quantities, with tunable colorbars,
-    density isosurface level, and camera position.
-    contact: Q. Noraz
-    
-    Parameters
-    ----------
-    mesh : pv.DataSet
-        The mesh with physical fields.
-    slice_normal : {'x','y','z'}
-        Normal of the velocity slice plane.
-    save_path : str or None
-        Where to save the rendered figure.
-    show : bool
-        Show interactive viewer (True) or off-screen only (False).
-    vr_clim, br_clim, stream_clim : tuple(float,float) or None
-        Colorbar limits for vr, br, and streamline magnitude.
-    volumic_vr: flt
-        vr iso-surface if != None
-    rho_iso : float
-        Density isosurface value (g/cm^3).
-    camera_radius : float
-        Radial distance of the camera.
-    camera_phi_deg : float
-        Azimuthal angle of the camera in degrees.
-    camera_z : float
-        Camera height above equatorial plane.
+    """Create a PyVista visualization of MHD quantities.
+
+    The visualization includes slice planes, streamlines, optional iso surfaces,
+    and a configurable camera position.
+
+    Args:
+        mesh: PyVista dataset containing the physical fields.
+        slice_normal (str, optional): Normal of the slice plane. Must be one of
+            {"x", "y", "z"}. Default is "y".
+        slice_plane_scalar (str, optional): Scalar field used for coloring the slice
+            plane. Default is "vr".
+        save_path (str | None, optional): Path where the rendered image is saved.
+            If None, the image is not saved. Default is None.
+        show (bool, optional): If True, show the interactive viewer. If False, run
+            in off screen mode only. Default is True.
+        vr_clim (tuple[float, float] | None, optional): Color limits for the radial
+            velocity field. Default is None.
+        br_clim (tuple[float, float] | None, optional): Color limits for the radial
+            magnetic field. Default is None.
+        stream_clim (tuple[float, float] | None, optional): Color limits for the
+            streamline magnitude. Default is None.
+        volumic_vr (float | None, optional): If not None, draw an iso surface of the
+            radial velocity at this value. Default is None.
+        rho_iso (float, optional): Density iso surface value in g cm^(-3).
+            Default is 1e-13.
+        AlfvSurf (bool, optional): If True, plot the Alfvén surface. Default is False.
+        camera_radius (float, optional): Radial distance of the camera from the
+            origin. Default is 18.0.
+        camera_phi_deg (float, optional): Azimuthal angle of the camera in degrees.
+            Default is 60.0.
+        camera_z (float, optional): Height of the camera above the equatorial plane.
+            Default is 4.0.
+
+    Returns:
+        None
     """
 
     logging.info("Creating plotter...")
@@ -276,12 +216,12 @@ def visualizeQ(
     logging.info("Adding slice plot ("+slice_plane_scalar+")…")
     slice_plane = mesh.slice(normal=slice_normal, origin=(0, 0, 0))
     if slice_plane_scalar=="vr":
-        slice_plane_tit="Radial Velocity (vr) [km/s]"
+        slice_plane_tit="Radial Velocity [km/s]"
         plane_log_scale=False
         slice_plane_cmap='viridis'
         opac=1.
     elif slice_plane_scalar=="rho_dim":
-        slice_plane_tit=r"Density ($\rho$) [g/cm$^3$]"
+        slice_plane_tit=r"Density [g/cm$^3$]"
         plane_log_scale=True
         slice_plane_cmap='plasma'
         # discretizes
@@ -305,7 +245,7 @@ def visualizeQ(
         scalar_bar_args={
             "height": 0.25,
             "vertical": True,
-            "title_font_size": 30,
+            "title_font_size": 20,
             "width": 0.05,
             "title": slice_plane_tit,
             "position_x": 0.10,
@@ -350,9 +290,9 @@ def visualizeQ(
         scalar_bar_args={
             "height": 0.25,
             "vertical": True,
-            "title_font_size": 30,
+            "title_font_size": 20,
             "width": 0.05,
-            "title": "Radial Magnetic Field (br) [G]",
+            "title": "Radial Magnetic Field [G]",
             "position_x": 0.85,
             "position_y": 0.65,
         },
@@ -380,7 +320,7 @@ def visualizeQ(
         scalar_bar_args={
             "height": 0.25,
             "vertical": True,
-            "title_font_size": 30,
+            "title_font_size": 20,
             "width": 0.05,
             "title": "B-field Streamlines",
             "position_x": 0.85,
@@ -390,17 +330,31 @@ def visualizeQ(
 
     # --------------------------------------------------------------------------
     # Density isosurface
-    if rho_iso != 0. :
+    if rho_iso != 0.0:
         logging.info("Adding density isosurface...")
+
+        rmin, rmax = mesh.get_data_range("rho_dim")
+
+        if not (rmin <= rho_iso <= rmax):
+            logging.warning(
+                f"rho_iso={rho_iso:.2e} outside rho_dim range "
+                f"[{rmin:.2e}, {rmax:.2e}]. Using mid range instead."
+            )
+            rho_iso = 0.5 * (rmin + rmax)
+
         iso = mesh.contour([rho_iso], scalars="rho_dim")
-        p.add_mesh(
-            iso,
-            scalars="rho_dim",
-            cmap="plasma",
-            opacity=0.4,
-            show_scalar_bar=False,
-        )
-        logging.info(f"Density isosurface at rho = {rho_iso:.2e} g/cm^3")
+
+        if iso.n_points == 0:
+            logging.warning("Density isosurface is empty even after adjustment. Skipping.")
+        else:
+            p.add_mesh(
+                iso,
+                scalars="rho_dim",
+                cmap="plasma",
+                opacity=0.4,
+                show_scalar_bar=False,
+            )
+            logging.info(f"Density isosurface at rho = {rho_iso:.2e} g/cm^3")
 
     # --------------------------------------------------------------------------
     # Render + save
@@ -416,8 +370,9 @@ def visualizeQ(
     p.close()
 
 if __name__ == '__main__':
-    input_path = 'E:/GU V2/coconut_result_coriolis/result_2017-04-04_fullmhd/corona-mhd_0000.vtu'
+    input_path = "C:/Users/luisl/Documents/Travail/Article_COCORIA/corona-mhd_0.vtu"
     mesh = read_mesh(input_path)
     mesh = convert_units(mesh)
     mesh = convert_to_spherical(mesh)
-    visualize(mesh, slice_normal='y', save_path='pyvista_slice.png', show=True)
+
+    visualize(mesh, slice_normal='y', save_path='E:/euhforia/image/pyvista_slice.png', show=True, AlfvSurf=True)

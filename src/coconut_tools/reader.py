@@ -1,11 +1,17 @@
-# contact: Q. Noraz
+"""Utilities to read and visualize COCONUT outputs.
+
+This module provides helpers to extract boundary data from CFmesh files,
+generate 2D/3D plots, and run basic diagnostics on boundary conditions.
+"""
 
 from __future__ import annotations
+
+# contact: Q. Noraz
 
 from pathlib import Path
 from datetime import datetime
 import os
-import logging
+from typing import Any, Mapping, Sequence
 
 import numpy as np
 import pyvista as pv
@@ -17,12 +23,15 @@ from matplotlib.colors import ListedColormap
 from coconut_tools.create_dat import (readstruct,create_boundary_fromcfmesh)
 from coconut_tools.read_dat_files import read_data
 from coconut_tools.plot import Surface_2D_onetime
+from coconut_tools.logger_config import setup_logger
 from coconut_tools.pyvista_slice import (
     read_mesh,
     convert_units,
     convert_to_spherical,
-    visualizeQ,
+    visualize,
 )
+
+logger = setup_logger(__name__)
 
 # Physical constants
 KB_SI = 1.380649e-23    # Boltzmann constant [J/K]
@@ -32,166 +41,44 @@ MU0_SI = 4.*np.pi*1.e-7 # Perméabilité du vide
 Rsun = 6.9599e8
 
 def run_coconut_reader(
-    base_path=".",
-    cfmesh_name="corona.CFmesh",
-    vtu_relpath="vtu/corona-mhd_0000.vtu",
-    radii=(1.0, 21.0),
-    when=None,
-    ntheta=180,
-    nphi=360,
-    dr=0.01,
-    surface_kwargs=None,
-    slice_kwargs=None,
-    off_screen=False,
+    base_path: str | Path = ".",
+    cfmesh_name: str = "corona.CFmesh",
+    vtu_relpath: str = "vtu/corona-mhd_0000.vtu",
+    radii: Sequence[float] = (1.0, 21.0),
+    when: datetime | str | None = None,
+    ntheta: int = 180,
+    nphi: int = 360,
+    dr: float = 0.01,
+    surface_kwargs: Mapping[str, Any] | None = None,
+    slice_kwargs: Mapping[str, Any] | None = None,
+    off_screen: bool = False,
     inner_bc_check: bool = False,
     outer_bc_check: bool = False,
-    AlfvSurf: bool = False
-):
-    """
-    Run a complete COCONUT post-processing pipeline:
-    - extract spherical boundary layers from a CFmesh file into .dat files,
-    - generate 2D surface plots for these boundaries,
-    - create PyVista 3D visualizations from a VTU file.
+    AlfvSurf: bool = False,
+) -> None:
+    """Run a complete COCONUT post-processing pipeline.
 
-    This function is designed to be executed **inside the results directory of a
-    given COCONUT run**, i.e., in a folder containing:
-        - the main CFmesh solution file (e.g., corona.CFmesh)
-        - a subdirectory `vtu/` containing VTU outputs
-        - optional existing folders `dat/` and `plots/`
+    Args:
+        base_path: Path to the run directory containing the CFmesh and `vtu/`.
+        cfmesh_name: CFmesh filename inside `base_path`.
+        vtu_relpath: Relative path from `base_path` to the VTU file.
+        radii: Radii (code units) at which to extract spherical boundaries.
+        when: Timestamp for metadata. If None, use current system time.
+        ntheta: Number of colatitude sampling points.
+        nphi: Number of longitude sampling points.
+        dr: Radial shell thickness for the boundary extraction.
+        surface_kwargs: Extra kwargs forwarded to `Surface_2D_onetime`.
+        slice_kwargs: Extra kwargs forwarded to `visualize`.
+        off_screen: If True, enable PyVista off-screen rendering.
+        inner_bc_check: If True, plot inner boundary diagnostics.
+        outer_bc_check: If True, plot outer boundary diagnostics.
+        AlfvSurf: If True, render a rho and Alfven surface visualization.
 
-    A typical directory structure is:
-        run/
-          results-<name>/
-             corona.CFmesh
-             vtu/
-                corona-mhd_0000.vtu
-             dat/            (created automatically if missing)
-             plots/          (created automatically if missing)
+    Raises:
+        FileNotFoundError: If the CFmesh or VTU file is missing.
 
-    The function can then be called with `base_path="."` to operate relative
-    to the current working directory. This allows reusing the tool for any
-    COCONUT run without modifying paths.
-    
-    --------------------------------------------------------------------------
-    Parameters
-    --------------------------------------------------------------------------
-    
-    base_path : str or Path, optional
-        Path to the run directory containing the CFmesh file and the `vtu/`
-        folder. All outputs (`dat/`, `plots/`) will be created inside this
-        directory. Default is `"."` (current working directory).
-
-    cfmesh_name : str, optional
-        Filename of the CFmesh file to read (inside `base_path`). This file is
-        used to extract physical quantities on spherical shells. Default:
-        `"corona.CFmesh"`.
-    
-    vtu_relpath : str, optional
-        Relative path from `base_path` to the VTU file used for 3D PyVista
-        visualization. Default: `"vtu/corona-mhd_0000.vtu"`.
-    
-    radii : tuple of float, optional
-        Radii (in code units) at which to extract spherical boundaries.
-        For each radius R, a file `dat/<R>Rsun.dat` and a plot
-        `plots/<R>Rsun.png` will be created unless the .dat file already
-        exists. Default: `(1.0, 21.0)`.
-    
-    when : datetime, str, or None, optional
-        Timestamp associated with the CFmesh extraction.
-        - If None: use current system time.
-        - If datetime: formatted internally as "%Y-%m-%dT%H:%M:%S".
-        - If str: used as-is (must match the expected format).
-        This affects only metadata inside the .dat file.
-    
-    ntheta : int, optional
-        Number of latitudinal sampling points for boundary extraction.
-        Default: 180.
-    
-    nphi : int, optional
-        Number of longitudinal sampling points. Default: 360.
-    
-    dr : float, optional
-        Radial shell thickness for the boundary extraction. Default: 0.01.
-    
-    surface_kwargs : dict or None, optional
-        Additional keyword arguments forwarded to
-        `coconut_tools.plot.Surface_2D_onetime()`.
-        Typical examples include:
-            dict(mode="all", extended=True, showP=True)
-        Default: None (equivalent to dict(mode="all", extended=True, showP=True)).
-    
-    slice_kwargs : dict or None, optional
-        Additional keyword arguments forwarded to `visualize2()` from
-        `coconut_tools.pyvista_slice`. These control the PyVista 3D visualization.
-        Examples:
-            dict(
-                slice_normal="y",
-                slice_plane_scalar: str = "vr"
-                AlfSurf: bool = False
-                vr_clim=(-200, 300),
-                br_clim=(-1.0, 1.0),
-                stream_clim=(0.0, 1.0),
-                rho_iso=1e-16,
-                save_path="plots/slice.png",
-                show=True,
-            )
-        If None, sensible defaults are provided, including automatically
-        saving the PyVista visualization to `plots/pyvista_slice.png`.
-    
-    off_screen : bool, optional
-        If True, PyVista runs in OFF_SCREEN mode (no GUI window). This is
-        strongly recommended for batch or remote environments (HPC clusters).
-        Default: True.
-
-    inner_bc_check : bool
-        If True, plot inner boundary conditions (ρ, p, T, |B|) at the smallest radius.
-    outer_bc_check : bool
-        If True, plot outer boundary conditions (c_s, v_A, Mach, M_A) at the largest radius.
-    
-    AlfvSurf : bool
-        If True, plot a 3D render with rho horiz. slice and alfven surface
-    
-    --------------------------------------------------------------------------
-    Behavior
-    --------------------------------------------------------------------------
-
-    - The function creates `dat/` and `plots/` inside `base_path` if missing.
-
-    - For each radius in `radii`:
-        > If `<R>Rsun.dat` already exists → it will NOT be recomputed  
-        > The PNG surface plot for that radius WILL be regenerated
-          (unless explicitly modified in the code).
-
-    - The PyVista visualization is always saved to the path specified in
-      `slice_kwargs["save_path"]` and may or may not appear interactively
-      depending on `slice_kwargs["show"]` and `off_screen`.
-
-    - All paths are constructed relative to `base_path`, allowing seamless
-      reuse across different runs with identical folder structure.
-
-    --------------------------------------------------------------------------
-    Returns
-    --------------------------------------------------------------------------
-
-    None. The function writes output files to `dat/` and `plots/` and logs
-    progress messages. No data structure is returned.
-
-    --------------------------------------------------------------------------
-    Example
-    --------------------------------------------------------------------------
-
-    # Inside the run directory (.../results-mycase/)
-    run_coconut_reader(
-        cfmesh_name="corona.CFmesh",
-        vtu_relpath="vtu/corona-mhd_0000.vtu",
-        radii=(1.0, 21.0, 30.0),
-        when="2024-04-09T05:04:00",
-        slice_kwargs=dict(
-            slice_normal="y",
-            vr_clim=(-200, 300),
-            show=False,
-        ),
-    )
+    Returns:
+        None. Outputs are written to `dat/` and `plots/`.
     """
     
     base_path = Path(base_path).resolve()
@@ -260,9 +147,9 @@ def run_coconut_reader(
     	# Do NOT recompute .dat if it already exists
     	# -----------------------------------------------------------
     	if dat_file.exists():
-    	    print(f"[INFO] {dat_file} already exists — skipping .dat computation.")
+    	    logger.info("%s already exists - skipping .dat computation.", dat_file)
     	else:
-    	    print(f"[INFO] Extracting boundary at R = {R} into {dat_file}")
+    	    logger.info("Extracting boundary at R = %s into %s", R, dat_file)
     	    _ = create_boundary_fromcfmesh(
     	        inputfile=str(cfmesh_path),
     	        time=when_str,
@@ -277,7 +164,7 @@ def run_coconut_reader(
     	# -----------------------------------------------------------
     	# Always regenerate the PNG (or also skip if preferred)
     	# -----------------------------------------------------------
-    	print(f"[INFO] Making 2D surface plot -> {png_file}")
+    	logger.info("Making 2D surface plot -> %s", png_file)
     	Surface_2D_onetime(
     	    inputfile=str(dat_file),
     	    outputfile=str(png_file),
@@ -313,18 +200,18 @@ def run_coconut_reader(
         )
         slice_kwargs.setdefault("show", not off_screen)
 
-    print(f"[INFO] Reading VTU mesh from {vtu_path}")
+    logger.info("Reading VTU mesh from %s", vtu_path)
     mesh = read_mesh(str(vtu_path))
     mesh = convert_units(mesh)
     mesh = convert_to_spherical(mesh)
     #print("Mesh bounds:", mesh.bounds)
-    print(f"[INFO] Making PyVista slice plot -> {slice_kwargs['save_path']}")
-    visualizeQ(mesh, **slice_kwargs)
+    logger.info("Making PyVista slice plot -> %s", slice_kwargs["save_path"])
+    visualize(mesh, **slice_kwargs)
     
     #rho horiz. slice + alfven surface
     if AlfvSurf:
-        print(f"[INFO] Making Rho/AlfvSurf PyVista slice plot -> {slice_kwargs['save_path']}")
-        visualizeQ(mesh, slice_normal="z",
+        logger.info("Making Rho/AlfvSurf PyVista slice plot -> %s", slice_kwargs["save_path"])
+        visualize(mesh, slice_normal="z",
             slice_plane_scalar="rho_dim",
             AlfvSurf=True,
             save_path=str(plots_dir / "pyvista_slice_Alv.png"),
@@ -347,27 +234,34 @@ def run_coconut_reader(
     )
 
 def Quick_Vr_Viewer(
-    base_path=".",
-    field = "vr",
-    vr_clim = None,
-    do_fieldlines=True,
-    V_name = "B",
-    mycmap = "viridis",
-    vtu_relpath="vtu/corona-mhd_0000.vtu",
-    figpath="./",
-    psfile=None,
-):
-    """
-    base_path : str or Path, optional
-        Path to the run directory containing the CFmesh file and the `vtu/`
-        folder. All outputs (`dat/`, `plots/`) will be created inside this
-        directory. Default is `"."` (current working directory).
+    base_path: str | Path = ".",
+    field: str = "vr",
+    vr_clim: tuple[float, float] | None = None,
+    do_fieldlines: bool = True,
+    V_name: str = "B",
+    mycmap: str = "viridis",
+    vtu_relpath: str = "vtu/corona-mhd_0000.vtu",
+    figpath: str | Path = "./",
+    psfile: str | None = None,
+) -> None:
+    """Quick viewer for a y-plane disk plot.
 
-    field : str
-        field to plot
-    
-    psfile : str or None
-        save the plot as "str" in figpath
+    Args:
+        base_path: Path to the run directory containing the VTU file.
+        field: Scalar field to plot.
+        vr_clim: Color limits for the field.
+        do_fieldlines: If True, draw field lines.
+        V_name: Name of the vector array on the mesh ("B" or "V").
+        mycmap: Matplotlib colormap name.
+        vtu_relpath: Relative path to the VTU file.
+        figpath: Output directory for saved figures.
+        psfile: If set, save the plot to this filename.
+
+    Raises:
+        FileNotFoundError: If the VTU file is missing.
+
+    Returns:
+        None.
     """
     
     base_path = Path(base_path).resolve()
@@ -380,11 +274,11 @@ def Quick_Vr_Viewer(
     # -----------------------
     # PyVista slice plots from VTU
     
-    if psfile!=None: #then save instead of plotting
+    if psfile is not None: #then save instead of plotting
         os.environ.setdefault("PYVISTA_OFF_SCREEN", "1")
         pv.OFF_SCREEN = True
     
-    print(f"[INFO] Reading VTU mesh from {vtu_path}")
+    logger.info("Reading VTU mesh from %s", vtu_path)
     mesh = read_mesh(str(vtu_path))
     mesh = convert_units(mesh)
     mesh = convert_to_spherical(mesh)
@@ -402,52 +296,24 @@ def Quick_Vr_Viewer(
     )
 
 def Quick_Ra_viewer(
-    base_path=".",
-    vtu_relpath="vtu/corona-mhd_0000.vtu",
-    volumic_vr=None,
-    off_screen=False,
-):
-    """
-    Create PyVista 3D visualizations from a VTU file:
-    - mag. surface map
-    - field line tracing
-    - density equatorial plane
-    - alfven's surface
-    
-    This function is designed to be executed **inside the results directory of a
-    given COCONUT run**, i.e., in a folder containing:
-        - a subdirectory `vtu/` containing VTU outputs
-        - `plots/`
-    
-    A typical directory structure is:
-        run/
-          results-<name>/
-             vtu/
-                corona-mhd_0000.vtu
-             plots/          (created automatically if missing)
-    
-    The function can then be called with `base_path="."` to operate relative
-    to the current working directory. This allows reusing the tool for any
-    COCONUT run without modifying paths.
-    
-    --------------------------------------------------------------------------
-    Parameters
-    --------------------------------------------------------------------------
-    
-    base_path : str or Path, optional
-        Path to the run directory containing the CFmesh file and the `vtu/`
-        folder. All outputs (`dat/`, `plots/`) will be created inside this
-        directory. Default is `"."` (current working directory)
-    
-    vtu_relpath : str, optional
-        Relative path from `base_path` to the VTU file used for 3D PyVista
-        visualization. Default: `"vtu/corona-mhd_0000.vtu"`.
-    
-    off_screen : bool, optional
-        If True, PyVista runs in OFF_SCREEN mode (no GUI window). This is
-        strongly recommended for batch or remote environments (HPC clusters).
-        Default: True.
-    
+    base_path: str | Path = ".",
+    vtu_relpath: str = "vtu/corona-mhd_0000.vtu",
+    volumic_vr: np.ndarray | None = None,
+    off_screen: bool = False,
+) -> None:
+    """Create PyVista 3D visualizations from a VTU file.
+
+    Args:
+        base_path: Path to the run directory containing the `vtu/` folder.
+        vtu_relpath: Relative path from `base_path` to the VTU file.
+        volumic_vr: Optional 3D array for volumetric vr rendering.
+        off_screen: If True, enable PyVista off-screen rendering.
+
+    Raises:
+        FileNotFoundError: If the VTU file is missing.
+
+    Returns:
+        None.
     """
     
     base_path = Path(base_path).resolve()
@@ -467,15 +333,15 @@ def Quick_Ra_viewer(
     #    os.environ.setdefault("PYVISTA_OFF_SCREEN", "1")
     #    pv.OFF_SCREEN = True
     
-    print(f"[INFO] Reading VTU mesh from {vtu_path}")
+    logger.info("Reading VTU mesh from %s", vtu_path)
     mesh = read_mesh(str(vtu_path))
     mesh = convert_units(mesh)
     mesh = convert_to_spherical(mesh)
     
     #rho horiz. slice + alfven surface
     save_path=str(plots_dir / "pyvista_slice_Alv.png")
-    print(f"[INFO] Making Rho/AlfvSurf PyVista slice plot -> {save_path}")
-    visualizeQ(mesh, slice_normal="z",
+    logger.info("Making Rho/AlfvSurf PyVista slice plot -> %s", save_path)
+    visualize(mesh, slice_normal="z",
                slice_plane_scalar="rho_dim",
                AlfvSurf=True,
                volumic_vr=volumic_vr,
@@ -484,68 +350,54 @@ def Quick_Ra_viewer(
                show=not off_screen)
 
 def visualize_yplane_disk(
-    mesh,
-    save_path="plots/",
-    field="vr",               # which scalar field to plot
-    clim=None,                # color limits
-    cmap="viridis",
-    psfile=None,
-    fig_size=(1920, 1920),
-    discrete=True,
-    do_fieldlines=True,
-    V_name = "B",
-    r_seed = 1.0,
-    n_seeds = 200,
-    max_steps = 4000,
-    step_size = 0.02,
-    max_time = 200.0,
-    line_radius=0.01,
-):
-    """
-    Produce a centered, full-disk 2D visualization of the y=0 plane.
+    mesh: pv.DataSet,
+    save_path: str | Path = "plots/",
+    field: str = "vr",
+    clim: tuple[float, float] | None = None,
+    cmap: str = "viridis",
+    psfile: str | None = None,
+    fig_size: tuple[int, int] = (1920, 1920),
+    discrete: bool = True,
+    do_fieldlines: bool = True,
+    V_name: str = "B",
+    r_seed: float = 1.0,
+    n_seeds: int = 200,
+    max_steps: int = 4000,
+    step_size: float = 0.02,
+    max_time: float = 200.0,
+    line_radius: float = 0.01,
+) -> None:
+    """Produce a centered, full-disk 2D visualization of the y=0 plane.
 
-    Parameters
-    ----------
-    mesh : pv.DataSet
-        Converted and spherical mesh.
-    save_path : str
-        Output PNG file path.
-    field : str
-        Scalar to visualize on the disk (e.g. 'vr', 'rho_dim', 'br', ...)
-    clim : tuple or None
-        Color limits for the scalar.
-    cmap : str
-        Colormap name.
-    psfile : str
-        Whether to save an interactive PyVista window or show it only if None.
-    fig_size : tuple
-        Window size in pixels (width, height).
-    discrete: bool
-        discretises mpl cmap if True
-    V_name: str
-        name of the vector array on the mesh,
-        currently coded: "B" and "V"
-    r_seed: flt
-        1 Rsun (or in your mesh units)
-    n_seeds: int
-        number of seed points around the circle
-    max_steps: int
-        number of step max for field line computation
-    step_size: flt
-        in Rsun units (adjust to your grid)
-    max_time: flt
-        effectively controls max arc length (together with step_size)
-    line_radius: flt
-        ajust field line radius
+    Args:
+        mesh: Converted and spherical mesh.
+        save_path: Output PNG directory or file path.
+        field: Scalar to visualize on the disk.
+        clim: Color limits for the scalar.
+        cmap: Colormap name.
+        psfile: If set, save a screenshot to this filename.
+        fig_size: Window size in pixels (width, height).
+        discrete: If True, discretize the colormap.
+        do_fieldlines: If True, compute and plot field lines.
+        V_name: Name of the vector array on the mesh ("B" or "V").
+        r_seed: Seed radius in Rsun units.
+        n_seeds: Number of seed points around the circle.
+        max_steps: Max steps for field line computation.
+        step_size: Step size for integration (Rsun units).
+        max_time: Max integration time (controls arc length).
+        line_radius: Field line tube radius.
+
+    Returns:
+        None.
     """
 
-    logging.info(f"Creating centered y-plane disk plot -> {save_path}")
+    logger.info("Creating centered y-plane disk plot -> %s", save_path)
 
     # Extract the slice at y=0
     slice_plane = mesh.slice(normal="y", origin=(0, 0, 0))
 
     # Make a top-down plotter
-    show=True
+    show = True
     p = pv.Plotter(off_screen=not show, window_size=fig_size)
 
     levels = 16
@@ -570,7 +422,7 @@ def visualize_yplane_disk(
         #    (use mesh.streamlines_from_source; it uses the active vectors or vectors=...)
         # --------------------------------------------------------------------------
         # Magnetic-field streamlines
-        logging.info("Adding magnetic field streamlines…")
+        logger.info("Adding magnetic field streamlines.")
         if V_name == "B":
             mesh["B"] = np.column_stack([mesh["bx_dim"], mesh["by_dim"], mesh["bz_dim"]])
         elif V_name == "V":
@@ -604,27 +456,22 @@ def visualize_yplane_disk(
     #p.camera.zoom(1.5)
     p.camera.zoom(1.0)
 
-    if psfile!=None:
+    if psfile is not None:
         p.show() #remove this if off_screen=True
-        p.screenshot(save_path+"/"+psfile)
+        p.screenshot(str(Path(save_path) / psfile))
     else:
         p.show()
 
     p.close()
 
-def _get_mesh_radii_from_cfmesh(cfmesh_path: str | Path):
-    """
-    Read the CFmesh and return (r_min, r_max) in code units.
+def _get_mesh_radii_from_cfmesh(cfmesh_path: str | Path) -> tuple[float, float]:
+    """Read the CFmesh and return (r_min, r_max) in code units.
 
-    Parameters
-    ----------
-    cfmesh_path : str | Path
-        Path to a CFmesh file (CFmesh or other VTK-readable format).
+    Args:
+        cfmesh_path: Path to a CFmesh file.
 
-    Returns
-    -------
-    (r_min, r_max) : tuple of floats
-        Minimum and maximum radial coordinates in the mesh.
+    Returns:
+        Tuple of (r_min, r_max).
     """
     
     if not os.path.isfile(cfmesh_path):
@@ -648,19 +495,29 @@ def _get_mesh_radii_from_cfmesh(cfmesh_path: str | Path):
     return float(r.min()), float(r.max())
 
 def _inner_bc_check_from_cfmesh(
-    cfmesh_path,
-    dat_dir,
-    plots_dir,
-    when_str,
-    ntheta,
-    nphi,
-    dr,
-    show=True
-):
-    """
-    Determine the minimum radius from the CFmesh, create/read the .dat at that
-    radius, then plot inner boundary conditions:
-    density, pressure (from ρ,T), temperature, |B|.
+    cfmesh_path: str | Path,
+    dat_dir: Path,
+    plots_dir: Path,
+    when_str: str,
+    ntheta: int,
+    nphi: int,
+    dr: float,
+    show: bool = True,
+) -> None:
+    """Plot inner boundary conditions at the minimum mesh radius.
+
+    Args:
+        cfmesh_path: Path to the CFmesh file.
+        dat_dir: Directory for .dat outputs.
+        plots_dir: Directory for plots.
+        when_str: Timestamp string for metadata.
+        ntheta: Number of colatitude samples.
+        nphi: Number of longitude samples.
+        dr: Radial shell thickness.
+        show: If True, show the plot interactively.
+
+    Returns:
+        None.
     """
     rmin, _ = _get_mesh_radii_from_cfmesh(cfmesh_path)
     R = rmin
@@ -669,7 +526,7 @@ def _inner_bc_check_from_cfmesh(
 
     # Ensure .dat exists at the inner radius
     if not dat_path.exists():
-        print(f"[INFO] Inner BC: creating {dat_path} at R = {R:g}")
+        logger.info("Inner BC: creating %s at R = %s", dat_path, f"{R:g}")
         create_boundary_fromcfmesh(
             inputfile=str(cfmesh_path),
             time=when_str,
@@ -681,7 +538,7 @@ def _inner_bc_check_from_cfmesh(
             full_output=True,
         )
     else:
-        print(f"[INFO] Inner BC: using existing {dat_path}")
+        logger.info("Inner BC: using existing %s", dat_path)
 
     clat_ticks = [0, 45, 90, 135, 180]
     lon_ticks = [-180, -135, -90, -45, 0, 45, 90, 135, 180]
@@ -729,26 +586,37 @@ def _inner_bc_check_from_cfmesh(
     fig.tight_layout()
     
     out_png = plots_dir / f"{R:g}Rsun_inner_BC.png"
-    print(f"[INFO] Saving inner BC map -> {out_png}")
+    logger.info("Saving inner BC map -> %s", out_png)
     fig.savefig(out_png, dpi=200)
     if show: plt.show()
     plt.close(fig)
 
 def _outer_bc_check_from_cfmesh(
-    cfmesh_path,
-    dat_dir,
-    plots_dir,
-    when_str,
-    ntheta,
-    nphi,
-    dr,
-    show=True,
-    gamma: float = 5./3.,
-):
-    """
-    Determine the maximum radius from the CFmesh, create/read the .dat at that
-    radius, then plot outer boundary quantities:
-    sound speed, Alfvén speed, Mach number, Alfvénic Mach number.
+    cfmesh_path: str | Path,
+    dat_dir: Path,
+    plots_dir: Path,
+    when_str: str,
+    ntheta: int,
+    nphi: int,
+    dr: float,
+    show: bool = True,
+    gamma: float = 5.0 / 3.0,
+) -> None:
+    """Plot outer boundary quantities at the maximum mesh radius.
+
+    Args:
+        cfmesh_path: Path to the CFmesh file.
+        dat_dir: Directory for .dat outputs.
+        plots_dir: Directory for plots.
+        when_str: Timestamp string for metadata.
+        ntheta: Number of colatitude samples.
+        nphi: Number of longitude samples.
+        dr: Radial shell thickness.
+        show: If True, show the plot interactively.
+        gamma: Adiabatic index.
+
+    Returns:
+        None.
     """
     _, rmax = _get_mesh_radii_from_cfmesh(cfmesh_path)
     R = rmax
@@ -757,7 +625,7 @@ def _outer_bc_check_from_cfmesh(
 
     # Ensure .dat exists at the outer radius
     if not dat_path.exists():
-        print(f"[INFO] Outer BC: creating {dat_path} at R = {R:g}")
+        logger.info("Outer BC: creating %s at R = %s", dat_path, f"{R:g}")
         create_boundary_fromcfmesh(
             inputfile=str(cfmesh_path),
             time=when_str,
@@ -769,7 +637,7 @@ def _outer_bc_check_from_cfmesh(
             full_output=True,
         )
     else:
-        print(f"[INFO] Outer BC: using existing {dat_path}")
+        logger.info("Outer BC: using existing %s", dat_path)
 
 
     clat_ticks = [0, 45, 90, 135, 180]
@@ -837,7 +705,7 @@ def _outer_bc_check_from_cfmesh(
     fig.tight_layout()
 
     out_png = plots_dir / f"{R:g}Rsun_outer_BC.png"
-    print(f"[INFO] Saving outer BC map -> {out_png}")
+    logger.info("Saving outer BC map -> %s", out_png)
     fig.savefig(out_png, dpi=200)
     if show: plt.show()
     plt.close(fig)
@@ -847,55 +715,38 @@ def cfmesh_to_binned_spherical_grid(
     nr: int = 50,
     ntheta: int = 90,
     nphi: int = 180,
-    r_min=None,
-    r_max=None,
+    r_min: float | None = None,
+    r_max: float | None = None,
     auto_resolution: bool = False,
-    auto_kwargs: dict | None = None,
-):
-    """
-    Convert an UNSTRUCTURED COOLFluiD CFmesh into a binned spherical grid.
+    auto_kwargs: Mapping[str, Any] | None = None,
+) -> tuple[
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+]:
+    """Convert an unstructured CFmesh into a binned spherical grid.
 
-    Parameters
-    ----------
-    inputfile : str
-        Path to the CFmesh file.
-    nr : int
-        Number of radial bins.
-    ntheta : int
-        Number of colatitude bins.
-    nphi : int
-        Number of longitude bins.
-    r_min, r_max : float or None
-        Radial limits for the binning. If None, they are inferred from the mesh.
-    auto_resolution : bool = False,
-        enabling the binning grid resolution to be determined automatically from CFmesh density
-    auto_kwargs: dict | None = None,
-        automatic binning args
-    
-    Returns
-    -------
-    r_1d, theta_1d, phi_1d : 1-D arrays
-        Coordinates of the centers of the spherical grid bins.
-    vr_3d, vlon_3d, vclt_3d, rho0_3d, temp_3d, br_3d, blon_3d, bclt_3d : 3-D arrays
-        Physical fields averaged inside each (r, θ, φ) bin.
+    Args:
+        inputfile: Path to the CFmesh file.
+        nr: Number of radial bins.
+        ntheta: Number of colatitude bins.
+        nphi: Number of longitude bins.
+        r_min: Minimum radius for binning. If None, inferred from the mesh.
+        r_max: Maximum radius for binning. If None, inferred from the mesh.
+        auto_resolution: If True, compute bin counts automatically.
+        auto_kwargs: Optional arguments for auto-resolution.
 
-    Notes
-    -----
-    - Bins with no contributing CFmesh cells get np.nan.
-    - Binning is robust for unstructured tetra/hexa meshes used in COOLFluiD.
-    - Auto-binning suggestions:
-        out = cfmesh_to_binned_spherical_grid( "corona.CFmesh", auto_resolution=True) > Automatic resolution
-        out = cfmesh_to_binned_spherical_grid( "corona.CFmesh", auto_resolution=True, auto_kwargs=dict(
-            sample_max=100_000,
-            max_nr=200,
-            max_ntheta=360,
-            max_nphi=720,
-            q=0.20) )            > Automatic, but with caps (recommended on big runs)
-    
-        out = cfmesh_to_binned_spherical_grid( "corona.CFmesh", nr=80, ntheta=180, nphi=360, auto_resolution=False)  > Manual override still possible
-
-
-
+    Returns:
+        Tuple of arrays: (r_centers, theta_centers, phi_centers, vr_3d, vlon_3d,
+        vclt_3d, rho_3d, temp_3d, br_3d, blon_3d, bclt_3d).
     """
 
     # ------------------------------
@@ -935,7 +786,7 @@ def cfmesh_to_binned_spherical_grid(
             r_min=r_min, r_max=r_max,
             **auto_kwargs
         )
-        print(f"[INFO] Auto binning resolution: nr={nr}, ntheta={ntheta}, nphi={nphi}")
+        logger.info("Auto binning resolution: nr=%s, ntheta=%s, nphi=%s", nr, ntheta, nphi)
 
     else:
         if nr is None or ntheta is None or nphi is None:
@@ -1030,11 +881,11 @@ def cfmesh_to_binned_spherical_grid(
         br_3d   = br_sum   / count
         blon_3d = blon_sum / count
         bclt_3d = bclt_sum / count
-        print(br_3d)
+        logger.debug("br_3d: %s", br_3d)
 
     filled = np.isfinite(rho_3d).sum()
     total = rho_3d.size
-    print(f"Filled bins: {filled}/{total} = {filled/total:.3%}")
+    logger.info("Filled bins: %s/%s = %.3f%%", filled, total, 100.0 * filled / total)
     #As a rule of thumb for unstructured binning:
     #< 1% filled → resolution is much too fine
     #5–30% filled → usually OK
@@ -1050,23 +901,39 @@ def cfmesh_to_binned_spherical_grid(
     )
 
 def _auto_spherical_binning_resolution(
-    r, theta, phi,
-    r_min=None, r_max=None,
-    sample_max=100_000,
-    q=0.35,
-    min_nr=8, max_nr=120,
-    min_ntheta=24, max_ntheta=180,
-    min_nphi=48, max_nphi=360,
-):
-    """
-    Estimate (nr, ntheta, nphi) from point density in (r,theta,phi).
+    r: np.ndarray,
+    theta: np.ndarray,
+    phi: np.ndarray,
+    r_min: float | None = None,
+    r_max: float | None = None,
+    sample_max: int = 100_000,
+    q: float = 0.35,
+    min_nr: int = 8,
+    max_nr: int = 120,
+    min_ntheta: int = 24,
+    max_ntheta: int = 180,
+    min_nphi: int = 48,
+    max_nphi: int = 360,
+) -> tuple[int, int, int]:
+    """Estimate (nr, ntheta, nphi) from point density.
 
-    Strategy:
-      - subsample points if huge
-      - estimate typical spacing as a low-quantile of sorted unique diffs
-        (robust to refinement regions and duplicates)
-      - convert spacings into bin counts over the full domain
-      - clamp to min/max to avoid pathological grids
+    Args:
+        r: Radial coordinates.
+        theta: Colatitude coordinates.
+        phi: Longitude coordinates.
+        r_min: Minimum radius. If None, inferred from `r`.
+        r_max: Maximum radius. If None, inferred from `r`.
+        sample_max: Max samples for spacing estimate.
+        q: Quantile for spacing estimate.
+        min_nr: Minimum radial bins.
+        max_nr: Maximum radial bins.
+        min_ntheta: Minimum theta bins.
+        max_ntheta: Maximum theta bins.
+        min_nphi: Minimum phi bins.
+        max_nphi: Maximum phi bins.
+
+    Returns:
+        Tuple of (nr, ntheta, nphi).
     """
     if r_min is None: r_min = float(np.min(r))
     if r_max is None: r_max = float(np.max(r))
@@ -1115,10 +982,35 @@ def _auto_spherical_binning_resolution(
 # A more robust method is: for a random sample of points, compute distance to the nearest neighbor in (r, theta, phi)  with a periodic phi, then set bin widths from the median.
 ## !! NB: not fully sanity checked yet
 from scipy.spatial import cKDTree
-def _auto_resolution_nn(r, theta, phi, r_min, r_max,
-                        sample_max=80_000,
-                        safety=1.8,
-                        max_nr=160, max_ntheta=240, max_nphi=480):
+def _auto_resolution_nn(
+    r: np.ndarray,
+    theta: np.ndarray,
+    phi: np.ndarray,
+    r_min: float,
+    r_max: float,
+    sample_max: int = 80_000,
+    safety: float = 1.8,
+    max_nr: int = 160,
+    max_ntheta: int = 240,
+    max_nphi: int = 480,
+) -> tuple[int, int, int]:
+    """Estimate bin counts via nearest-neighbor spacing.
+
+    Args:
+        r: Radial coordinates.
+        theta: Colatitude coordinates.
+        phi: Longitude coordinates.
+        r_min: Minimum radius.
+        r_max: Maximum radius.
+        sample_max: Max samples for spacing estimate.
+        safety: Safety factor for spacing.
+        max_nr: Max radial bins.
+        max_ntheta: Max theta bins.
+        max_nphi: Max phi bins.
+
+    Returns:
+        Tuple of (nr, ntheta, nphi).
+    """
     N = r.size
     rng = np.random.default_rng(0)
     idx = rng.choice(N, size=min(N, sample_max), replace=False)

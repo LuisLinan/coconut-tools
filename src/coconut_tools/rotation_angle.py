@@ -81,7 +81,7 @@ def compute_rotation_angle(mag_name_path: str, date_hmi: str = None) -> Tuple[fl
             return 190.0
 
     # HMI
-    elif 'hmi' in prefix:
+    elif 'hmi' in prefix or 'mr' in prefix:
         logger.info("The magnetogram is HMI in CAR frame")
         if not date_hmi:
             raise ValueError("You must provide 'date_hmi' for HMI magnetograms.")
