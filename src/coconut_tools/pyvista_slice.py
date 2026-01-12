@@ -78,9 +78,10 @@ def read_mesh(filename):
     mesh = pv.read(filename)
 
 
-    logging.info("Arrays in point_data:", list(mesh.point_data.keys()))
-    logging.info("Arrays in cell_data:", list(mesh.cell_data.keys()))
-    logging.info("Arrays in field_data:", list(mesh.field_data.keys()))
+    logging.info("Arrays in point_data: %s", list(mesh.point_data.keys()))
+    logging.info("Arrays in cell_data: %s", list(mesh.cell_data.keys()))
+    logging.info("Arrays in field_data: %s", list(mesh.field_data.keys()))
+
 
     logging.info('Done!')
     return mesh

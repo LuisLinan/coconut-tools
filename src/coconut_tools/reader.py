@@ -140,36 +140,38 @@ def run_coconut_reader(
     
     
     for R in radii:
-    	dat_file = dat_dir / f"{R:g}Rsun.dat"
-    	png_file = plots_dir / f"{R:g}Rsun.png"
-    	
-    	# -----------------------------------------------------------
-    	# Do NOT recompute .dat if it already exists
-    	# -----------------------------------------------------------
-    	if dat_file.exists():
-    	    logger.info("%s already exists - skipping .dat computation.", dat_file)
-    	else:
-    	    logger.info("Extracting boundary at R = %s into %s", R, dat_file)
-    	    _ = create_boundary_fromcfmesh(
-    	        inputfile=str(cfmesh_path),
-    	        time=when_str,
-    	        rad_out=R*Rsun,
-    	        nb_th=ntheta,
-    	        nb_phi=nphi,
-    	        eps=dr,
-    	        output_dat=str(dat_file),
-    	        full_output=True,
-    	    )
-    	
-    	# -----------------------------------------------------------
-    	# Always regenerate the PNG (or also skip if preferred)
-    	# -----------------------------------------------------------
-    	logger.info("Making 2D surface plot -> %s", png_file)
-    	Surface_2D_onetime(
-    	    inputfile=str(dat_file),
-    	    outputfile=str(png_file),
-    	    **surface_kwargs,
-    	)
+        dat_file = dat_dir / f"{R:g}Rsun.dat"
+        png_file = plots_dir / f"{R:g}Rsun.png"
+        
+        # -----------------------------------------------------------
+        # Do NOT recompute .dat if it already exists
+        # -----------------------------------------------------------
+        if dat_file.exists():
+            logger.info("%s already exists - skipping .dat computation.", dat_file)
+        else:
+            print(cfmesh_path)
+            logger.info("Extracting boundary at R = %s into %s", R, dat_file)
+            _ = create_boundary_fromcfmesh(
+                inputfile=cfmesh_path,
+                time=when_str,
+                rad_out=R,
+                nb_th=ntheta,
+                nb_phi=nphi,
+                eps=dr,
+                output_dat=str(dat_file),
+                full_output=True,
+            )
+        
+        # -----------------------------------------------------------
+        # Always regenerate the PNG (or also skip if preferred)
+        # -----------------------------------------------------------
+        logger.info("Making 2D surface plot -> %s", png_file)
+        Surface_2D_onetime(inputfile=str(dat_file),
+            outputfile=str(png_file),
+            **surface_kwargs,
+        )
+
+
 
     
 
@@ -179,7 +181,6 @@ def run_coconut_reader(
     if off_screen:
         os.environ.setdefault("PYVISTA_OFF_SCREEN", "1")
         pv.OFF_SCREEN = True
-
     
     #vr vertical slice
     if slice_kwargs is None:
@@ -398,7 +399,7 @@ def visualize_yplane_disk(
 
     # Make a top-down plotter
     show = True
-    p = pv.Plotter(off_screen=not show, window_size=fig_size)
+    p = pv.Plotter(off_screen=True, window_size=fig_size)
 
     levels = 16
     base = plt.get_cmap(cmap)
@@ -456,13 +457,16 @@ def visualize_yplane_disk(
     #p.camera.zoom(1.5)
     p.camera.zoom(1.0)
 
-    if psfile is not None:
-        p.show() #remove this if off_screen=True
-        p.screenshot(str(Path(save_path) / psfile))
-    else:
+    out = str(Path(save_path) / psfile) if psfile is not None else None
+
+    if out is not None:
+        p.screenshot(out)
+
+    if show:  # utilise ton bool show si tu en as un
         p.show()
 
     p.close()
+
 
 def _get_mesh_radii_from_cfmesh(cfmesh_path: str | Path) -> tuple[float, float]:
     """Read the CFmesh and return (r_min, r_max) in code units.
@@ -530,7 +534,7 @@ def _inner_bc_check_from_cfmesh(
         create_boundary_fromcfmesh(
             inputfile=str(cfmesh_path),
             time=when_str,
-            rad_out=R*Rsun,
+            rad_out=R,
             nb_th=ntheta,
             nb_phi=nphi,
             eps=dr,
@@ -629,7 +633,7 @@ def _outer_bc_check_from_cfmesh(
         create_boundary_fromcfmesh(
             inputfile=str(cfmesh_path),
             time=when_str,
-            rad_out=R*Rsun,
+            rad_out=R,
             nb_th=ntheta,
             nb_phi=nphi,
             eps=dr,
@@ -1041,3 +1045,144 @@ def _auto_resolution_nn(
     ntheta = int(np.clip(np.ceil(np.pi / dth), 24, max_ntheta))
     nphi = int(np.clip(np.ceil((2*np.pi) / dph), 48, max_nphi))
     return nr, ntheta, nphi
+
+
+if __name__ == "__main__":
+    vtu_path = Path("C:/Users/luisl/Documents/Travail/Article_COCORIA/corona-mhd_0.vtu")
+    cfmesh_path = Path("C:/Users/luisl/Documents/Travail/Article_COCORIA/corona.CFmesh")
+    output_dir = Path("E:/euhforia/image")
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "dat").mkdir(parents=True, exist_ok=True)
+    (output_dir / "plots").mkdir(parents=True, exist_ok=True)
+
+    os.environ.setdefault("PYVISTA_OFF_SCREEN", "1")
+    pv.OFF_SCREEN = True
+
+    when_str = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+
+    logger.info("Testing run_coconut_reader.")
+    run_coconut_reader(
+        base_path=output_dir,
+        cfmesh_name=str(cfmesh_path),
+        vtu_relpath=str(vtu_path),
+        radii=(1.0,),
+        when=when_str,
+        ntheta=90,
+        nphi=180,
+        dr=0.01,
+        surface_kwargs=dict(mode="all", extended=True, showP=True),
+        slice_kwargs=dict(
+            slice_normal="y",
+            vr_clim=None,
+            br_clim=None,
+            stream_clim=None,
+            rho_iso=1e-16,
+            save_path=str(output_dir / "pyvista_slice.png"),
+            show=False,
+        ),
+        off_screen=True,
+        inner_bc_check=False,
+        outer_bc_check=False,
+        AlfvSurf=False,
+    )
+
+    logger.info("Testing Quick_Vr_Viewer.")
+    Quick_Vr_Viewer(
+        base_path=vtu_path.parent,
+        vtu_relpath=vtu_path.name,
+        figpath=output_dir,
+        psfile="quick_vr.png",
+        do_fieldlines=False,
+    )
+
+    logger.info("Testing Quick_Ra_viewer.")
+    Quick_Ra_viewer(
+        base_path=vtu_path.parent,
+        vtu_relpath=vtu_path.name,
+        volumic_vr=None,
+        off_screen=True,
+    )
+
+    logger.info("Testing visualize_yplane_disk.")
+    mesh = read_mesh(str(vtu_path))
+    mesh = convert_units(mesh)
+    mesh = convert_to_spherical(mesh)
+    visualize_yplane_disk(
+        mesh,
+        save_path=output_dir,
+        field="vr",
+        clim=None,
+        cmap="viridis",
+        psfile="yplane_disk.png",
+        fig_size=(1920, 1920),
+        do_fieldlines=False,
+    )
+
+    logger.info("Testing _get_mesh_radii_from_cfmesh.")
+    rmin, rmax = _get_mesh_radii_from_cfmesh(cfmesh_path)
+    logger.info("Mesh radii: rmin=%s rmax=%s", rmin, rmax)
+
+    logger.info("Testing _inner_bc_check_from_cfmesh.")
+    _inner_bc_check_from_cfmesh(
+        cfmesh_path=cfmesh_path,
+        dat_dir=output_dir / "dat",
+        plots_dir=output_dir / "plots",
+        when_str=when_str,
+        ntheta=90,
+        nphi=180,
+        dr=0.01,
+        show=False,
+    )
+
+    logger.info("Testing _outer_bc_check_from_cfmesh.")
+    _outer_bc_check_from_cfmesh(
+        cfmesh_path=cfmesh_path,
+        dat_dir=output_dir / "dat",
+        plots_dir=output_dir / "plots",
+        when_str=when_str,
+        ntheta=90,
+        nphi=180,
+        dr=0.01,
+        show=False,
+    )
+
+    logger.info("Testing cfmesh_to_binned_spherical_grid.")
+    cfmesh_to_binned_spherical_grid(
+        inputfile=str(cfmesh_path),
+        nr=30,
+        ntheta=60,
+        nphi=120,
+        auto_resolution=False,
+    )
+
+    logger.info("Testing _auto_spherical_binning_resolution and _auto_resolution_nn.")
+    with open(cfmesh_path, "r") as f:
+        lines = f.readlines()
+    idx0, idx1, idx2, idx3, nbelements, nend, comment = readstruct(lines)
+    connectivity = np.loadtxt(lines[idx0:idx0 + nbelements], dtype=int)
+    coordinates = np.loadtxt(lines[idx1:idx2 - 1], dtype=float)
+    nodes = connectivity[:, :6]
+    centers = coordinates[nodes].mean(axis=1)
+    x, y, z = centers.T
+    r = np.sqrt(x * x + y * y + z * z)
+    theta = np.arccos(z / r)
+    phi = np.arctan2(y, x)
+    phi[phi < 0] += 2 * np.pi
+
+    nr, ntheta, nphi = _auto_spherical_binning_resolution(r, theta, phi)
+    logger.info("Auto spherical binning: nr=%s ntheta=%s nphi=%s", nr, ntheta, nphi)
+
+    nnr, nntheta, nnphi = _auto_resolution_nn(
+        r=r,
+        theta=theta,
+        phi=phi,
+        r_min=float(r.min()),
+        r_max=float(r.max()),
+    )
+    logger.info(
+        "Auto NN binning: nr=%s ntheta=%s nphi=%s",
+        nnr,
+        nntheta,
+        nnphi,
+    )
