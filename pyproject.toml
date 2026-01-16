@@ -17,6 +17,7 @@ dependencies = [
   "cmocean",
   "colorlog",
   "h5py",
+  "imageio[ffmpeg]",
   "matplotlib",
   "natsort",
   "numpy",
