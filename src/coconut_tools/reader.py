@@ -244,6 +244,10 @@ def Quick_Vr_Viewer(
     vtu_relpath: str = "vtu/corona-mhd_0000.vtu",
     figpath: str | Path = "./",
     psfile: str | None = None,
+    plane: str = "y",         
+    phi: float = 0.0,         
+    phi_degrees: bool = True, 
+    cam_dist: float = 100.0,  
 ) -> None:
     """Quick viewer for a y-plane disk plot.
 
@@ -294,6 +298,10 @@ def Quick_Vr_Viewer(
         V_name = V_name,
         psfile=psfile,
         fig_size=(1920, 1920),
+        plane=plane,
+        phi=phi,
+        phi_degrees=phi_degrees,
+        cam_dist=cam_dist,
     )
 
 def Quick_Ra_viewer(
@@ -367,6 +375,10 @@ def visualize_yplane_disk(
     step_size: float = 0.02,
     max_time: float = 200.0,
     line_radius: float = 0.01,
+    plane: str = "y",         
+    phi: float = 0.0,         
+    phi_degrees: bool = True, 
+    cam_dist: float = 100.0,  
 ) -> None:
     """Produce a centered, full-disk 2D visualization of the y=0 plane.
 
@@ -387,19 +399,61 @@ def visualize_yplane_disk(
         step_size: Step size for integration (Rsun units).
         max_time: Max integration time (controls arc length).
         line_radius: Field line tube radius.
+        plane: "x", "y", "z", or "lon"
+               NB: plane="y", equivalent to plane="lon"+phi=0.
+        phi: longitude value (deg or rad), used if plane=="lon"
+        phi_degrees: interpret phi as degrees if True
+        cam_dist: camera distance (your current 100)
 
     Returns:
         None.
     """
 
     logger.info("Creating centered y-plane disk plot -> %s", save_path)
+    
+    # 1) choose slice plane normal
+    plane_l = plane.lower()
+    
+    if plane_l in ("x", "y", "z"):
+        normal = plane_l  # PyVista accepts "x"/"y"/"z" directly
+        slice_plane = mesh.slice(normal=normal, origin=(0.0, 0.0, 0.0))
+        
+        # camera: look from +axis direction, keep +z as "up" when possible
+        if plane_l == "x":
+            eye = (cam_dist, 0.0, 0.0)
+            up  = (0.0, 0.0, 1.0)
+            n = np.array([1.0, 0.0, 0.0])
+        elif plane_l == "y":
+            eye = (0.0, cam_dist, 0.0)
+            up  = (0.0, 0.0, 1.0)
+            n = np.array([0.0, 1.0, 0.0])
+        else:  # "z"
+            eye = (0.0, 0.0, cam_dist)
+            up  = (0.0, 1.0, 0.0)   # avoid degeneracy (up parallel to view dir)
+            n = np.array([0.0, 0.0, 1.0])
+            
+    elif plane_l in ("lon", "phi", "longitude"):
+        # longitude slice: plane contains z-axis, rotated around z by phi
+        phi_rad = np.deg2rad(phi) if phi_degrees else float(phi)
+        
+        # plane normal for longitude phi (phi=0 -> y=0 plane; phi=90deg -> x=0 plane)
+        n = np.array([np.sin(phi_rad), -np.cos(phi_rad), 0.0])
+        slice_plane = mesh.slice(normal=n, origin=(0.0, 0.0, 0.0))
+        
+        # camera: look perpendicular to that longitude plane (rotate like the slice)
+        eye = tuple((-cam_dist * n).tolist()) # face-on to the slice, ie. the other way to the plane normal
+        up  = (0.0, 0.0, 1.0)
+        
+    else:
+        raise ValueError('plane must be one of {"x","y","z","lon"} (or "phi"/"longitude").')
 
-    # Extract the slice at y=0
-    slice_plane = mesh.slice(normal="y", origin=(0, 0, 0))
-
-    # Make a top-down plotter
-    show = True
-    p = pv.Plotter(off_screen=True, window_size=fig_size)
+    
+    #2) Make a top-down plotter
+    if psfile != None:
+        off_screen=True
+    else:
+        off_screen=False
+    p = pv.Plotter(off_screen=off_screen, window_size=fig_size)
 
     levels = 16
     base = plt.get_cmap(cmap)
@@ -414,10 +468,23 @@ def visualize_yplane_disk(
     )
 
     if do_fieldlines:
-        # 1) build seed points on the circle: x=r cos(t), y=0, z=r sin(t)
+        # 1) Build an orthonormal basis (e1, e2) spanning the plane perpendicular to n, to get the seeds in there
+        n_hat = n / np.linalg.norm(n)
+        
+        # pick a helper vector not parallel to n_hat
+        a = np.array([0.0, 0.0, 1.0])
+        if abs(np.dot(a, n_hat)) > 0.99:
+            a = np.array([0.0, 1.0, 0.0])
+            
+        e1 = np.cross(n_hat, a)
+        e1 /= np.linalg.norm(e1)
+        e2 = np.cross(n_hat, e1)  # already normalized if n_hat and e1 are
+        
+        # seed circle of radius r_seed in the slice plane, centered at origin
         t = np.linspace(0.0, 2*np.pi, n_seeds, endpoint=False)
-        seeds = np.c_[r_seed*np.cos(t), np.zeros_like(t), r_seed*np.sin(t)]
+        seeds = r_seed * (np.cos(t)[:, None] * e1[None, :] + np.sin(t)[:, None] * e2[None, :])
         seed_src = pv.PolyData(seeds)
+        
         
         # 2) compute streamlines (field lines) in the *full* 3D mesh, seeded from that circle
         #    (use mesh.streamlines_from_source; it uses the active vectors or vectors=...)
@@ -438,6 +505,12 @@ def visualize_yplane_disk(
             compute_vorticity=False,
         )
         
+        ## 3) Shows only the field lines near the slice
+        #slab_thickness = 0.05  # Rsun units; tune
+        #lines_clipped = lines.clip(normal=tuple(n_hat), origin=(0.0, 0.0, 0.0), invert=False)
+        #lines_clipped = lines_clipped.clip(normal=tuple(-n_hat), origin=tuple((slab_thickness*n_hat)), invert=False)
+        #lines = lines_clipped
+        
         # optional: make them prettier
         tubes = lines.tube(radius=line_radius)  # radius in Rsun units; tune this
         
@@ -447,22 +520,21 @@ def visualize_yplane_disk(
         #p.add_mesh(seed_src, color="white", point_size=6, render_points_as_spheres=True)
         
     # Camera looking straight at the disk from +y direction
-    p.camera_position = [
-        (0, 100, 0),   # eye
-        (0, 0, 0),    # look center
-        (0, 0, 1),    # up vector
-    ]
+    #p.camera_position = [
+    #    (0, 100, 0),   # eye
+    #    (0, 0, 0),    # look center
+    #    (0, 0, 1),    # up vector
+    #]
 
-    # Make sure full disk is visible
-    #p.camera.zoom(1.5)
+    # 3) set camera
+    p.camera_position = [eye, (0.0, 0.0, 0.0), up]
     p.camera.zoom(1.0)
 
-    out = str(Path(save_path) / psfile) if psfile is not None else None
-
-    if out is not None:
+    if psfile != None:
+        out = str(Path(save_path) / psfile)
         p.screenshot(out)
-
-    if show:  # utilise ton bool show si tu en as un
+        
+    else:
         p.show()
 
     p.close()
