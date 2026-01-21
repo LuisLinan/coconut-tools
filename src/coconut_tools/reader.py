@@ -261,6 +261,11 @@ def Quick_Vr_Viewer(
         vtu_relpath: Relative path to the VTU file.
         figpath: Output directory for saved figures.
         psfile: If set, save the plot to this filename.
+        plane: "x", "y", "z", or "lon"
+               NB: plane="y", equivalent to plane="lon"+phi=0.
+        phi: longitude value (deg or rad), used if plane=="lon"
+        phi_degrees: interpret phi as degrees if True
+        cam_dist: camera distance (your current 100)
 
     Raises:
         FileNotFoundError: If the VTU file is missing.
@@ -303,6 +308,8 @@ def Quick_Vr_Viewer(
         phi_degrees=phi_degrees,
         cam_dist=cam_dist,
     )
+
+
 
 def Quick_Ra_viewer(
     base_path: str | Path = ".",
@@ -357,6 +364,187 @@ def Quick_Ra_viewer(
                save_path=save_path,
                rho_iso = 0.,
                show=not off_screen)
+
+def _add_carrington_grid(
+    plotter: pv.Plotter,
+    r: float,
+    lon_step: float,
+    lat_step: float,
+    color: str,
+    width: float,
+):
+    '''
+    Developed for visualize_spherical_surface_from_vtu
+    '''
+    # Longitudes (meridians)
+    lons = np.arange(0.0, 360.0, lon_step)
+    lat = np.linspace(-90.0, 90.0, 361)
+
+    for lon in lons:
+        phi = np.deg2rad(lon)
+        lam = np.deg2rad(lat)
+
+        x = r * np.cos(lam) * np.cos(phi)
+        y = r * np.cos(lam) * np.sin(phi)
+        z = r * np.sin(lam)
+
+        pts = np.column_stack((x, y, z))
+        line = pv.lines_from_points(pts)
+        plotter.add_mesh(line, color=color, line_width=width)
+
+    # Latitudes (parallels)
+    lats = np.arange(-90.0 + lat_step, 90.0, lat_step)
+    lon = np.linspace(0.0, 360.0, 721)
+
+    for lat in lats:
+        lam = np.deg2rad(lat)
+        phi = np.deg2rad(lon)
+
+        x = r * np.cos(lam) * np.cos(phi)
+        y = r * np.cos(lam) * np.sin(phi)
+        z = r * np.sin(lam) * np.ones_like(phi)
+
+        pts = np.column_stack((x, y, z))
+        line = pv.lines_from_points(pts)
+        plotter.add_mesh(line, color=color, line_width=width)
+
+    
+def visualize_spherical_surface_from_vtu(
+    vtu_path: str | Path,
+    r_surf: float,
+    save_path: str | Path = "plots/",
+    field: str = "vr",
+    clim: tuple[float, float] | None = None,
+    cmap: str = "viridis",
+    psfile: str | None = None,
+    fig_size: tuple[int, int] = (1920, 1920),
+    discrete: bool = True,
+    theta_res: int = 360,
+    phi_res: int = 180,
+    view: str = "iso",        # "x", "y", "z", or "iso"
+    show: bool = True,
+    show_grid: bool = True,
+    lon_step: float = 30.0,   # degrees
+    lat_step: float = 15.0,   # degrees
+    grid_color: str = "white",
+    grid_width: float = 1.0,
+    cam_dist=None,
+
+) -> None:
+    """
+    Plot a scalar quantity on a spherical surface at radius r_surf
+    by sampling a VTU volume mesh.
+
+    Args:
+        vtu_path: Path to the VTU file.
+        r_surf: Radius of the spherical surface (Rsun units).
+        save_path: Output directory or full file path.
+        field: Scalar field to visualize.
+        clim: Color limits.
+        cmap: Matplotlib colormap name.
+        psfile: If set, save a screenshot with this filename.
+        fig_size: Window size in pixels.
+        discrete: If True, use a discretized colormap.
+        theta_res: Longitude resolution of the sphere.
+        phi_res: Colatitude resolution of the sphere.
+        view: Camera view ("x", "y", "z", or "iso").
+        show: Whether to display the plot interactively.
+        show_grid: show carrington grid if True + args
+
+    Returns:
+        None.
+    """
+
+    vtu_path = Path(vtu_path)
+    if not vtu_path.is_file():
+        raise FileNotFoundError(f"VTU file not found: {vtu_path}")
+
+    logger.info("Reading VTU mesh from %s", vtu_path)
+
+    # ------------------------------------------------------------------
+    # 1) Read and prepare mesh (same pipeline as elsewhere in reader.py)
+    # ------------------------------------------------------------------
+    mesh = read_mesh(str(vtu_path))
+    mesh = convert_units(mesh)
+    mesh = convert_to_spherical(mesh)
+
+    # Ensure the field is available as point data for sampling
+    if field not in mesh.point_data and field in mesh.cell_data:
+        mesh = mesh.cell_data_to_point_data()
+
+    if field not in mesh.point_data:
+        raise ValueError(
+            f"Field '{field}' not found in VTU mesh. "
+            f"Available point_data: {list(mesh.point_data.keys())}"
+        )
+
+    # ------------------------------------------------------------------
+    # 2) Build spherical surface and sample the volume mesh onto it
+    # ------------------------------------------------------------------
+    sphere = pv.Sphere(
+        radius=float(r_surf),
+        center=(0.0, 0.0, 0.0),
+        theta_resolution=int(theta_res),
+        phi_resolution=int(phi_res),
+    )
+
+    surf = sphere.sample(mesh)
+
+    # ------------------------------------------------------------------
+    # 3) Plot
+    # ------------------------------------------------------------------
+    off_screen = psfile is not None
+    p = pv.Plotter(off_screen=off_screen, window_size=fig_size)
+
+    if discrete:
+        levels = 16
+        base = plt.get_cmap(cmap)
+        mycmap = ListedColormap(base(np.linspace(0, 1, levels)))
+    else:
+        mycmap = cmap
+
+    p.add_mesh(
+        surf,
+        scalars=field,
+        cmap=mycmap,
+        clim=clim,
+        show_edges=False,
+    )
+
+    if show_grid:
+        _add_carrington_grid(
+            plotter=p,
+            r=float(r_surf),
+            lon_step=lon_step,
+            lat_step=lat_step,
+            color=grid_color,
+            width=grid_width,
+        )
+
+    # Camera presets
+    if cam_dist==None: cam_dist = 3.0 * float(r_surf)
+    v = view.lower()
+    if v == "x":
+        eye, up = (cam_dist, 0.0, 0.0), (0.0, 0.0, 1.0)
+    elif v == "y":
+        eye, up = (0.0, cam_dist, 0.0), (0.0, 0.0, 1.0)
+    elif v == "z":
+        eye, up = (0.0, 0.0, cam_dist), (0.0, 1.0, 0.0)
+    else:  # "iso"
+        eye, up = (cam_dist, cam_dist, cam_dist), (0.0, 0.0, 1.0)
+
+    p.camera_position = [eye, (0.0, 0.0, 0.0), up]
+
+    out = str(Path(save_path) / psfile) if psfile is not None else None
+    if out is not None:
+        logger.info("Saving spherical surface plot -> %s", out)
+        p.screenshot(out)
+
+    if show:
+        p.show()
+
+    p.close()
+
 
 def visualize_yplane_disk(
     mesh: pv.DataSet,
