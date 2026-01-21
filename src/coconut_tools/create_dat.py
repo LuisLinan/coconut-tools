@@ -146,15 +146,19 @@ def create_boundary_fromcfmesh(inputfile: str, time: str, rad_out: float, nb_th:
     temp = Pressure / rho0 / 2 / 1.38e-23 # P*mu/n'/kb = T [K] with mu=0.5 already hardcoded here !!!
     
     x, y, z = centers[mask].T
-    r_bis = np.hypot(x, y)
-    EPSILON = 1e-8
+    rho = np.hypot(x, y)
+    
+    rho_safe = np.maximum(rho, 1e-8)
+    r_safe = np.maximum(r[mask], 1e-8)
 
-    vr = (x * Vx0 + y * Vy0 + z * Vz0) / r[mask]
-    vlon = (-y * Vx0 + x * Vy0) / (r_bis + EPSILON)
-    vclt = (x * z * Vx0 + y * z * Vy0 - (r_bis + EPSILON) * Vz0) / (r[mask] * (r_bis + EPSILON))
-    br = (x * Bx + y * By + z * Bz) / r[mask]
-    blon = (-y * Bx + x * By) / (r_bis + EPSILON)
-    bclt = (x * z * Bx + y * z * By - (r_bis + EPSILON) * Bz) / (r[mask] * (r_bis + EPSILON))
+    vclt = (z*(x*Vx0 + y*Vy0) - (rho**2)*Vz0) / (r_safe * rho_safe)
+    bclt = (z*(x*Bx  + y*By ) - (rho**2)*Bz ) / (r_safe * rho_safe)
+
+    vr = (x * Vx0 + y * Vy0 + z * Vz0) / r_safe
+    vlon = (-y * Vx0 + x * Vy0) / rho_safe
+    br = (x * Bx + y * By + z * Bz) /r_safe
+    blon = (-y * Bx + x * By) / rho_safe
+
 
     interp_fields = {
         'vr': vr,
