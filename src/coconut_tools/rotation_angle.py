@@ -20,9 +20,38 @@ from datetime import datetime
 import os
 from coconut_tools.logger_config import setup_logger
 from typing import Tuple
+from astropy.io import fits
+import numpy as np
 
 
 logger = setup_logger(__name__)
+
+def _lon_grid_from_fits_1d(path: str) -> np.ndarray:
+    """Reconstruct the 1D longitude grid from a FITS header.
+
+    This function rebuilds the longitude axis using standard FITS WCS
+    keywords (CRPIX1, CRVAL1, CDELT1). It is mainly used to determine the
+    longitude convention of ADAPT magnetograms, in particular for
+    central-meridian-centered products (ADAPT 413).
+
+    Args:
+        path (str): Path to the FITS magnetogram file.
+
+    Returns:
+        np.ndarray: One-dimensional array of longitudes in degrees,
+        following the native convention of the FITS file.
+    """
+    with fits.open(path) as hdul:
+        hdr = hdul[0].header
+
+    n = int(hdr["NAXIS1"])
+    crpix1 = float(hdr.get("CRPIX1", 1.0))
+    crval1 = float(hdr.get("CRVAL1", 0.0))
+    cdelt1 = float(hdr.get("CDELT1", 1.0))
+
+    i = np.arange(1, n + 1, dtype=float)
+    lon = crval1 + (i - crpix1) * cdelt1
+    return lon
 
 def compute_rotation_angle(mag_name_path: str, date_hmi: str = None) -> Tuple[float, datetime]:
     """Compute the rotation angle from magnetogram filename.
@@ -34,10 +63,9 @@ def compute_rotation_angle(mag_name_path: str, date_hmi: str = None) -> Tuple[fl
         date_hmi (str, optional): ISO datetime string used for HMI (e.g. '2024-07-01T00:00:00')
 
     Returns:
-        float: Rotation angle in degrees to convert from Carrington to Stonyhurst
-        datetime: The observation date of the magnetogram
+        float: Angle alpha in degrees such that lon_heeq = lon_mag - alpha (mod 360)
+        datetime: Observation date of the magnetogram
     """
-    print('test')
     mag_name = os.path.basename(mag_name_path)
     logger.info(f"The magnetogram name is: {mag_name}")
 
@@ -75,10 +103,24 @@ def compute_rotation_angle(mag_name_path: str, date_hmi: str = None) -> Tuple[fl
             CM_CAR = CM_HEEQ.transform_to(frames.HeliographicCarrington(observer='earth', obstime=date))
             CM_CAR_value = CM_CAR.lon.value % 360
             return (CM_CAR_value + 0) % 360 , date
-
         elif mode == '413':
-            logger.info("The magnetogram is GONG ADAPT in CM frame")
-            return 190.0
+            logger.info("The magnetogram is GONG ADAPT in CM centered frame")
+
+            lon = _lon_grid_from_fits_1d(mag_name_path)
+            lon_min = float(np.nanmin(lon))
+            lon_max = float(np.nanmax(lon))
+
+            # Cas 1: grille type CMD dans [-180, 180], déjà centrée sur CM
+            if lon_min < 0 and lon_max <= 180.1:
+                return 0.0, date
+
+            # Cas 2: grille en [0, 360] avec CM au centre par convention (souvent 180)
+            if lon_min >= 0 and lon_max > 180.0:
+                return 180.0, date
+
+            logger.error(f"Unrecognized ADAPT413 longitude range: [{lon_min:.2f}, {lon_max:.2f}]")
+            raise ValueError("Unrecognized ADAPT413 longitude convention.")
+
 
     # HMI
     elif 'hmi' in prefix or 'mr' in prefix:
@@ -120,5 +162,6 @@ if __name__ == "__main__":
 
     for test in test_cases:
         logger.info(f"\n====== {test['desc']} ======")
-        angle = compute_rotation_angle(test["path"], date_hmi=test["time"])
-        logger.info(f"Rotation angle: {angle:.2f} degrees")
+        angle, date = compute_rotation_angle(test["path"], date_hmi=test["time"])
+        logger.info(f"Rotation angle: {angle:.2f} degrees at {date.isoformat()}")
+

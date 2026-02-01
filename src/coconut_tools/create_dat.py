@@ -218,8 +218,8 @@ def rotation(input_dat: str, output_dat: str, angle_degrees: float, full_output:
     indices = {key: lines.index(key) for key in keys}
 
     clt = [float(x) for x in lines[clt_start + 1:lon_start - 2]]
-    lon_before = [float(x) + np.radians(angle_degrees) for x in lines[lon_start + 1:indices['vr']]]
-    lon = [math.fmod(angle, 2 * math.pi) for angle in lon_before]
+    lon_before = [float(x) - np.radians(angle_degrees) for x in lines[lon_start + 1:indices['vr']]]
+    lon = list(np.mod(lon_before, 2.0 * math.pi))
     min_index = np.argmin(lon)
     lon = np.roll(lon, -min_index)
 
