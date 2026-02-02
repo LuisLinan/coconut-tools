@@ -43,14 +43,15 @@ import matplotlib.pyplot as plt
 
 
 def is_carrington_longitude(header, fname=""):
-    """
-    Heuristic to decide whether the x axis is Carrington longitude.
+    """Heuristically decide whether the x axis is Carrington longitude.
 
-    Returns
-    -------
-    is_car : bool
-    info : dict
-        reason + key header fields used.
+    Args:
+        header (collections.abc.Mapping): FITS header.
+        fname (str, optional): Filename used as a weak hint.
+
+    Returns:
+        tuple[bool, dict]: ``(is_carrington, info)`` where ``info`` contains a
+        ``reason`` string plus the relevant header fields.
     """
     ctype1 = str(header.get("CTYPE1", "")).strip().upper()
     ctype2 = str(header.get("CTYPE2", "")).strip().upper()
@@ -113,32 +114,32 @@ def fits_latitude_axis(
     force_degrees=False,
     force_sine=False,
 ):
-    """
-    Build latitude axis from FITS header. Supports degrees-lat and sine-lat.
+    """Build a latitude axis from FITS WCS keywords.
 
-    Parameters
-    ----------
-    header : mapping
-        FITS header.
-    data : ndarray or masked array, optional
-        If provided, will be flipped consistently when latitude is reversed.
-        Expected shape (..., ny, nx) or (ny, nx).
-    output : {"deg","sin"}
-        Requested output axis: degrees latitude or sine(latitude).
-    one_based_fits : bool
-        FITS WCS CRPIX convention is 1-based.
-    force_degrees : bool
-        Force interpretation of axis values as degrees latitude.
-    force_sine : bool
-        Force interpretation of axis values as sine-latitude.
-    Returns
-    -------
-    lat_out : ndarray, shape (ny,)
-        Latitude axis in requested output.
-    data_out : ndarray or masked array or None
-        Flipped data if needed, otherwise original data. None if data is None.
-    meta : dict
-        Diagnostics: detected_mode, flipped, ctype2, cunit2, ny, crpix2, cdelt2_used, crval2_used.
+    Supports degrees-latitude and sine-latitude conventions. If the output
+    latitude is descending, the axis is flipped to be increasing and the data
+    are flipped consistently.
+
+    Args:
+        header (collections.abc.Mapping): FITS header.
+        data (np.ndarray | np.ma.MaskedArray | None, optional): 2D data array
+            with shape ``(..., ny, nx)`` or ``(ny, nx)``. If provided, it will
+            be flipped when the latitude axis is reversed.
+        output (str, optional): ``"deg"`` or ``"sin"`` output axis.
+        one_based_fits (bool, optional): FITS CRPIX convention is 1-based.
+        force_degrees (bool, optional): Force interpretation as degrees.
+        force_sine (bool, optional): Force interpretation as sine-latitude.
+
+    Returns:
+        tuple[np.ndarray, np.ndarray | np.ma.MaskedArray | None, dict]:
+        ``(lat_out, data_out, meta)`` where ``lat_out`` has shape ``(ny,)``,
+        ``data_out`` is flipped if needed, and ``meta`` contains diagnostics
+        such as ``detected_mode``, ``flipped``, and the WCS keywords used.
+
+    Raises:
+        KeyError: If required WCS keywords are missing from the header.
+        ValueError: If ``output`` is not ``"deg"`` or ``"sin"`` or if both
+        ``force_degrees`` and ``force_sine`` are True.
     """
     if "NAXIS2" not in header:
         raise KeyError("NAXIS2 missing from FITS header.")
@@ -233,17 +234,12 @@ def fits_latitude_axis(
 def detect_instrument(h, fname=""):
     """Detect the likely instrument/vendor from header or filename.
 
-    Args
-    ----
-    h : collections.abc.Mapping
-        FITS header.
-    fname : str, optional
-        Filename used as a fallback hint.
+    Args:
+        h (collections.abc.Mapping): FITS header.
+        fname (str, optional): Filename used as a fallback hint.
 
-    Returns
-    -------
-    str
-        ``"HMI"``, ``"GONG"`` or ``"UNKNOWN"``.
+    Returns:
+        str: ``"HMI"``, ``"GONG"``, or ``"UNKNOWN"``.
     """
     tel = str(h.get("TELESCOP", "")).upper()
     inst = str(h.get("INSTRUME", "")).upper()
@@ -260,20 +256,16 @@ def detect_instrument(h, fname=""):
 # -------------------------------------------------------------
 
 def start_lon_from_filename(fname):
-    """Extract starting Carrington longitude from a GONG‑style filename.
+    """Extract starting Carrington longitude from a GONG-style filename.
 
-    The function parses filenames like ``mrzqs170404t1814c2189_268.fits.gz`` and
-    returns the trailing ``268`` value as a degree quantity.
+    The function parses filenames like
+    ``mrzqs170404t1814c2189_268.fits.gz`` and returns the trailing ``268`` value.
 
-    Args
-    ----
-    fname : str
-        Input filename.
+    Args:
+        fname (str): Input filename.
 
-    Returns
-    -------
-    int | None
-        Parsed degree value if found, otherwise ``None``.
+    Returns:
+        int | None: Parsed degree value if found, otherwise ``None``.
     """
     name = fname.split('/')[-1]
     try:
@@ -283,25 +275,21 @@ def start_lon_from_filename(fname):
         return None
 
 def fits_longitude_deg(header, nx, *, one_based_fits=True):
-    """
-    Compute the x-axis longitudes in degrees from FITS WCS-like keywords.
+    """Compute the x-axis longitudes in degrees from FITS WCS-like keywords.
 
-    Parameters
-    ----------
-    header : mapping
-        FITS header (e.g. hdul[0].header).
-    nx : int
-        Number of pixels along x (data.shape[-1]).
-    one_based_fits : bool, default True
-        FITS WCS convention uses 1-based pixel coordinates for CRPIX.
-        Keep True unless you know your CRPIX1 is 0-based.
+    Args:
+        header (collections.abc.Mapping): FITS header (e.g. ``hdul[0].header``).
+        nx (int): Number of pixels along x (``data.shape[-1]``).
+        one_based_fits (bool, optional): FITS WCS convention uses 1-based pixel
+            coordinates for CRPIX. Keep True unless CRPIX1 is 0-based.
 
-    Returns
-    -------
-    x_deg : np.ndarray
-        Longitudes in degrees, shape (nx,).
-    meta : dict
-        Useful diagnostics: crpix1, cdelt1_deg, crval1_deg, cunit1, detected_scale.
+    Returns:
+        tuple[np.ndarray, dict]: ``(x_deg, meta)`` where ``x_deg`` has shape
+        ``(nx,)``. ``meta`` includes ``crpix1``, ``cdelt1_deg``, ``crval1_deg``,
+        ``cunit1``, and ``detected_scale``.
+
+    Raises:
+        KeyError: If required WCS keywords are missing from the header.
     """
     # Required WCS-ish keywords with safe defaults
     crpix1 = float(header.get("CRPIX1", 1.0))
@@ -362,22 +350,19 @@ def fits_longitude_deg(header, nx, *, one_based_fits=True):
 
 
 def fits_longitude_deg(header, *, one_based_fits=True):
-    """
-    Compute the x-axis longitude vector in degrees from a FITS header.
+    """Compute the x-axis longitude vector in degrees from a FITS header.
 
-    Parameters
-    ----------
-    header : mapping
-        FITS header (hdul[0].header).
-    one_based_fits : bool, default True
-        FITS convention uses 1-based pixel coordinates for CRPIX.
+    Args:
+        header (collections.abc.Mapping): FITS header (``hdul[0].header``).
+        one_based_fits (bool, optional): FITS convention uses 1-based pixel
+            coordinates for CRPIX.
 
-    Returns
-    -------
-    x_deg : np.ndarray
-        Longitude in degrees, shape (NAXIS1,).
-    meta : dict
-        Diagnostics on detected units and scaling.
+    Returns:
+        tuple[np.ndarray, dict]: ``(x_deg, meta)`` where ``x_deg`` has shape
+        ``(NAXIS1,)`` and ``meta`` contains diagnostics on units and scaling.
+
+    Raises:
+        KeyError: If required WCS keywords are missing from the header.
     """
     # Number of pixels along x
     if "NAXIS1" not in header:
@@ -442,24 +427,18 @@ def fits_longitude_deg(header, *, one_based_fits=True):
     return x_raw.astype(float), meta
 
 def order_carrington_0_360(lon_native, data, *, tol=1e-6):
-    """
-    Reorder a Carrington map so that longitude runs from 0 to 360 degrees.
+    """Reorder a Carrington map so longitude runs from 0 to 360 degrees.
 
-    Parameters
-    ----------
-    lon_native : ndarray, shape (nx,)
-        Native Carrington longitudes (can be in any range, any start).
-    data : ndarray or masked array, shape (ny, nx)
-        Magnetogram data.
-    tol : float
-        Tolerance used to stabilize sorting against numerical noise.
+    Args:
+        lon_native (np.ndarray): Native Carrington longitudes, shape ``(nx,)``.
+        data (np.ndarray | np.ma.MaskedArray): Magnetogram data, shape
+            ``(ny, nx)``.
+        tol (float, optional): Tolerance used to stabilize sorting.
 
-    Returns
-    -------
-    lon_sorted : ndarray, shape (nx,)
-        Carrington longitude in [0, 360), sorted.
-    data_sorted : ndarray or masked array, shape (ny, nx)
-        Data reordered along x.
+    Returns:
+        tuple[np.ndarray, np.ndarray | np.ma.MaskedArray]: ``(lon_sorted,
+        data_sorted)`` where ``lon_sorted`` is in ``[0, 360)`` and ``data_sorted``
+        is reordered along x.
     """
     lon = np.asarray(lon_native, dtype=float)
 
@@ -498,18 +477,30 @@ def plot_synoptic_imshow(
     vmax=None,
     cmap="RdBu_r",
 ):
-    """
-    Plot a synoptic magnetogram with imshow using lon/lat vectors.
+    """Plot a synoptic magnetogram with ``imshow`` using lon/lat vectors.
 
-    Assumptions
-    ----------
-    lon and lat are 1D vectors matching data columns/rows.
-    data is already reordered so that lon is increasing and in [0, 360).
-    lat is increasing (south to north).
+    Assumes ``lon`` and ``lat`` are 1D vectors matching data columns/rows, the
+    data are ordered so that ``lon`` is increasing in ``[0, 360)``, and ``lat``
+    is increasing (south to north).
 
-    Returns
-    -------
-    fig, ax, info
+    Args:
+        data (np.ndarray | np.ma.MaskedArray): Magnetogram data, shape
+            ``(ny, nx)``.
+        lon (np.ndarray): Longitudes in degrees, shape ``(nx,)``.
+        lat (np.ndarray): Latitudes in degrees, shape ``(ny,)``.
+        header (collections.abc.Mapping): FITS header.
+        inst (str, optional): Instrument label.
+        lon_meta (dict | None, optional): Metadata from ``fits_longitude_deg``.
+        lat_mode (str, optional): Latitude decoding mode string.
+        lon0_file (float | None, optional): Filename-encoded starting longitude.
+        lon0_used (float | None, optional): Longitude used for alignment.
+        vmin (float | None, optional): ``imshow`` vmin.
+        vmax (float | None, optional): ``imshow`` vmax.
+        cmap (str, optional): Matplotlib colormap name.
+
+    Returns:
+        tuple[matplotlib.figure.Figure, matplotlib.axes.Axes, dict]:
+        ``(fig, ax, info)`` with diagnostic information.
     """
 
     lon = np.asarray(lon, dtype=float)
@@ -633,9 +624,17 @@ def plot_synoptic_imshow(
     return fig, ax, info
 
 def read_synoptic_fits(fits_path):
-    """
-    Open a synoptic FITS file and return the header and data of the
-    first valid 2D image HDU.
+    """Read a synoptic FITS file and return the first valid 2D image HDU.
+
+    Args:
+        fits_path (str | pathlib.Path): Path to the FITS file.
+
+    Returns:
+        tuple[collections.abc.Mapping, np.ndarray, int]: ``(header, data, hdu_index)``
+        where ``data`` is a 2D float array.
+
+    Raises:
+        RuntimeError: If no valid 2D image HDU is found.
     """
     with fits.open(fits_path) as hdul:
         for i, hdu in enumerate(hdul):
@@ -664,54 +663,41 @@ def plot_synoptic_aligned(
     force_degrees=False,
     force_sine=False,
 ):
-    """Plot a synoptic map aligned so the **left edge** is 0° Carrington.
+    """Plot a synoptic map aligned so the left edge is 0° Carrington.
 
-    Workflow
-    --------
-    1. Read data and header from ``fits_path``.
-    2. Build the native longitude axis from the header and infer the starting
-       longitude both from the header and, if applicable, from a GONG‑style
-       filename.
-    3. Choose which starting longitude to use (header by default; filename for
-       GONG if ``prefer_filename_for_gong=True``).
-    4. Shift/wrap columns so the left edge is at 0°; construct the latitude
-       axis in degrees.
-    5. Render a diagnostic plot and return ``(fig, ax, info)``.
+    Workflow:
+        1) Read data and header from ``fits_path``.
+        2) Build the native longitude axis and infer a start longitude from the
+           header and, for GONG files, the filename.
+        3) Choose which start longitude to use (header by default; filename for
+           GONG if ``prefer_filename_for_gong=True``).
+        4) Shift/wrap columns so the left edge is at 0°, and build a latitude
+           axis in degrees.
+        5) Render a diagnostic plot and return ``(fig, ax, info)``.
 
-    Args
-    ----
-    fits_path : str | pathlib.Path
-        Path to the synoptic FITS file.
-    prefer_filename_for_gong : bool, optional
-        If ``True`` (default), prefer the filename‑encoded longitude for GONG
-        products, while still reporting both header and filename values.
-    vmin, vmax : float, optional
-        Color scaling bounds passed to ``imshow``.
-    cmap : str, optional
-        Matplotlib colormap name. Default ``"RdBu_r"``.
-    force_degrees : bool, optional
-        Force latitude axis to be treated as degrees.
-    force_sine : bool, optional
-        Force latitude axis to be treated as sine‑latitude.
+    Args:
+        fits_path (str | pathlib.Path): Path to the synoptic FITS file.
+        prefer_filename_for_gong (bool, optional): If True, prefer the
+            filename-encoded longitude for GONG products while still reporting
+            both header and filename values.
+        vmin (float | None, optional): Color scaling lower bound.
+        vmax (float | None, optional): Color scaling upper bound.
+        cmap (str, optional): Matplotlib colormap name.
+        force_degrees (bool, optional): Force latitude axis to be degrees.
+        force_sine (bool, optional): Force latitude axis to be sine-latitude.
 
-    Returns
-    -------
-    tuple[matplotlib.figure.Figure, matplotlib.axes.Axes, dict]
-        ``(fig, ax, info)`` where ``info`` contains diagnostic keys such as
-        ``instrument``, ``cdelt1_deg``, ``lon0_header``, ``lon0_filename`` and
+    Returns:
+        tuple[matplotlib.figure.Figure, matplotlib.axes.Axes, dict]:
+        ``(fig, ax, info)`` where ``info`` includes diagnostic keys such as
+        ``instrument``, ``cdelt1_deg``, ``lon0_header``, ``lon0_filename``, and
         ``lon0_used``.
 
-    Notes
-    -----
-    - The x‑extent is set to ``[0, 360]`` after reordering the columns by
-      increasing longitude.
-    - Missing / invalid data are masked with ``np.ma.masked_invalid``.
+    Raises:
+        RuntimeError: If the map is not in Carrington longitude.
 
-    Examples
-    --------
-    >>> fig, ax, info = plot_synoptic_aligned("/path/to/file.fits", vmin=-100, vmax=100)
-    >>> info["instrument"]
-    'HMI'
+    Notes:
+        - The x-extent is set to ``[0, 360]`` after reordering by longitude.
+        - Missing/invalid data are masked with ``np.ma.masked_invalid``.
     """
     h, data, hdu_index = read_synoptic_fits(fits_path)
 
@@ -736,8 +722,8 @@ def plot_synoptic_aligned(
         lon0_file = start_lon_from_filename(fits_path)
         if lon0_file is not None:
             print(
-                f"GONG lon0: filename={lon0_file}°  "
-                f"header/table={lon_native[0] % 360:.3f}°"
+                f"GONG start longitude: filename={lon0_file} deg; "
+                f"header-derived={lon_native[0] % 360:.3f} deg"
             )
 
     # Latitude physique en degrés, axe croissant
