@@ -632,6 +632,29 @@ def plot_synoptic_imshow(
 
     return fig, ax, info
 
+def read_synoptic_fits(fits_path):
+    """
+    Open a synoptic FITS file and return the header and data of the
+    first valid 2D image HDU.
+    """
+    with fits.open(fits_path) as hdul:
+        for i, hdu in enumerate(hdul):
+            data = hdu.data
+            if data is None:
+                continue
+
+            data = np.squeeze(data)
+            if data.ndim != 2:
+                continue
+
+            header = hdu.header
+            if "NAXIS1" not in header or "NAXIS2" not in header:
+                continue
+
+            return header, data.astype(float), i
+
+    raise RuntimeError("No valid 2D image HDU found in FITS file.")
+
 def plot_synoptic_aligned(
     fits_path,
     prefer_filename_for_gong=True,
@@ -690,9 +713,8 @@ def plot_synoptic_aligned(
     >>> info["instrument"]
     'HMI'
     """
-    with fits.open(fits_path) as hdul:
-        h = hdul[0].header
-        data = np.squeeze(hdul[0].data).astype(float)
+    h, data, hdu_index = read_synoptic_fits(fits_path)
+
 
     data = np.ma.masked_invalid(data)
     inst = detect_instrument(h, fname=fits_path)
@@ -722,7 +744,9 @@ def plot_synoptic_aligned(
     lat_deg, data_sorted2, meta_lat = fits_latitude_axis(
         h,
         data_sorted,
-        output="deg"   # si tu gardes cette API, sinon tu enlèves output
+        output="deg",   # si tu gardes cette API, sinon tu enlèves output
+        force_degrees=force_degrees,
+        force_sine=force_sine
     )
 
     # Plot
@@ -749,7 +773,7 @@ def plot_synoptic_aligned(
 # ------------------------------------------------------------
 
 if __name__ == "__main__":
-    hmi_file = r"C:/Users/luisl/Documents/Travail/COCONUT/AI_magnetogram/hmi.Synoptic_Mr_small.2219.fits"
+    hmi_file = r"C:/Users/luisl/Documents/Travail/coconut-tools\src/coconut_tools/test/hmi.Synoptic_Mr_polfil.2219.fits"
     gong_file = r"C:/Users/luisl/Documents/Travail/COCONUT/AI_magnetogram/mrzqs190702t1204c2219_260.fits.gz"
 
     # --- HMI ---
