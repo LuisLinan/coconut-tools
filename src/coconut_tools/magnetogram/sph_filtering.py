@@ -422,15 +422,24 @@ if __name__ == "__main__":
         }
     ]
     """
-
+    """    
     configs = [
         {
             "date": '2013-03-13T12:00:00', "map_type": 'GONG',
-            "lmax": 50, "amp": 1, "write_map": False, "show_map": False,
+            "lmax": 20, "amp": 1, "write_map": True, "show_map": True,
             "visu_type": "sinlat",
-            "output_dir": "./", "output_path_fig": "./hmi_20201207.png",
+            "output_dir": "E:/euhforia/magnetogram/alpha/", "output_path_fig": "E:/euhforia/magnetogram/alpha/GONG_20130313T120000.png",
             "alpha": 3*10**(-6)
         }]
+    """
+
+    configs = [
+    {
+        "date": '2019-07-02T12:04:37', "map_type": 'HMI_polfil',
+        "lmax": 20, "amp": 1, "write_map": True, "show_map": True,
+        "visu_type": "sinlat",
+        "output_dir": "C:/Users/luisl/Documents/Travail/coconut-tools/src/coconut_tools/test/", "output_path_fig": "C:/Users/luisl/Documents/Travail/coconut-tools/src/coconut_tools/test/hmi.png",
+    }]
 
     for config in configs:
         date = config["date"]

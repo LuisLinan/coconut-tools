@@ -71,215 +71,13 @@ if __name__ == "__main__":
     # --- Example runs ---
 
     configs = [
-
-        {
-            "date": '2011-09-04T12:00:00', "map_type": 'HMI_small',
-            "write_map": True, "show_map": True,
-            "visu_type": "sinlat",
-            "output_dir": "E:/GU V2/magnetogram/",
-            "output_path_fig": "E:/GU V2/image/hmi_20110904T120000.png",
-            "tau": 5, "iterations": 7
-        },
-        {
-            "date": '2011-09-24T12:00:00', "map_type": 'HMI_small',
-            "write_map": True, "show_map": True,
-            "visu_type": "sinlat",
-            "output_dir": "E:/GU V2/magnetogram/",
-            "output_path_fig": "E:/GU V2/image/hmi_20110924T120000.png",
-            "tau": 5, "iterations": 7
-        },
-        {
-            "date": '2012-03-06T23:00:00', "map_type": 'HMI_small',
-            "write_map": True, "show_map": True,
-            "visu_type": "sinlat",
-            "output_dir": "E:/GU V2/magnetogram/",
-            "output_path_fig": "E:/GU V2/image/hmi_20120306T230000.png",
-            "tau": 5, "iterations": 7
-        },
-        {
-            "date": '2012-03-07T12:00:00', "map_type": 'HMI_small',
-            "write_map": True, "show_map": True,
-            "visu_type": "sinlat",
-            "output_dir": "E:/GU V2/magnetogram/",
-            "output_path_fig": "E:/GU V2/image/hmi_20120307T120000.png",
-            "tau": 5, "iterations": 7
-        },
-        {
-            "date": '2012-05-10T23:30:00', "map_type": 'HMI_small',
-            "write_map": True, "show_map": True,
-            "visu_type": "sinlat",
-            "output_dir": "E:/GU V2/magnetogram/",
-            "output_path_fig": "E:/GU V2/image/hmi_20120510T233000.png",
-            "tau": 5, "iterations": 7
-        },
-        {
-            "date": '2012-07-09T23:30:00', "map_type": 'HMI_small',
-            "write_map": True, "show_map": True,
-            "visu_type": "sinlat",
-            "output_dir": "E:/GU V2/magnetogram/",
-            "output_path_fig": "E:/GU V2/image/hmi_20120709T233000.png",
-            "tau": 5, "iterations": 7
-        },
-        {
-            "date": '2012-09-23T06:00:00', "map_type": 'HMI_small',
-            "write_map": True, "show_map": True,
-            "visu_type": "sinlat",
-            "output_dir": "E:/GU V2/magnetogram/",
-            "output_path_fig": "E:/GU V2/image/hmi_20120923T060000.png",
-            "tau": 5, "iterations": 7
-        },
-        {
-            "date": '2013-04-08T06:00:00', "map_type": 'HMI_small',
-            "write_map": True, "show_map": True,
-            "visu_type": "sinlat",
-            "output_dir": "E:/GU V2/magnetogram/",
-            "output_path_fig": "E:/GU V2/image/hmi_20130408T060000.png",
-            "tau": 5, "iterations": 7
-        },
-        {
-            "date": '2013-09-28T18:00:00', "map_type": 'HMI_small',
-            "write_map": True, "show_map": True,
-            "visu_type": "sinlat",
-            "output_dir": "E:/GU V2/magnetogram/",
-            "output_path_fig": "E:/GU V2/image/hmi_20130928T180000.png",
-            "tau": 5, "iterations": 7
-        },
-        {
-            "date": '2013-03-13T12:00:00', "map_type": 'HMI_small',
-            "write_map": True, "show_map": True,
-            "visu_type": "sinlat",
-            "output_dir": "E:/GU V2/magnetogram/",
-            "output_path_fig": "E:/GU V2/image/hmi_20130313T120000.png",
-            "tau": 5, "iterations": 7
-        },
-        {
-            "date": '2014-01-04T18:00:00', "map_type": 'HMI_small',
-            "write_map": True, "show_map": True,
-            "visu_type": "sinlat",
-            "output_dir": "E:/GU V2/magnetogram/",
-            "output_path_fig": "E:/GU V2/image/hmi_20140104T180000.png",
-            "tau": 5, "iterations": 7
-        },
-        {
-            "date": '2014-09-06T18:00:00', "map_type": 'HMI_small',
-            "write_map": True, "show_map": True,
-            "visu_type": "sinlat",
-            "output_dir": "E:/GU V2/magnetogram/",
-            "output_path_fig": "E:/GU V2/image/hmi_20140906T180000.png",
-            "tau": 5, "iterations": 7
-        },
-        {
-            "date": '2017-04-04T18:00:00', "map_type": 'HMI_small',
-            "write_map": True, "show_map": True,
-            "visu_type": "sinlat",
-            "output_dir": "E:/GU V2/magnetogram/",
-            "output_path_fig": "E:/GU V2/image/hmi_20170404T180000.png",
-            "tau": 5, "iterations": 7
-        },
-
-        {
-            "date": '2011-09-04T12:00:00', "map_type": 'GONG',
-            "write_map": True, "show_map": True,
-            "visu_type": "sinlat",
-            "output_dir": "E:/GU V2/magnetogram/",
-            "output_path_fig": "E:/GU V2/image/GONG_20110904T120000.png",
-            "tau": 5, "iterations": 7
-        },
-        {
-            "date": '2011-09-24T12:00:00', "map_type": 'GONG',
-            "write_map": True, "show_map": True,
-            "visu_type": "sinlat",
-            "output_dir": "E:/GU V2/magnetogram/",
-            "output_path_fig": "E:/GU V2/image/GONG_20110924T120000.png",
-            "tau": 5, "iterations": 7
-        },
-        {
-            "date": '2012-03-06T23:00:00', "map_type": 'GONG',
-            "write_map": True, "show_map": True,
-            "visu_type": "sinlat",
-            "output_dir": "E:/GU V2/magnetogram/",
-            "output_path_fig": "E:/GU V2/image/GONG_20120306T230000.png",
-            "tau": 5, "iterations": 7
-        },
-        {
-            "date": '2012-03-07T12:00:00', "map_type": 'GONG',
-            "write_map": True, "show_map": True,
-            "visu_type": "sinlat",
-            "output_dir": "E:/GU V2/magnetogram/",
-            "output_path_fig": "E:/GU V2/image/GONG_20120307T120000.png",
-            "tau": 5, "iterations": 7
-        },
-        {
-            "date": '2012-05-10T23:30:00', "map_type": 'GONG',
-            "write_map": True, "show_map": True,
-            "visu_type": "sinlat",
-            "output_dir": "E:/GU V2/magnetogram/",
-            "output_path_fig": "E:/GU V2/image/GONG_20120510T233000.png",
-            "tau": 5, "iterations": 7
-        },
-        {
-            "date": '2012-07-09T23:30:00', "map_type": 'GONG',
-            "write_map": True, "show_map": True,
-            "visu_type": "sinlat",
-            "output_dir": "E:/GU V2/magnetogram/",
-            "output_path_fig": "E:/GU V2/image/GONG_20120709T233000.png",
-            "tau": 5, "iterations": 7
-        },
-        {
-            "date": '2012-09-23T06:00:00', "map_type": 'GONG',
-            "write_map": True, "show_map": True,
-            "visu_type": "sinlat",
-            "output_dir": "E:/GU V2/magnetogram/",
-            "output_path_fig": "E:/GU V2/image/GONG_20120923T060000.png",
-            "tau": 5, "iterations": 7
-        },
-        {
-            "date": '2013-04-08T06:00:00', "map_type": 'GONG',
-            "write_map": True, "show_map": True,
-            "visu_type": "sinlat",
-            "output_dir": "E:/GU V2/magnetogram/",
-            "output_path_fig": "E:/GU V2/image/GONG_20130408T060000.png",
-            "tau": 5, "iterations": 7
-        },
-        {
-            "date": '2013-09-28T18:00:00', "map_type": 'GONG',
-            "write_map": True, "show_map": True,
-            "visu_type": "sinlat",
-            "output_dir": "E:/GU V2/magnetogram/",
-            "output_path_fig": "E:/GU V2/image/GONG_20130928T180000.png",
-            "tau": 5, "iterations": 7
-        },
         {
             "date": '2013-03-13T12:00:00', "map_type": 'GONG',
             "write_map": True, "show_map": True,
             "visu_type": "sinlat",
-            "output_dir": "E:/GU V2/magnetogram/",
-            "output_path_fig": "E:/GU V2/image/GONG_20130313T120000.png",
-            "tau": 5, "iterations": 7
-        },
-        {
-            "date": '2014-01-04T18:00:00', "map_type": 'GONG',
-            "write_map": True, "show_map": True,
-            "visu_type": "sinlat",
-            "output_dir": "E:/GU V2/magnetogram/",
-            "output_path_fig": "E:/GU V2/image/GONG_20140104T180000.png",
-            "tau": 5, "iterations": 7
-        },
-        {
-            "date": '2014-09-06T18:00:00', "map_type": 'GONG',
-            "write_map": True, "show_map": True,
-            "visu_type": "sinlat",
-            "output_dir": "E:/GU V2/magnetogram/",
-            "output_path_fig": "E:/GU V2/image/GONG_20140906T180000.png",
-            "tau": 5, "iterations": 7
-        },
-        {
-            "date": '2017-04-04T18:00:00', "map_type": 'GONG',
-            "write_map": True, "show_map": True,
-            "visu_type": "sinlat",
-            "output_dir": "E:/GU V2/magnetogram/",
-            "output_path_fig": "E:/GU V2/image/GONG_20170404T180000.png",
-            "tau": 5, "iterations": 7
+            "output_dir": "E:/euhforia/magnetogram/high_iteration/",
+            "output_path_fig": "E:/euhforia/magnetogram/high_iteration/GONG_20130313T120000.png",
+            "tau": 10, "iterations": 15
         },
     ]
 
@@ -304,13 +102,15 @@ if __name__ == "__main__":
             Br, Theta, Phi = read_magnetogram(local_file, map_type, adapt_map)
 
             # Use phi and theta vectors from the 2D grid
-            Br_filtered, timestep = filter_radial_field(Br, Phi[0, :], Theta[:, 0], iterations=7,tau=5)
+            Br_filtered, timestep = filter_radial_field(Br, Phi[0, :], Theta[:, 0], iterations=iterations,tau=tau)
 
+            """
             seuil = 40
             max_val = np.max(np.abs(Br_filtered))
             if max_val > seuil:
                 scalaire = seuil / max_val
                 Br_filtered = Br_filtered * scalaire
+            """
 
             if write_map:
                 write_bc_file(output_name, Br_filtered, Theta[:, 0], Phi[0, :], r_st)
