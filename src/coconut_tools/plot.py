@@ -27,6 +27,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.ticker import AutoMinorLocator
 from coconut_tools.logger_config import setup_logger
+from pathlib import Path
+
 logger = setup_logger(__name__)
 
 def m_to_rsun(x: float) -> float:
@@ -153,13 +155,14 @@ def Surface_2D_onetime(
     """
     import cmocean as cm
 
-    clat_ticks = [0, 45, 90, 135, 180]
+    clat_ticks = [-90, -45, 0, 45, 90]
     lon_ticks = [-180, -135, -90, -45, 0, 45, 90, 135, 180]
 
     reduced = (mode == "reduced")
     date, r, clt, lon, vr, vlon, vclt, density, br, bclt, blon, temp = read_data(
         inputfile, reduced=reduced, extended=extended
     )
+    print(clt)
 
     vars_to_plot = {
         "number_density": (density.T, cm.cm.thermal, "Density [$m^{-3}$]"),
@@ -210,7 +213,7 @@ def Surface_2D_onetime(
         ax.set_yticks(clat_ticks)
         ax.invert_yaxis()
         ax.tick_params(axis="both", which="major", labelsize=10)
-        ax.set_ylabel("Colatitude [deg]", fontsize=11)
+        ax.set_ylabel("Latitude [deg]", fontsize=11)
 
 
     def _plot_panel(ax, data, cmap, label, show_xlabel: bool):
@@ -260,6 +263,8 @@ def Surface_2D_onetime(
         data, cmap, label = vars_to_plot["pressure"]
         _plot_panel(axp, data, cmap, label, show_xlabel=True)
 
+        plt.savefig(outputfile, dpi=300)
+    else:
         plt.savefig(outputfile, dpi=300)
 
     if showP:
@@ -517,50 +522,51 @@ def create_plot_max_quantities_vs_b0(
 
 if __name__ == "__main__":
 
-    input_file = "E:/euhforia/dat4/solar_wind_boundary_1562061877.dat"  # <-- à adapter
-    output_file = "E:/euhforia/image/4_P_extended.png"
+    input_dir = Path("E:/euhforia/dat8/")
+    output_dir = Path("E:/euhforia/dat8/")
 
-    Surface_2D_onetime(
-        inputfile=input_file,
-        outputfile=output_file,
-        mode='reduced',  # all ou 'reduced'
-        extended = True,
-        showP= True
-    )
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-    output_file = "E:/euhforia/image/4.png"
+    
 
-    Surface_2D_onetime(
-        inputfile=input_file,
-        outputfile=output_file,
-        mode='reduced',  # all ou 'reduced'
-        extended = False,
-        showP= False
-    )
+    for dat_file in input_dir.glob("solar_wind_boundary_*.dat"):
+    #    # extrait le timestamp
+    #    timestamp = dat_file.stem.replace("solar_wind_boundary_", "")
 
-    input_file = "E:/euhforia/dat8/solar_wind_boundary_1562061877.dat"  # <-- à adapter
-    output_file = "E:/euhforia/image/8_P_extended.png"
-
-    Surface_2D_onetime(
-        inputfile=input_file,
-        outputfile=output_file,
-        mode='all',  # all ou 'reduced'
-        extended = True,
-        showP= True
-    )
-
-    output_file = "E:/euhforia/image/8.png"
-
-    Surface_2D_onetime(
-        inputfile=input_file,
-        outputfile=output_file,
-        mode='all',  # all ou 'reduced'
-        extended = False,
-        showP= False
-    )
-
-
+        output_file = output_dir / f"surface.png"
+        print(output_file)
+        print(dat_file)
+        Surface_2D_onetime(
+            inputfile=str(dat_file),
+            outputfile=str(output_file),
+            mode="all",
+            extended=True,
+            showP=False
+        )
     """
+    input_dir = Path("E:/euhforia/dat4/")
+    output_dir = Path("E:/euhforia/image/inner_boundary/dat4/")
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    
+
+    for dat_file in input_dir.glob("solar_wind_boundary_*.dat"):
+    #    # extrait le timestamp
+    #    timestamp = dat_file.stem.replace("solar_wind_boundary_", "")
+
+        output_file = output_dir / f"surface.png"
+        print(output_file)
+        print(dat_file)
+        Surface_2D_onetime(
+            inputfile=str(dat_file),
+            outputfile=str(output_file),
+            mode="reduced",
+            extended=True,
+            showP=False
+        )
+
+    
     input_dir = "./data_tests/"
 
     label_dict = {
