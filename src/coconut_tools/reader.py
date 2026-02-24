@@ -40,6 +40,18 @@ MU_MEAN = 0.6           # Mean molecular weight (≈ fully ionized coronal plasm
 MU0_SI = 4.*np.pi*1.e-7 # Perméabilité du vide
 Rsun = 6.9599e8
 
+def remove_invalid_cells(mesh, field, eps=1.e-30):
+    """
+    Return a new mesh where cells with invalid values in `field`
+    (e.g. equal to zero for MPI halo/guard cells) are removed.
+    This is intended for visualization cleanup when certain
+    cell-centered quantities are not defined everywhere.
+    But one should be careful to filtered invalid cells as well
+    if wanting to compute quantitative analysis from cell-centered qtys
+    multipart in vtu.
+    """
+    return mesh.extract_cells(mesh.cell_data[field] > eps)
+
 def run_coconut_reader(
     base_path: str | Path = ".",
     cfmesh_name: str = "corona.CFmesh",
@@ -247,7 +259,8 @@ def Quick_Vr_Viewer(
     plane: str = "y",         
     phi: float = 0.0,         
     phi_degrees: bool = True, 
-    cam_dist: float = 100.0,  
+    cam_dist: float = 100.0,
+    clean_invalid: bool = False,
 ) -> None:
     """Quick viewer for a y-plane disk plot.
 
@@ -307,6 +320,7 @@ def Quick_Vr_Viewer(
         phi=phi,
         phi_degrees=phi_degrees,
         cam_dist=cam_dist,
+        clean_invalid=clean_invalid
     )
 
 
@@ -429,6 +443,7 @@ def visualize_spherical_surface_from_vtu(
     grid_color: str = "white",
     grid_width: float = 1.0,
     cam_dist=None,
+    clean_invalid: bool=False,
 
 ) -> None:
     """
@@ -454,6 +469,10 @@ def visualize_spherical_surface_from_vtu(
     Returns:
         None.
     """
+
+    if clean_invalid:
+        tmp = remove_invalid_cells(mesh, field)
+        mesh = tmp
 
     vtu_path = Path(vtu_path)
     if not vtu_path.is_file():
@@ -566,7 +585,8 @@ def visualize_yplane_disk(
     plane: str = "y",         
     phi: float = 0.0,         
     phi_degrees: bool = True, 
-    cam_dist: float = 100.0,  
+    cam_dist: float = 100.0,
+    clean_invalid: bool = False,
 ) -> None:
     """Produce a centered, full-disk 2D visualization of the y=0 plane.
 
@@ -596,6 +616,10 @@ def visualize_yplane_disk(
     Returns:
         None.
     """
+
+    if clean_invalid:
+        tmp = remove_invalid_cells(mesh, field)
+        mesh = tmp
 
     logger.info("Creating centered y-plane disk plot -> %s", save_path)
     
@@ -974,339 +998,6 @@ def _outer_bc_check_from_cfmesh(
     if show: plt.show()
     plt.close(fig)
 
-def cfmesh_to_binned_spherical_grid(
-    inputfile: str,
-    nr: int = 50,
-    ntheta: int = 90,
-    nphi: int = 180,
-    r_min: float | None = None,
-    r_max: float | None = None,
-    auto_resolution: bool = False,
-    auto_kwargs: Mapping[str, Any] | None = None,
-) -> tuple[
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-]:
-    """Convert an unstructured CFmesh into a binned spherical grid.
-
-    Args:
-        inputfile: Path to the CFmesh file.
-        nr: Number of radial bins.
-        ntheta: Number of colatitude bins.
-        nphi: Number of longitude bins.
-        r_min: Minimum radius for binning. If None, inferred from the mesh.
-        r_max: Maximum radius for binning. If None, inferred from the mesh.
-        auto_resolution: If True, compute bin counts automatically.
-        auto_kwargs: Optional arguments for auto-resolution.
-
-    Returns:
-        Tuple of arrays: (r_centers, theta_centers, phi_centers, vr_3d, vlon_3d,
-        vclt_3d, rho_3d, temp_3d, br_3d, blon_3d, bclt_3d).
-    """
-
-    # ------------------------------
-    # 1. READ CFmesh structure
-    if not os.path.isfile(inputfile):
-        raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), inputfile)
-    
-    with open(inputfile, "r") as f:
-        lines = f.readlines()
-    
-    idx0, idx1, idx2, idx3, nbelements, nend, comment = readstruct(lines)
-
-    connectivity = np.loadtxt(lines[idx0:idx0 + nbelements], dtype=int)
-    coordinates = np.loadtxt(lines[idx1:idx2 - 1], dtype=float)
-
-    # first 6 vertices of each element → cell center
-    nodes = connectivity[:, :6]
-    centers = coordinates[nodes].mean(axis=1)
-    x, y, z = centers.T
-    
-    # ------------------------------
-    # 2. SPHERICAL COORDS
-    r = np.sqrt(x*x + y*y + z*z)
-    theta = np.arccos(z / r)                     # [0, π]
-    phi = np.arctan2(y, x)
-    phi[phi < 0] += 2*np.pi                      # force into [0, 2π]
-    
-    if r_min is None:
-        r_min = r.min()
-    if r_max is None:
-        r_max = r.max()
-
-    if auto_resolution:
-        auto_kwargs = {} if auto_kwargs is None else dict(auto_kwargs)
-        nr, ntheta, nphi = _auto_spherical_binning_resolution(
-            r, theta, phi,
-            r_min=r_min, r_max=r_max,
-            **auto_kwargs
-        )
-        logger.info("Auto binning resolution: nr=%s, ntheta=%s, nphi=%s", nr, ntheta, nphi)
-
-    else:
-        if nr is None or ntheta is None or nphi is None:
-            raise ValueError("nr, ntheta, nphi must be set unless auto_resolution=True")
-        
-    # ------------------------------
-    # 3. READ INITIAL DATA (same as your function)
-    bd = comment[-nend - 1][0] + 1
-    bf = comment[-nend][0]
-    Init = np.loadtxt(lines[bd:bf], dtype=np.float64)
-    
-    rho0 = Init[:, 0] * 1.67e-13 / 1.67e-27 # [m^-3]
-    Vx0  = Init[:, 1] * 480248.0 # [m/s]
-    Vy0  = Init[:, 2] * 480248.0 # [m/s]
-    Vz0  = Init[:, 3] * 480248.0 # [m/s]
-    Bx   = Init[:, 4] * 2.2e-4 # [T]
-    By   = Init[:, 5] * 2.2e-4 # [T]
-    Bz   = Init[:, 6] * 2.2e-4 # [T]
-    Pressure = Init[:, 7] * 0.03851 
-    temp = Pressure / rho0 / 2.0 / 1.38e-23
-    
-    # spherical projections (unchanged)
-    r_bis = np.hypot(x, y)
-    eps = 1e-12
-
-    vr   = (x*Vx0 + y*Vy0 + z*Vz0) / (r + eps)
-    vlon = (-y*Vx0 + x*Vy0) / (r_bis + eps)
-    vclt = (x*z*Vx0 + y*z*Vy0 - (r_bis+eps)*Vz0) / ((r + eps)*(r_bis + eps))
-
-    br   = (x*Bx + y*By + z*Bz) / (r + eps)
-    blon = (-y*Bx + x*By) / (r_bis + eps)
-    bclt = (x*z*Bx + y*z*By - (r_bis+eps)*Bz) / ((r + eps)*(r_bis + eps))
-
-    # ------------------------------
-    # 4. PREPARE SPHERICAL BINS
-    # ------------------------------
-    r_edges     = np.linspace(r_min, r_max, nr+1)
-    theta_edges = np.linspace(0, np.pi, ntheta+1)
-    phi_edges   = np.linspace(0, 2*np.pi, nphi+1)
-
-    r_centers     = 0.5 * (r_edges[:-1] + r_edges[1:])
-    theta_centers = 0.5 * (theta_edges[:-1] + theta_edges[1:])
-    phi_centers   = 0.5 * (phi_edges[:-1] + phi_edges[1:])
-
-    # indices of each cell into the bins
-    i_r   = np.digitize(r,     r_edges)     - 1
-    i_th  = np.digitize(theta, theta_edges) - 1
-    i_ph  = np.digitize(phi,   phi_edges)   - 1
-
-    # mask out-of-range indices
-    valid = (
-        (i_r  >= 0) & (i_r  < nr) &
-        (i_th >= 0) & (i_th < ntheta) &
-        (i_ph >= 0) & (i_ph < nphi)
-    )
-
-    # ------------------------------
-    # 5. ACCUMULATE INTO BINS
-    # ------------------------------
-    shape = (nr, ntheta, nphi)
-    accum = lambda: np.zeros(shape)
-    count = np.zeros(shape)
-
-    vr_sum   = accum(); vlon_sum = accum(); vclt_sum = accum()
-    rho_sum  = accum(); temp_sum = accum()
-    br_sum   = accum(); blon_sum = accum(); bclt_sum = accum()
-
-    # accumulate contributions
-    for idx in np.where(valid)[0]:
-        ii = i_r[idx]; jj = i_th[idx]; kk = i_ph[idx]
-        count[ii,jj,kk] += 1
-
-        vr_sum[ii,jj,kk]   += vr[idx]
-        vlon_sum[ii,jj,kk] += vlon[idx]
-        vclt_sum[ii,jj,kk] += vclt[idx]
-        rho_sum[ii,jj,kk]  += rho0[idx]
-        temp_sum[ii,jj,kk] += temp[idx]
-        br_sum[ii,jj,kk]   += br[idx]
-        blon_sum[ii,jj,kk] += blon[idx]
-        bclt_sum[ii,jj,kk] += bclt[idx]
-
-    # ------------------------------
-    # 6. AVERAGE (bins with no hits → nan)
-    # ------------------------------
-    with np.errstate(invalid="ignore", divide="ignore"):
-
-        vr_3d   = vr_sum   / count
-        vlon_3d = vlon_sum / count
-        vclt_3d = vclt_sum / count
-        rho_3d  = rho_sum  / count
-        temp_3d = temp_sum / count
-        br_3d   = br_sum   / count
-        blon_3d = blon_sum / count
-        bclt_3d = bclt_sum / count
-        logger.debug("br_3d: %s", br_3d)
-
-    filled = np.isfinite(rho_3d).sum()
-    total = rho_3d.size
-    logger.info("Filled bins: %s/%s = %.3f%%", filled, total, 100.0 * filled / total)
-    #As a rule of thumb for unstructured binning:
-    #< 1% filled → resolution is much too fine
-    #5–30% filled → usually OK
-    #> 50% filled → bins probably too coarse (or mesh is close to structured)
-
-    return (
-        r_centers,
-        theta_centers,
-        phi_centers,
-        vr_3d, vlon_3d, vclt_3d,
-        rho_3d, temp_3d,
-        br_3d, blon_3d, bclt_3d,
-    )
-
-def _auto_spherical_binning_resolution(
-    r: np.ndarray,
-    theta: np.ndarray,
-    phi: np.ndarray,
-    r_min: float | None = None,
-    r_max: float | None = None,
-    sample_max: int = 100_000,
-    q: float = 0.35,
-    min_nr: int = 8,
-    max_nr: int = 120,
-    min_ntheta: int = 24,
-    max_ntheta: int = 180,
-    min_nphi: int = 48,
-    max_nphi: int = 360,
-) -> tuple[int, int, int]:
-    """Estimate (nr, ntheta, nphi) from point density.
-
-    Args:
-        r: Radial coordinates.
-        theta: Colatitude coordinates.
-        phi: Longitude coordinates.
-        r_min: Minimum radius. If None, inferred from `r`.
-        r_max: Maximum radius. If None, inferred from `r`.
-        sample_max: Max samples for spacing estimate.
-        q: Quantile for spacing estimate.
-        min_nr: Minimum radial bins.
-        max_nr: Maximum radial bins.
-        min_ntheta: Minimum theta bins.
-        max_ntheta: Maximum theta bins.
-        min_nphi: Minimum phi bins.
-        max_nphi: Maximum phi bins.
-
-    Returns:
-        Tuple of (nr, ntheta, nphi).
-    """
-    if r_min is None: r_min = float(np.min(r))
-    if r_max is None: r_max = float(np.max(r))
-
-    N = r.size
-    if N > sample_max:
-        idx = np.random.default_rng(0).choice(N, size=sample_max, replace=False)
-        r_s, th_s, ph_s = r[idx], theta[idx], phi[idx]
-    else:
-        r_s, th_s, ph_s = r, theta, phi
-
-    # Helper: robust spacing estimate from unique sorted values
-    def typical_spacing(x):
-        xu = np.unique(x)
-        if xu.size < 3:
-            return None
-        dx = np.diff(np.sort(xu))
-        dx = dx[dx > 0]
-        if dx.size == 0:
-            return None
-        return float(np.quantile(dx, q))
-
-    dr = typical_spacing(r_s)
-    dth = typical_spacing(th_s)
-    dph = typical_spacing(ph_s)
-
-    # Fallbacks if something is degenerate
-    if dr is None:  dr = (r_max - r_min) / 50.0
-    if dth is None: dth = np.pi / 180.0
-    if dph is None: dph = 2*np.pi / 360.0
-
-    nr = int(np.ceil((r_max - r_min) / dr))
-    ntheta = int(np.ceil(np.pi / dth))
-    nphi = int(np.ceil((2*np.pi) / dph))
-
-    # Clamp
-    nr = int(np.clip(nr, min_nr, max_nr))
-    ntheta = int(np.clip(ntheta, min_ntheta, max_ntheta))
-    nphi = int(np.clip(nphi, min_nphi, max_nphi))
-
-    return nr, ntheta, nphi
-
-# To use instead of the former if not successful enough
-# estimate spacing from nearest neighbors (not unique diffs)
-# The “unique-diff quantile” approach is fragile on unstructured meshes.
-# A more robust method is: for a random sample of points, compute distance to the nearest neighbor in (r, theta, phi)  with a periodic phi, then set bin widths from the median.
-## !! NB: not fully sanity checked yet
-from scipy.spatial import cKDTree
-def _auto_resolution_nn(
-    r: np.ndarray,
-    theta: np.ndarray,
-    phi: np.ndarray,
-    r_min: float,
-    r_max: float,
-    sample_max: int = 80_000,
-    safety: float = 1.8,
-    max_nr: int = 160,
-    max_ntheta: int = 240,
-    max_nphi: int = 480,
-) -> tuple[int, int, int]:
-    """Estimate bin counts via nearest-neighbor spacing.
-
-    Args:
-        r: Radial coordinates.
-        theta: Colatitude coordinates.
-        phi: Longitude coordinates.
-        r_min: Minimum radius.
-        r_max: Maximum radius.
-        sample_max: Max samples for spacing estimate.
-        safety: Safety factor for spacing.
-        max_nr: Max radial bins.
-        max_ntheta: Max theta bins.
-        max_nphi: Max phi bins.
-
-    Returns:
-        Tuple of (nr, ntheta, nphi).
-    """
-    N = r.size
-    rng = np.random.default_rng(0)
-    idx = rng.choice(N, size=min(N, sample_max), replace=False)
-
-    rs = r[idx]
-    ts = theta[idx]
-    ps = phi[idx]
-
-    # handle periodic phi by duplicating points shifted by ±2π
-    X = np.column_stack([rs, ts, ps])
-    Xp = np.column_stack([rs, ts, ps + 2*np.pi])
-    Xm = np.column_stack([rs, ts, ps - 2*np.pi])
-    Xall = np.vstack([X, Xp, Xm])
-
-    tree = cKDTree(Xall)
-    d, _ = tree.query(X, k=2)  # k=2: first is itself, second is nearest neighbor
-    d_nn = d[:, 1]
-
-    # Use median nearest-neighbor distance as typical spacing
-    d0 = float(np.median(d_nn)) * safety
-
-    # Convert "distance" into separate bin widths (simple heuristic)
-    dr = 0.6 * d0
-    dth = 0.2 * d0
-    dph = 0.2 * d0
-
-    nr = int(np.clip(np.ceil((r_max - r_min) / dr), 8, max_nr))
-    ntheta = int(np.clip(np.ceil(np.pi / dth), 24, max_ntheta))
-    nphi = int(np.clip(np.ceil((2*np.pi) / dph), 48, max_nphi))
-    return nr, ntheta, nphi
-
-
 if __name__ == "__main__":
     vtu_path = Path("C:/Users/luisl/Documents/Travail/Article_COCORIA/corona-mhd_0.vtu")
     cfmesh_path = Path("C:/Users/luisl/Documents/Travail/Article_COCORIA/corona.CFmesh")
@@ -1405,44 +1096,4 @@ if __name__ == "__main__":
         nphi=180,
         dr=0.01,
         show=False,
-    )
-
-    logger.info("Testing cfmesh_to_binned_spherical_grid.")
-    cfmesh_to_binned_spherical_grid(
-        inputfile=str(cfmesh_path),
-        nr=30,
-        ntheta=60,
-        nphi=120,
-        auto_resolution=False,
-    )
-
-    logger.info("Testing _auto_spherical_binning_resolution and _auto_resolution_nn.")
-    with open(cfmesh_path, "r") as f:
-        lines = f.readlines()
-    idx0, idx1, idx2, idx3, nbelements, nend, comment = readstruct(lines)
-    connectivity = np.loadtxt(lines[idx0:idx0 + nbelements], dtype=int)
-    coordinates = np.loadtxt(lines[idx1:idx2 - 1], dtype=float)
-    nodes = connectivity[:, :6]
-    centers = coordinates[nodes].mean(axis=1)
-    x, y, z = centers.T
-    r = np.sqrt(x * x + y * y + z * z)
-    theta = np.arccos(z / r)
-    phi = np.arctan2(y, x)
-    phi[phi < 0] += 2 * np.pi
-
-    nr, ntheta, nphi = _auto_spherical_binning_resolution(r, theta, phi)
-    logger.info("Auto spherical binning: nr=%s ntheta=%s nphi=%s", nr, ntheta, nphi)
-
-    nnr, nntheta, nnphi = _auto_resolution_nn(
-        r=r,
-        theta=theta,
-        phi=phi,
-        r_min=float(r.min()),
-        r_max=float(r.max()),
-    )
-    logger.info(
-        "Auto NN binning: nr=%s ntheta=%s nphi=%s",
-        nnr,
-        nntheta,
-        nnphi,
     )
