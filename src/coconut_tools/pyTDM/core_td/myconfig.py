@@ -192,65 +192,22 @@ def readconfig(path: str) -> Tuple[float, float, float, float, float, float, flo
 
 if __name__ == '__main__':
 
+
     createconfig(
-        path_file='E:/coconut_cme/cfmesh/',
-        path_tdm='E:/coconut_cme/input/',
-        path_save='E:/coconut_cme/config/',
-        name='zeta12',
+        path_file='E:/euhforia/CFmesh/',
+        path_tdm='E:/euhforia/CFmesh/',
+        path_save='E:/euhforia/CFmesh/config/',
+        name='zeta10',
         theta=1.57, phi=3.14, alpha=0, D=0.15, A=0.10, R=0.3, delta=0.01,
-        zeta=12, case_tdm='first', geometry='spherical', solver='COCONUT',
+        zeta=10, case_tdm='first', geometry='spherical', solver='COCONUT',
         flux='Tdm', nb_proc=270, nb_r=200, nb_th=200, nb_phi=200, eps=0.01,
         nfr=100, xc=0.5, xh=0.5, hh_fr=120, ll_fr=35, F_flx=20
     )
 
     createconfig(
-        path_file='E:/coconut_cme/cfmesh/',
-        path_tdm='E:/coconut_cme/input/',
-        path_save='E:/coconut_cme/config/',
-        name='zeta15',
-        theta=1.57, phi=3.14, alpha=0, D=0.15, A=0.10, R=0.3, delta=0.01,
-        zeta=15, case_tdm='first', geometry='spherical', solver='COCONUT',
-        flux='Tdm', nb_proc=270, nb_r=200, nb_th=200, nb_phi=200, eps=0.01,
-        nfr=100, xc=0.5, xh=0.5, hh_fr=120, ll_fr=35, F_flx=20
-    )
-
-    createconfig(
-        path_file='E:/coconut_cme/cfmesh/',
-        path_tdm='E:/coconut_cme/input/',
-        path_save='E:/coconut_cme/config/',
-        name='zeta20',
-        theta=1.57, phi=3.14, alpha=0, D=0.15, A=0.10, R=0.3, delta=0.01,
-        zeta=20, case_tdm='first', geometry='spherical', solver='COCONUT',
-        flux='Tdm', nb_proc=270, nb_r=200, nb_th=200, nb_phi=200, eps=0.01,
-        nfr=100, xc=0.5, xh=0.5, hh_fr=120, ll_fr=35, F_flx=20
-    )
-
-    createconfig(
-        path_file='E:/coconut_cme/coriolis/cfmesh/',
-        path_tdm='E:/coconut_cme/coriolis/input/',
-        path_save='E:/coconut_cme/coriolis/config/',
-        name='zeta12',
-        theta=1.57, phi=3.14, alpha=0, D=0.15, A=0.10, R=0.3, delta=0.01,
-        zeta=12, case_tdm='first', geometry='spherical', solver='COCONUT',
-        flux='Tdm', nb_proc=270, nb_r=200, nb_th=200, nb_phi=200, eps=0.01,
-        nfr=100, xc=0.5, xh=0.5, hh_fr=120, ll_fr=35, F_flx=20
-    )
-
-    createconfig(
-        path_file='E:/coconut_cme/coriolis/cfmesh/',
-        path_tdm='E:/coconut_cme/coriolis/input/',
-        path_save='E:/coconut_cme/coriolis/config/',
-        name='zeta15',
-        theta=1.57, phi=3.14, alpha=0, D=0.15, A=0.10, R=0.3, delta=0.01,
-        zeta=15, case_tdm='first', geometry='spherical', solver='COCONUT',
-        flux='Tdm', nb_proc=270, nb_r=200, nb_th=200, nb_phi=200, eps=0.01,
-        nfr=100, xc=0.5, xh=0.5, hh_fr=120, ll_fr=35, F_flx=20
-    )
-
-    createconfig(
-        path_file='E:/coconut_cme/coriolis/cfmesh/',
-        path_tdm='E:/coconut_cme/coriolis/input/',
-        path_save='E:/coconut_cme/coriolis/config/',
+        path_file='E:/euhforia/CFmesh/',
+        path_tdm='E:/euhforia/CFmesh/',
+        path_save='E:/euhforia/CFmesh/config/',
         name='zeta20',
         theta=1.57, phi=3.14, alpha=0, D=0.15, A=0.10, R=0.3, delta=0.01,
         zeta=20, case_tdm='first', geometry='spherical', solver='COCONUT',

@@ -426,37 +426,53 @@ def fits_longitude_deg(header, *, one_based_fits=True):
 
     return x_raw.astype(float), meta
 
+import numpy as np
+
 def order_carrington_0_360(lon_native, data, *, tol=1e-6):
     """Reorder a Carrington map so longitude runs from 0 to 360 degrees.
 
+    If the native longitude axis is decreasing (common for HMI synoptic maps),
+    apply the physical transform phi = (360 - lon) mod 360.
+
     Args:
-        lon_native (np.ndarray): Native Carrington longitudes, shape ``(nx,)``.
-        data (np.ndarray | np.ma.MaskedArray): Magnetogram data, shape
-            ``(ny, nx)``.
-        tol (float, optional): Tolerance used to stabilize sorting.
+        lon_native (np.ndarray): Native Carrington longitudes, shape (nx,).
+        data (np.ndarray | np.ma.MaskedArray): Magnetogram data, shape (ny, nx).
+        tol (float, optional): Tolerance used to stabilize roll detection.
 
     Returns:
-        tuple[np.ndarray, np.ndarray | np.ma.MaskedArray]: ``(lon_sorted,
-        data_sorted)`` where ``lon_sorted`` is in ``[0, 360)`` and ``data_sorted``
-        is reordered along x.
+        tuple[np.ndarray, np.ndarray | np.ma.MaskedArray]:
+            (lon_out, data_out) with lon_out in [0, 360).
     """
     lon = np.asarray(lon_native, dtype=float)
+    data_out = data
 
-    # Normalize to [0, 360)
-    lon_mod = np.mod(lon, 360.0)
+    if lon.ndim != 1:
+        raise ValueError("lon_native must be 1D.")
+    if data.shape[-1] != lon.size:
+        raise ValueError("data and lon_native size mismatch.")
 
-    # Stabilize ordering if needed
+    dlon_med = float(np.nanmedian(np.diff(lon)))
+
+    # Physical longitude for spatial BCs
+    if dlon_med < 0:
+        lon_phys = np.mod(360.0 - lon, 360.0)
+    else:
+        lon_phys = np.mod(lon, 360.0)
+
     if tol is not None:
-        lon_mod = np.round(lon_mod / tol) * tol
+        lon_phys = np.round(lon_phys / tol) * tol
 
-    # Sorting indices
-    idx = np.argsort(lon_mod)
+    # Roll so that we start near 0°
+    idx0 = int(np.nanargmin(lon_phys))
+    lon_out = np.roll(lon_phys, -idx0)
+    data_out = np.roll(data_out, -idx0, axis=-1)
 
+    # Final safety: enforce increasing longitude to the right
+    if float(np.nanmedian(np.diff(lon_out))) < 0:
+        lon_out = lon_out[::-1]
+        data_out = data_out[..., ::-1]
 
-    lon_sorted = lon_mod[idx]
-    data_sorted = data[..., idx]
-
-    return lon_sorted, data_sorted
+    return lon_out, data_out
 
 # -------------------------------------------------------------
 # Diagnostics + plotting
@@ -746,8 +762,8 @@ def plot_synoptic_aligned(
         lat_mode=meta_lat["detected_mode"],
         lon0_file=lon0_file,
         lon0_used=lon_sorted[0],
-        vmin=vmax,
-        vmax=vmin,
+        vmin=vmin,
+        vmax=vmax,
         cmap="RdBu_r",
     )
         

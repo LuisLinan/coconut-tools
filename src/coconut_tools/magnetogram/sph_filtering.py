@@ -435,11 +435,62 @@ if __name__ == "__main__":
 
     configs = [
     {
-        "date": '2019-07-02T12:04:37', "map_type": 'HMI_polfil',
+        "date": '2017-09-04T18:00:00', "map_type": 'HMI_polfil',
         "lmax": 20, "amp": 1, "write_map": True, "show_map": True,
         "visu_type": "sinlat",
-        "output_dir": "C:/Users/luisl/Documents/Travail/coconut-tools/src/coconut_tools/test/", "output_path_fig": "C:/Users/luisl/Documents/Travail/coconut-tools/src/coconut_tools/test/hmi.png",
-    }]
+        "output_dir": "E:/euhforia/magnetogram/2017/old/", "output_path_fig": "E:/euhforia/magnetogram/2017/old/hmi_lmax20.png",
+    },
+        {
+            "date": '2017-09-04T18:00:00', "map_type": 'HMI_polfil',
+            "lmax": 10, "amp": 1, "write_map": True, "show_map": True,
+            "visu_type": "sinlat",
+            "output_dir": "E:/euhforia/magnetogram/2017/old/",
+            "output_path_fig": "E:/euhforia/magnetogram/2017/old/hmi_lmax10.png",
+        },
+        {
+            "date": '2017-09-04T18:00:00', "map_type": 'HMI_polfil',
+            "lmax": 15, "amp": 1, "write_map": True, "show_map": True,
+            "visu_type": "sinlat",
+            "output_dir": "E:/euhforia/magnetogram/2017/old/",
+            "output_path_fig": "E:/euhforia/magnetogram/2017/old/hmi_lmax15.png",
+        },
+        {
+            "date": '2017-09-04T18:00:00', "map_type": 'HMI_polfil',
+            "lmax": 50, "amp": 1, "write_map": True, "show_map": True,
+            "visu_type": "sinlat",
+            "output_dir": "E:/euhforia/magnetogram/2017/alpha/",
+            "output_path_fig": "E:/euhforia/magnetogram/2017/alpha/hmi_lmax50.png",
+            "alpha": 3 * 10 ** (-6)
+        },
+    {
+        "date": '2017-09-04T18:00:00', "map_type": 'GONG',
+        "lmax": 20, "amp": 1, "write_map": True, "show_map": True,
+        "visu_type": "sinlat",
+        "output_dir": "E:/euhforia/magnetogram/2017/old/", "output_path_fig": "E:/euhforia/magnetogram/2017/old/gong_lmax20.png",
+    },
+        {
+            "date": '2017-09-04T18:00:00', "map_type": 'GONG',
+            "lmax": 10, "amp": 1, "write_map": True, "show_map": True,
+            "visu_type": "sinlat",
+            "output_dir": "E:/euhforia/magnetogram/2017/old/",
+            "output_path_fig": "E:/euhforia/magnetogram/2017/old/gong_lmax10.png",
+        },
+        {
+            "date": '2017-09-04T18:00:00', "map_type": 'GONG',
+            "lmax": 15, "amp": 1, "write_map": True, "show_map": True,
+            "visu_type": "sinlat",
+            "output_dir": "E:/euhforia/magnetogram/2017/old/",
+            "output_path_fig": "E:/euhforia/magnetogram/2017/old/gong_lmax15.png",
+        },
+        {
+            "date": '2017-09-04T18:00:00', "map_type": 'GONG',
+            "lmax": 50, "amp": 1, "write_map": True, "show_map": True,
+            "visu_type": "sinlat",
+            "output_dir": "E:/euhforia/magnetogram/2017/alpha/",
+            "output_path_fig": "E:/euhforia/magnetogram/2017/alpha/gong_lmax50.png",
+            "alpha": 3 * 10 ** (-6)
+        },
+    ]
 
     for config in configs:
         date = config["date"]

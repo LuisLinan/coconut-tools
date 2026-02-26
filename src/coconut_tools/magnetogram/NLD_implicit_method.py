@@ -72,12 +72,20 @@ if __name__ == "__main__":
 
     configs = [
         {
-            "date": '2013-03-13T12:00:00', "map_type": 'GONG',
+            "date": '2017-09-04T18:00:00', "map_type": 'GONG',
             "write_map": True, "show_map": True,
             "visu_type": "sinlat",
-            "output_dir": "E:/euhforia/magnetogram/high_iteration/",
-            "output_path_fig": "E:/euhforia/magnetogram/high_iteration/GONG_20130313T120000.png",
-            "tau": 10, "iterations": 15
+            "output_dir": "E:/euhforia/magnetogram/2017/nld/",
+            "output_path_fig": "E:/euhforia/magnetogram/2017/nld/GONG.png",
+            "tau": 5, "iterations": 7
+        },
+        {
+            "date": '2017-09-04T18:00:00', "map_type": 'HMI_polfil',
+            "write_map": True, "show_map": True,
+            "visu_type": "sinlat",
+            "output_dir": "E:/euhforia/magnetogram/2017/nld/",
+            "output_path_fig": "E:/euhforia/magnetogram/2017/nld/HMI_polfil.png",
+            "tau": 5, "iterations": 7
         },
     ]
 

@@ -99,10 +99,10 @@ if __name__ == "__main__":
     """
     configs = [
         {
-            "date": '2013-03-13T12:00:00', "map_type": 'HMI_small',
+            "date": '2013-03-13T12:00:00', "map_type": 'GONG',
             "lmax": 15, "amp": 1, "write_map": True, "show_map": True,
             "visu_type": "sinlat",
-            "output_dir": "./", "output_path_fig": "./hmi_20201207.png",
+            "output_dir": "E:/euhforia/magnetogram/yaroslavsky/", "output_path_fig": "E:/euhforia/magnetogram/yaroslavsky/GONG_20130313T120000.png",
             "alpha": 1.4, "Rn" : 2, "sig": 1.5
         }]
 

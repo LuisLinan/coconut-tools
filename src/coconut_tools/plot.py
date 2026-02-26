@@ -162,7 +162,6 @@ def Surface_2D_onetime(
     date, r, clt, lon, vr, vlon, vclt, density, br, bclt, blon, temp = read_data(
         inputfile, reduced=reduced, extended=extended
     )
-    print(clt)
 
     vars_to_plot = {
         "number_density": (density.T, cm.cm.thermal, "Density [$m^{-3}$]"),
@@ -258,6 +257,124 @@ def Surface_2D_onetime(
         fig.add_subplot(sub[0, 2]).axis("off")
 
         # Panneau pression centré, taille comparable aux autres
+        axp = fig.add_subplot(sub[0, 1])
+
+        data, cmap, label = vars_to_plot["pressure"]
+        _plot_panel(axp, data, cmap, label, show_xlabel=True)
+
+        plt.savefig(outputfile, dpi=300)
+    else:
+        plt.savefig(outputfile, dpi=300)
+
+    if showP:
+        plt.show()
+
+    plt.close(fig)
+
+
+def Surface_2D_onetime_file_axes(
+    inputfile: str,
+    outputfile: str,
+    mode: Literal["all", "reduced"] = "all",
+    extended: bool = False,
+    showP: bool = False,
+    invert_yaxis: bool = True,
+) -> None:
+    """Plot 2D maps using colatitude/longitude axes read from the input file.
+
+    This version uses the exact clt/lon grids from the .dat file to avoid
+    implicit flipping. Axes are labeled in degrees of colatitude/longitude.
+    """
+    import cmocean as cm
+
+    reduced = (mode == "reduced")
+    date, r, clt, lon, vr, vlon, vclt, density, br, bclt, blon, temp = read_data(
+        inputfile, reduced=reduced, extended=extended
+    )
+
+    clt_deg = np.degrees(clt)
+    lon_deg = np.degrees(lon)
+    lon_grid, clt_grid = np.meshgrid(lon_deg, clt_deg, indexing="xy")
+
+    vars_to_plot = {
+        "number_density": (density.T, cm.cm.thermal, "Density [$m^{-3}$]"),
+        "temperature": (temp.T, cm.cm.haline, "Temperature [K]"),
+        "Br": (br.T * 1e9, cm.cm.balance, "Br [nT]"),
+        "Vr": (vr.T, cm.cm.matter_r, "Vr [km/s]"),
+    }
+
+    if not reduced:
+        if any(x is None for x in (bclt, blon, vclt, vlon)):
+            raise ValueError(
+                "Expected full vector fields (Bclt/Blon/Vclt/Vlon) but some are missing (None)."
+            )
+        vars_to_plot.update(
+            {
+                "Bclt": (bclt.T * 1e9, cm.cm.balance, "Bclt [nT]"),
+                "Blon": (blon.T * 1e9, cm.cm.balance, "Blon [nT]"),
+                "Vclt": (vclt.T, cm.cm.balance, "Vclt [km/s]"),
+                "Vlon": (vlon.T, cm.cm.balance, "Vlon [km/s]"),
+            }
+        )
+
+    if reduced:
+        plot_order = ["number_density", "temperature", "Br", "Vr"]
+    else:
+        plot_order = ["number_density", "temperature", "Br", "Bclt", "Blon", "Vr", "Vclt", "Vlon"]
+
+    if showP:
+        kB = 1.38e-23
+        pressure = (density.T * temp.T) * kB
+        vars_to_plot["pressure"] = (pressure, cm.cm.haline, "Pressure [Pa]")
+
+    title = r"Magnetic and thermodynamic quantities from COCONUT"
+    if extended and r is not None:
+        title += "\n" + r"at r={0:.2f} R$_\odot$".format(m_to_rsun(r))
+
+    ncols = 2
+    n_main = len(plot_order)
+    nrows_main = math.ceil(n_main / ncols)
+    total_rows = nrows_main + (1 if showP else 0)
+
+    fig = plt.figure(figsize=(15, 2.8 * total_rows), constrained_layout=True)
+    gs = fig.add_gridspec(total_rows, ncols)
+    fig.suptitle(title, size=18)
+
+    def _format_axes(ax):
+        ax.tick_params(axis="both", which="major", labelsize=10)
+        ax.set_ylabel("Colatitude [deg]", fontsize=11)
+        if invert_yaxis:
+            ax.invert_yaxis()
+
+    def _plot_panel(ax, data, cmap, label, show_xlabel: bool):
+        im = ax.pcolormesh(
+            lon_grid,
+            clt_grid,
+            data,
+            cmap=cmap,
+            shading="auto",
+        )
+        _format_axes(ax)
+        if show_xlabel:
+            ax.set_xlabel("Longitude [deg]", fontsize=11)
+
+        cbar = fig.colorbar(im, ax=ax, fraction=0.045, pad=0.03)
+        cbar.set_label(label, fontsize=12)
+        cbar.ax.tick_params(labelsize=10)
+        cbar.ax.yaxis.offsetText.set_fontsize(10)
+
+    for i, name in enumerate(plot_order):
+        row = i // ncols
+        col = i % ncols
+        ax = fig.add_subplot(gs[row, col])
+        data, cmap, label = vars_to_plot[name]
+        show_xlabel = (not showP) and (row == nrows_main - 1)
+        _plot_panel(ax, data, cmap, label, show_xlabel=show_xlabel)
+
+    if showP:
+        sub = gs[nrows_main, :].subgridspec(1, 3, width_ratios=[1.0, 1.25, 1.0])
+        fig.add_subplot(sub[0, 0]).axis("off")
+        fig.add_subplot(sub[0, 2]).axis("off")
         axp = fig.add_subplot(sub[0, 1])
 
         data, cmap, label = vars_to_plot["pressure"]
@@ -523,7 +640,7 @@ def create_plot_max_quantities_vs_b0(
 if __name__ == "__main__":
 
     input_dir = Path("E:/euhforia/dat8/")
-    output_dir = Path("E:/euhforia/dat8/")
+    output_dir = Path("E:/euhforia/image/inner_boundary/dat8/")
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -534,8 +651,76 @@ if __name__ == "__main__":
     #    timestamp = dat_file.stem.replace("solar_wind_boundary_", "")
 
         output_file = output_dir / f"surface.png"
-        print(output_file)
-        print(dat_file)
+
+        Surface_2D_onetime_file_axes(
+            inputfile=str(dat_file),
+            outputfile=str(output_file),
+            mode="all",
+            extended=True,
+            showP=False
+        )
+
+        output_file = output_dir / f"surface2.png"
+        Surface_2D_onetime(
+            inputfile=str(dat_file),
+            outputfile=str(output_file),
+            mode="all",
+            extended=True,
+            showP=False
+        )
+
+    input_dir = Path("E:/euhforia/dat4/")
+    output_dir = Path("E:/euhforia/image/inner_boundary/dat4/")
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    
+
+    for dat_file in input_dir.glob("solar_wind_boundary_*.dat"):
+    #    # extrait le timestamp
+    #    timestamp = dat_file.stem.replace("solar_wind_boundary_", "")
+
+        output_file = output_dir / f"surface.png"
+        Surface_2D_onetime_file_axes(
+            inputfile=str(dat_file),
+            outputfile=str(output_file),
+            mode="reduced",
+            extended=True,
+            showP=False
+        )
+
+        output_file = output_dir / f"surface2.png"
+        Surface_2D_onetime(
+            inputfile=str(dat_file),
+            outputfile=str(output_file),
+            mode="reduced",
+            extended=True,
+            showP=False
+        )
+
+    input_dir = Path("C:/Users/luisl/Desktop/fluxrope/")
+    output_dir = Path("C:/Users/luisl/Desktop/fluxrope/")
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    
+
+    for dat_file in input_dir.glob("solar_wind_boundary_*.dat"):
+    #    # extrait le timestamp
+    #    timestamp = dat_file.stem.replace("solar_wind_boundary_", "")
+
+        output_file = output_dir / f"surface.png"
+
+        Surface_2D_onetime_file_axes(
+            inputfile=str(dat_file),
+            outputfile=str(output_file),
+            mode="all",
+            extended=True,
+            showP=False
+        )
+
+        output_file = output_dir / f"surface2.png"
+
         Surface_2D_onetime(
             inputfile=str(dat_file),
             outputfile=str(output_file),
@@ -556,8 +741,6 @@ if __name__ == "__main__":
     #    timestamp = dat_file.stem.replace("solar_wind_boundary_", "")
 
         output_file = output_dir / f"surface.png"
-        print(output_file)
-        print(dat_file)
         Surface_2D_onetime(
             inputfile=str(dat_file),
             outputfile=str(output_file),

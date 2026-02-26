@@ -261,12 +261,12 @@ def visualize_bc_br_from_config(config: Dict[str, object]) -> None:
 if __name__ == "__main__":
     configs = [
         {
-            "bc_file": "C:/Users/luisl/Documents/Travail/coconut-tools/src/coconut_tools/testmap_hmi_polfil_lmax20_cr2219_sph.dat",
+            "bc_file": "E:/euhforia/magnetogram/old/map_gong_lmax20_2013-03-13_sph.dat",
             "visu_type": "lat",
-            "vmin": None,
-            "vmax": None,
+            "vmin": -20,
+            "vmax": 20,
             "show_map": True,
-            "output_path_fig": "C:/Users/luisl/Documents/Travail/coconut-tools/src/coconut_tools/test/hmi_20201207.png",
+            "output_path_fig": "E:/euhforia/image/magnetogram/map_gong_lmax20_2013-03-13_sph.png",
             "title": "Br map from COCONUT BC file (example)",
         }
     ]

@@ -243,11 +243,9 @@ def rotation(input_dat: str, output_dat: str, angle_degrees: float, full_output:
 if __name__ == "__main__":
 
     """ Example usage of the module to process a series of CFmesh files and generate boundary .dat files.
-    """
-    
 
-    magnetogram_path = "C:/Users/luisl/Documents/Travail/Article_COCORIA/Mr_polfil_20190702T120437000.fits"
-    date_hmi = '2019-07-02T12:04:37'
+    magnetogram_path = "E:/euhforia/magnetogram/alpha/mrzqs130313t1124c2134_046.fits.gz"
+    date_hmi = None
     auto_compute_rotation = True
     manual_rotation_angle = 180.0  # fallback if auto_compute_rotation is False
 
@@ -267,6 +265,7 @@ if __name__ == "__main__":
     logger.info(f"Using date for rotation computation: {date_dt.isoformat()}\n")
 
     timestamp_i = str(int(date_dt.timestamp()))
+
     output_dat_temp = f'E:/euhforia/dat8/solar_wind_boundary_{timestamp_i}_temps.dat'
     output_dat = f'E:/euhforia/dat8/solar_wind_boundary_{timestamp_i}.dat'
 
@@ -277,6 +276,48 @@ if __name__ == "__main__":
     os.remove(output_dat_temp)
 
 
+    full_output = False  # <--- change this to True for full variable set
+
+    output_dat_temp = f'E:/euhforia/dat4/solar_wind_boundary_{timestamp_i}_temps.dat'
+    output_dat = f'E:/euhforia/dat4/solar_wind_boundary_{timestamp_i}.dat'
+    create_boundary_fromcfmesh(file, time, rad_out, nb_th, nb_phi, eps, output_dat_temp, full_output=full_output)
+    rotation(output_dat_temp, output_dat, angle, full_output=full_output)
+    os.remove(output_dat_temp)
+
+    """
+    magnetogram_path = "C:/Users/luisl/Documents/Travail/Article_COCORIA/Mr_polfil_20190702T120437000.fits"
+    date_hmi = '2019-07-02T12:04:37'
+    auto_compute_rotation = False
+    manual_rotation_angle = 0.0  # fallback if auto_compute_rotation is False
+
+    file='C:/Users/luisl/Desktop/fluxrope/corona.CFmesh'
+
+
+    angle, date_dt = compute_rotation_angle(magnetogram_path, date_hmi)
+
+    first_time = date_dt.strftime("%Y-%m-%dT%H:%M:%S")
+    rad_out = 21.5
+    nb_th = 180
+    nb_phi = 360
+    eps = 0.01
+    full_output = True  # <--- change this to True for full variable set
+
+    angle = manual_rotation_angle
+
+    logger.info(f"Computed rotation angle: {angle} degrees")
+    logger.info(f"Using date for rotation computation: {date_dt.isoformat()}\n")
+
+    timestamp_i = str(int(date_dt.timestamp()))
+    output_dat_temp = f'C:/Users/luisl/Desktop/fluxrope/solar_wind_boundary_{timestamp_i}_temps.dat'
+    output_dat = f'C:/Users/luisl/Desktop/fluxrope/solar_wind_boundary_{timestamp_i}.dat'
+
+    time = date_dt.strftime("%Y-%m-%dT%H:%M:%S")
+    print(angle)
+    create_boundary_fromcfmesh(file, time, rad_out, nb_th, nb_phi, eps, output_dat_temp, full_output=full_output)
+    rotation(output_dat_temp, output_dat, angle, full_output=full_output)
+    os.remove(output_dat_temp)
+    """
+
     output_dat_temp = f'E:/euhforia/dat4/solar_wind_boundary_{timestamp_i}_temps.dat'
     output_dat = f'E:/euhforia/dat4/solar_wind_boundary_{timestamp_i}.dat'
 
@@ -286,7 +327,6 @@ if __name__ == "__main__":
     rotation(output_dat_temp, output_dat, angle, full_output=full_output)
     os.remove(output_dat_temp)
 
-    """
 
     files = glob.glob('"E:/euhforia/CFmesh/*.CFmesh')
     files = sorted(files, key=extract_number)
@@ -311,7 +351,6 @@ if __name__ == "__main__":
         os.remove(output_dat_temp)
     
 
-    ########################################################################
 
     
     file = 'E:/GU V2/coconut_result_coriolis/result_2017-04-04_fullmhd/corona.CFmesh'
