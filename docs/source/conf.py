@@ -20,7 +20,7 @@ def _detect_version() -> str:
             return ilm.version(dist_name)
         except Exception:
             pass
-    return os.environ.get("PROJECT_VERSION", "0.1.0")
+    return os.environ.get("PROJECT_VERSION", "1.1.0")
 
 # --- Ensure README.md is available in docs/source for includes -------------
 def setup(app):

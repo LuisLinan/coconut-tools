@@ -42,6 +42,23 @@ If you want to contribute or run the full test suite with documentation:
 
 This installs extra tools such as **pytest**, **pooch**, and **sphinx**.
 
+Documentation
+-------------
+
+To build the documentation locally, run:
+
+.. code-block:: bash
+
+   sphinx-build -b html source _build/html
+
+Once the build is complete, open the following file in your browser:
+
+.. code-block:: text
+
+   _build/html/index.html
+
+This will display the documentation locally.
+
 Testing the installation
 ------------------------
 

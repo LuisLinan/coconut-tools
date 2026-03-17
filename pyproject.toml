@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "coconut-tools"
-version = "0.1.0"
+version = "1.1.0"
 description = "Tools for COCONUT: 3D coronal analysis, input preparation, and coupling with heliospheric models such as EUHFORIA."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -45,7 +45,8 @@ docs = [
   "sphinx>=7",
   "furo",
   "sphinx-autodoc-typehints",
-  "sphinx-copybutton"
+  "sphinx-copybutton",
+  "sphinx-design"
 ]
 
 test = [

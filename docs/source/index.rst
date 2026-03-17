@@ -15,6 +15,14 @@ and prepare inputs for heliospheric models such as EUHFORIA.
 
       New users start here! Install coconut-tools and learn the basics.
 
+   .. grid-item-card:: Installation on HPC Clusters
+      :link: /micromamba/micromamba_install_hpc
+      :link-type: doc
+      :text-align: center
+      :class-card: sd-shadow-md sd-rounded-2xl
+
+      Installing micromamba and coconut-tools on HPC Clusters
+
    .. grid-item-card:: How-To Guides
       :link: /howto/index
       :link-type: doc
@@ -53,6 +61,7 @@ and prepare inputs for heliospheric models such as EUHFORIA.
    :maxdepth: 2
 
    getting-started
+   micromamba/index
    tutorial/index
    howto/index
    gallery/index

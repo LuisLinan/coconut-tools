@@ -13,3 +13,4 @@ Recipes for preparing outputs for visualization and quick analysis.
    plot-synoptic-magnetogram
    pyvista-threeD
    plots-from-hdf
+   coco_reader_doc
