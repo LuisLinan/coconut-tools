@@ -123,40 +123,14 @@ def merge_all_snapshots(
 if __name__ == "__main__":
 
     merge_all_snapshots(
-        input_dir="C:/Users/luisl/Desktop/fluxrope/coriolis/",
-        output_dir="C:/Users/luisl/Desktop/fluxrope/coriolis/",
+        input_dir="E:/euhforia/2017/vtu/",
+        output_dir="E:/euhforia/2017/vtu/",
         start_time=0,
         timestep=1,
-        nbmax=1,
+        nbmax=2,
         num_processes=5,
         nb_proc=140,
         use_pool=False,
-        stat = True,
-        remove= True
-    )
-
-    merge_all_snapshots(
-        input_dir="C:/Users/luisl/Desktop/fluxrope/nocoriolis/",
-        output_dir="C:/Users/luisl/Desktop/fluxrope/nocoriolis/",
-        start_time=0,
-        timestep=1,
-        nbmax=1,
-        num_processes=5,
-        nb_proc=140,
-        use_pool=False,
-        stat = True,
-        remove= True
-    )
-
-    merge_all_snapshots(
-        input_dir="C:/Users/luisl/Desktop/fluxrope/result/",
-        output_dir="C:/Users/luisl/Desktop/fluxrope/result/",
-        start_time=0,
-        timestep=1,
-        nbmax=1,
-        num_processes=5,
-        nb_proc=140,
-        use_pool=False,
-        stat = True,
+        stat = False,
         remove= True
     )

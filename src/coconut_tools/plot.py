@@ -638,7 +638,7 @@ def create_plot_max_quantities_vs_b0(
     logger.info(f"Max quantities plot saved to {output_path}")
 
 if __name__ == "__main__":
-
+    """
     input_dir = Path("E:/euhforia/dat8/")
     output_dir = Path("E:/euhforia/image/inner_boundary/dat8/")
 
@@ -728,7 +728,6 @@ if __name__ == "__main__":
             extended=True,
             showP=False
         )
-    """
     input_dir = Path("E:/euhforia/dat4/")
     output_dir = Path("E:/euhforia/image/inner_boundary/dat4/")
 
@@ -749,19 +748,17 @@ if __name__ == "__main__":
             showP=False
         )
 
-    
-    input_dir = "./data_tests/"
+    """
+    input_dir = "E:/euhforia/CFcase_large/result_cme/test_hdf_output/"
 
     label_dict = {
-        "file1.h5": "CME1",
-        "file2.h5": "CME2"
+        "CFData_cme.hdf5": "CME",
     }
     color_map = {
-        "CME1": "blue",
-        "CME2": "purple"
+        "CME": "blue",
     }
 
-    output_path = "./data_tests/test_plot_boundary.png"
+    output_path = "E:/euhforia/CFcase_large/result_cme/test_plot_boundary.png"
 
     plot_boundary_profil(
         inputdir=input_dir,
@@ -769,15 +766,9 @@ if __name__ == "__main__":
         label_dict=label_dict,
         color_map=color_map
     )
+    
+    """
 
-    input_file = "./data_tests/test.dat"  # <-- à adapter
-    output_file = "./data_tests/test_surface_plot.png"
-
-    Surface_2D_onetime(
-        inputfile=input_file,
-        outputfile=output_file,
-        mode='all'  # ou 'reduced'
-    )
 
     create_plot_comparison(
         data_indices={3: "ζ=3", 4: "ζ=4", 5: "ζ=5", 6: "ζ=6"},

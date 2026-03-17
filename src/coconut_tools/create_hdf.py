@@ -518,6 +518,18 @@ def create_hdf_from_dat(
         logger.info(f"\tSaved data to {output_file}")
 
 if __name__ == "__main__":
+    satellite_cartesian = {"STA": [-10.0, 0.0, 0.0]}  # For CFMesh or VTU
+    delta_t = 0.005
+    time_step = 20
+    output_dir = Path("E:/euhforia/CFcase_large/result_cme/test_hdf_output")
+
+    cfmesh_cases = {
+        "cme": "E:/euhforia/CFcase_large/result_cme/*.CFmesh",
+    }
+
+    create_hdf_from_cfmesh(satellite_cartesian, cfmesh_cases, output_dir , delta_t, time_step)
+
+    """
     # Example test satellite in Cartesian coordinates or spherical for .dat
     satellite_cartesian = {"STA": [-10.0, 0.0, 0.0]}  # For CFMesh or VTU
     satellite_spherical = {"STA": (90.0, 0.0)}        # For .dat (colatitude=90°, longitude=0°)
@@ -546,3 +558,4 @@ if __name__ == "__main__":
         "TOMO_B": "test_data/dat/caseB/*.dat",
     }
     create_hdf_from_dat(satellite_spherical, dat_cases, output_dir / "dat")
+    """
