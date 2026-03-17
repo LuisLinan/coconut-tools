@@ -1,7 +1,7 @@
 COCONUT Reader: Post-processing and Visualization
 =================================================
 
-This module provides additional tools to **read, analyze, and visualize**
+This module provides tools to **read, analyze, and visualize**
 COCONUT simulation outputs.
 
 It combines:
@@ -18,6 +18,38 @@ The main entry point is the function:
    import coconut_tools.reader as rc
    rc.run_coconut_reader(...)
 
+Notes and Recommendations
+-------------------------
+
+- Always merge VTU files before using the reader:
+
+  .. code-block:: python
+
+     from coconut_tools import group_vtu_files
+
+     group_vtu_files.merge_all_snapshots(
+         input_dir="./",
+         output_dir="./vtu/",
+	 start_time=0,
+	 timestep=1,
+	 nbmax=1,
+	 stat=True,
+         nb_proc=72,
+         remove=False
+     )
+- currently set for stationnary run,
+  .. code-block:: python
+
+     start_time=?,
+     timeste=?,
+     nbmax=?,
+     stat=False,
+
+  should be adapted otherwise, 
+     
+- ``nb_proc`` should match the number of MPI processes used.
+
+- Avoid ``remove=True`` unless intermediate files can be deleted.
 
 Overview of Features
 --------------------
@@ -273,27 +305,6 @@ The processing workflow is:
       +---> VTU ---> PyVista ---> 2D/3D visualizations
 
 
-Notes and Recommendations
--------------------------
-
-- Always merge VTU files before using the reader:
-
-  .. code-block:: python
-
-     from coconut_tools import group_vtu_files
-
-     group_vtu_files.merge_all_snapshots(
-         input_dir="./",
-         output_dir="./vtu/",
-         nb_proc=72,
-         remove=False
-     )
-
-- ``nb_proc`` should match the number of MPI processes used.
-
-- Avoid ``remove=True`` unless intermediate files can be deleted.
-
-
 Documentation and Help
 ----------------------
 
@@ -301,7 +312,7 @@ Each function is documented via docstrings.
 
 In IPython:
 
-.. code-block:: none
+.. code-block:: python
 
    rc.run_coconut_reader?
    rc.Quick_Vr_Viewer?
