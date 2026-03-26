@@ -138,6 +138,9 @@ Inner boundary plots include:
 - radial magnetic field
 - pressure
 
+.. figure:: figures/inner_boundary_checks.png
+   :width: 600px
+  
 Outer boundary plots include:
 
 - sound speed
@@ -145,7 +148,7 @@ Outer boundary plots include:
 - Mach number
 - Alfvénic Mach number
 
-.. figure:: figures/boundary_checks.png
+.. figure:: figures/outer_boundary_checks.png
    :width: 600px
 
    Inner and outer boundary diagnostics.
