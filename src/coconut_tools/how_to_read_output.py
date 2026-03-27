@@ -105,11 +105,11 @@ def read_cfmesh_file(input_cfmesh: str) -> dict:
 
     # Physical quantities
     r = np.linalg.norm(cell_centers, axis=1)
-    rho = Initialdata[:, 0] * 1.67e-13 / 1.67e-27
-    V = Initialdata[:, 1:4] * 480248.0
-    B = Initialdata[:, 4:7] * 2.2e-4
-    P = Initialdata[:, 7] * 0.03851
-    T = P / rho / 2 / (1.38e-23)
+    rho = Initialdata[:, 0] * 1.67e-13 / 1.67e-27 # n'=rho/mp=mu*n
+    V = Initialdata[:, 1:4] * 480248.0 #m/s
+    B = Initialdata[:, 4:7] * 2.2e-4 #T
+    P = Initialdata[:, 7] * 0.03851 # Pa
+    T = P / rho / 2 / (1.38e-23) 
 
     return {
         'connectivity': connectivity,
