@@ -135,7 +135,7 @@ def create_boundary_fromcfmesh(inputfile: str, time: str, rad_out: float, nb_th:
     bf = comment[-nend][0]
     Initialdata = np.loadtxt(lines[bd:bf], dtype=np.float64)
 
-    rho0 = 2 * Initialdata[mask, 0] * 1.67e-13 / 1.67e-27 # n'=rho/mp=mu*n
+    rho0 = Initialdata[mask, 0] * 1.67e-13 / 1.67e-27 # n'=rho/mp=mu*n
     Vx0 = Initialdata[mask, 1] * 480248.0 #m/s
     Vy0 = Initialdata[mask, 2] * 480248.0 #m/s
     Vz0 = Initialdata[mask, 3] * 480248.0 #m/s
@@ -143,7 +143,7 @@ def create_boundary_fromcfmesh(inputfile: str, time: str, rad_out: float, nb_th:
     By = Initialdata[mask, 5] * 2.2e-4 #T
     Bz = Initialdata[mask, 6] * 2.2e-4 #T
     Pressure = Initialdata[mask, 7] * 0.03851 # Pa
-    temp = Pressure / rho0 / 2 / 1.38e-23 # P*mu/n'/kb = T [K] with mu=0.5 already hardcoded here !!!
+    temp = Pressure * 1.27 / rho0 / 2 / 1.38e-23 # P*mu/n'/kb = T [K] with mu=0.5 already hardcoded here !!!
     
     x, y, z = centers[mask].T
     rho = np.hypot(x, y)
@@ -164,7 +164,7 @@ def create_boundary_fromcfmesh(inputfile: str, time: str, rad_out: float, nb_th:
         'vr': vr,
         'vp': vlon,
         'vt': vclt,
-        'number_density': rho0,
+        'number_density': 2 * rho0 / 1.27,
         'temperature': temp,
         'Br': br,
         'Bp': blon,
