@@ -381,6 +381,12 @@ def apply_spheromak_to_cfmesh(config_path: str | Path) -> SpheromakInjectionResu
         temperature_k=target_temperature_k,
     )
 
+    _print_injected_spheromak_characteristics(
+        config=config,
+        target_density_kg_m3=target_density_kg_m3,
+        target_temperature_k=target_temperature_k,
+    )
+
     spheromak = LocalLFFSpheromak(
         LocalSpheromakParameters(
             radius_m=config.radius_m,
@@ -441,6 +447,34 @@ def apply_spheromak_to_cfmesh(config_path: str | Path) -> SpheromakInjectionResu
         before_vts=config.before_vts_path if config.write_vts_before else None,
         after_vts=config.after_vts_path if config.write_vts_after else None,
         modified_cell_count=modified_count,
+    )
+
+
+def _print_injected_spheromak_characteristics(
+    config: SpheromakInsertionConfig,
+    target_density_kg_m3: float,
+    target_temperature_k: float,
+) -> None:
+    """Print the physical characteristics of the injected spheromak."""
+    print("Injected spheromak characteristics:")
+    print(
+        "Lat      Lon       Radius  Speed   Density   Temp.  "
+        "Hel. sign   Tilt angle  Flux"
+    )
+    print(
+        "#        [deg HEEQ] [deg HEEQ] [RSun]  [km/s]  [kg/m^3]  [K]      "
+        "[+- 1]     [deg]      [Wb]"
+    )
+    print(
+        f"{config.lat_deg:7.2f}  "
+        f"{config.lon_deg:8.2f}  "
+        f"{config.radius_rsun:6.3f}  "
+        f"{config.speed_km_s:6.1f}  "
+        f"{target_density_kg_m3:.3e}  "
+        f"{target_temperature_k:.3e}  "
+        f"{config.helicity_sign:9d}  "
+        f"{config.tilt_deg:10.2f}  "
+        f"{config.toroidal_flux_wb:.3e}"
     )
 
 
