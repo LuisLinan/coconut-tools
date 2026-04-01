@@ -246,21 +246,10 @@ def cfmesh_to_binned_spherical_grid(
     nphi: int = 180,
     r_min: float | None = None,
     r_max: float | None = None,
+    extra_field_names: list[str] | None = None,
     auto_resolution: bool = False,
     auto_kwargs: Mapping[str, Any] | None = None,
-) -> tuple[
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-]:
+):
     """Convert an unstructured CFmesh into a binned spherical grid.
 
     Args:
@@ -276,8 +265,10 @@ def cfmesh_to_binned_spherical_grid(
     Returns:
         Tuple of arrays: (r_centers, theta_centers, phi_centers, vr_3d, vlon_3d,
         vclt_3d, rho_3d, temp_3d, br_3d, blon_3d, bclt_3d).
+    + potential extra variables
 
     e.g. (r, th, ph, vr, vlon, vclt, rho, temp, br, blon, bclt) = cfmesh_to_binned_spherical_grid("corona.CFmesh", nr=80, ntheta=90, nphi=180)
+    + potential extra variables
     """
 
     # ------------------------------
@@ -338,6 +329,20 @@ def cfmesh_to_binned_spherical_grid(
     Bz   = Init[:, 6] * 2.2e-4 # [T]
     Pressure = Init[:, 7] * 0.03851 # Pa
     temp = Pressure / rho0 / 2.0 / 1.38e-23 # P*mu/n'/kb = T [K] with mu=0.5 already hardcoded here !!!
+    phi_div = Init[:, 8] * 480248.0 * 2.2e-4 # divergence cleaning variable phi ; vRef*bRef
+
+    # If extra fields in CFmesh
+    ncols = Init.shape[1]
+    extra_fields = {}
+    if ncols > 9:
+        extra_field_names = [] if extra_field_names is None else list(extra_field_names)
+        
+        for j in range(9, ncols):
+            if (j - 9) < len(extra_field_names):
+                name = extra_field_names[j - 9]
+            else:
+                name = f"extra_{j}"
+            extra_fields[name] = Init[:, j]
     
     # spherical projections (unchanged)
     r_bis = np.hypot(x, y)
@@ -382,8 +387,10 @@ def cfmesh_to_binned_spherical_grid(
     count = np.zeros(shape)
 
     vr_sum   = accum(); vlon_sum = accum(); vclt_sum = accum()
-    rho_sum  = accum(); temp_sum = accum()
+    rho_sum  = accum(); temp_sum = accum(); phid_sum = accum()
     br_sum   = accum(); blon_sum = accum(); bclt_sum = accum()
+    # Dynamics accumulator if more variables
+    extra_sums = {name: accum() for name in extra_fields}
 
     # accumulate contributions
     for idx in np.where(valid)[0]:
@@ -395,9 +402,13 @@ def cfmesh_to_binned_spherical_grid(
         vclt_sum[ii,jj,kk] += vclt[idx]
         rho_sum[ii,jj,kk]  += rho0[idx]
         temp_sum[ii,jj,kk] += temp[idx]
+        phid_sum[ii,jj,kk] += phi_div[idx]
         br_sum[ii,jj,kk]   += br[idx]
         blon_sum[ii,jj,kk] += blon[idx]
         bclt_sum[ii,jj,kk] += bclt[idx]
+        # if more variables
+        for name, values in extra_fields.items():
+            extra_sums[name][ii, jj, kk] += values[idx]
 
     # ------------------------------
     # 6. AVERAGE (bins with no hits → nan)
@@ -409,10 +420,13 @@ def cfmesh_to_binned_spherical_grid(
         vclt_3d = vclt_sum / count
         rho_3d  = rho_sum  / count
         temp_3d = temp_sum / count
+        phid_3d = phid_sum / count
         br_3d   = br_sum   / count
         blon_3d = blon_sum / count
         bclt_3d = bclt_sum / count
         logger.debug("br_3d: %s", br_3d)
+        # if more variables
+        extra_3d = {name: arr / count for name, arr in extra_sums.items()}
 
     filled = np.isfinite(rho_3d).sum()
     total = rho_3d.size
@@ -427,8 +441,9 @@ def cfmesh_to_binned_spherical_grid(
         theta_centers,
         phi_centers,
         vr_3d, vlon_3d, vclt_3d,
-        rho_3d, temp_3d,
+        rho_3d, temp_3d, phid_3d,
         br_3d, blon_3d, bclt_3d,
+        extra_3d
     )
 
 def _auto_spherical_binning_resolution(
@@ -889,6 +904,7 @@ def read_cfmesh_cells(
     inputfile: str,
     *,
     readstruct_fn,
+    extra_field_names: list[str] | None = None,
 ):
     """
     Generalized CFmesh cell reader for 6-node Prism elements.
@@ -900,6 +916,7 @@ def read_cfmesh_cells(
     volumes : (N,)
     fields : dict
         rho, p, T, Vx,Vy,Vz, Bx,By,Bz, vr,vlon,vclt, br,blon,bclt, x,y,z
+    + extras if necessary
     """
     with open(inputfile, "r") as f:
         lines = f.readlines()
@@ -928,6 +945,7 @@ def read_cfmesh_cells(
     bd = comment[-nend - 1][0] + 1
     bf = comment[-nend][0]
     Init = np.loadtxt(lines[bd:bf], dtype=np.float64)
+    ncols = Init.shape[1]
 
     # Scalars (same scaling as your reader.py)
     rho = Init[:, 0] * 1.67e-13 / 1.67e-27      # n'=rho/mp=mu*n [m^-3]
@@ -939,6 +957,7 @@ def read_cfmesh_cells(
     Bz  = Init[:, 6] * 2.2e-4
     p   = Init[:, 7] * 0.03851                  # [Pa]
     T   = p / rho / 2.0 / 1.38e-23              # [K] (mu=0.5 hardcoded)
+    phi_div = Init[:, 8] * 480248.0 * 2.2e-4        # [V/m] 
 
     # Correct spherical projections (consistent with x^2+y^2 = r_xy^2)
     r_xy = np.hypot(x, y)
@@ -959,7 +978,7 @@ def read_cfmesh_cells(
     bclt = (x*z*Bx + y*z*By - (r_xy**2)*Bz) / ((r + eps) * (r_xy + eps))
 
     fields = {
-        "rho": rho, "p": p, "T": T,
+        "rho": rho, "p": p, "T": T, "phi_div": phi_div,
         "Vx": Vx, "Vy": Vy, "Vz": Vz,
         "Bx": Bx, "By": By, "Bz": Bz,
         "vr": vr, "vlon": vlon, "vclt": vclt,
@@ -967,6 +986,17 @@ def read_cfmesh_cells(
         "x": x, "y": y, "z": z,
         "r": r, "theta": theta, "phi": phi,
     }
+
+    # If extra fields in CFmesh
+    if ncols > 9:
+        extra_field_names = [] if extra_field_names is None else list(extra_field_names)
+
+        for j in range(9, ncols):
+            if (j - 9) < len(extra_field_names):
+                name = extra_field_names[j - 9]
+            else:
+                name = f"extra_{j}"
+            fields[name] = Init[:, j]
 
     return centers, r, volumes, fields
 
