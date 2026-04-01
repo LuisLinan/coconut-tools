@@ -11,3 +11,4 @@ Short, focused recipes for common tasks.
    comparisons/index
    magnetogram/index
    pytdm/index
+   cit/index

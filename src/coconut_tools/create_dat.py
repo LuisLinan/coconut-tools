@@ -143,7 +143,7 @@ def create_boundary_fromcfmesh(inputfile: str, time: str, rad_out: float, nb_th:
     By = Initialdata[mask, 5] * 2.2e-4 #T
     Bz = Initialdata[mask, 6] * 2.2e-4 #T
     Pressure = Initialdata[mask, 7] * 0.03851 # Pa
-    temp = Pressure / rho0 / 2 / 1.38e-23 # P*mu/n'/kb = T [K] with mu=0.5 already hardcoded here !!!
+    temp = Pressure * 1.27 / rho0 / 2 / 1.38e-23 # P*mu/n'/kb = T [K] with mu=0.5 already hardcoded here !!!
     
     x, y, z = centers[mask].T
     rho = np.hypot(x, y)
@@ -164,7 +164,7 @@ def create_boundary_fromcfmesh(inputfile: str, time: str, rad_out: float, nb_th:
         'vr': vr,
         'vp': vlon,
         'vt': vclt,
-        'number_density': rho0,
+        'number_density': 2 * rho0 / 1.27,
         'temperature': temp,
         'Br': br,
         'Bp': blon,
@@ -287,10 +287,10 @@ if __name__ == "__main__":
     """
     magnetogram_path = "C:/Users/luisl/Documents/Travail/Article_COCORIA/Mr_polfil_20190702T120437000.fits"
     date_hmi = '2019-07-02T12:04:37'
-    auto_compute_rotation = False
+    auto_compute_rotation = True
     manual_rotation_angle = 0.0  # fallback if auto_compute_rotation is False
 
-    file='C:/Users/luisl/Desktop/fluxrope/corona.CFmesh'
+    file='C:/Users/luisl/Documents/Travail/Article_COCORIA/corona.CFmesh'
 
 
     angle, date_dt = compute_rotation_angle(magnetogram_path, date_hmi)
@@ -302,17 +302,16 @@ if __name__ == "__main__":
     eps = 0.01
     full_output = True  # <--- change this to True for full variable set
 
-    angle = manual_rotation_angle
+    #angle = manual_rotation_angle
 
     logger.info(f"Computed rotation angle: {angle} degrees")
     logger.info(f"Using date for rotation computation: {date_dt.isoformat()}\n")
 
     timestamp_i = str(int(date_dt.timestamp()))
-    output_dat_temp = f'C:/Users/luisl/Desktop/fluxrope/solar_wind_boundary_{timestamp_i}_temps.dat'
-    output_dat = f'C:/Users/luisl/Desktop/fluxrope/solar_wind_boundary_{timestamp_i}.dat'
+    output_dat_temp = f'C:/Users/luisl/Documents/Travail/Article_COCORIA/solar_wind_boundary_{timestamp_i}_temps.dat'
+    output_dat = f'C:/Users/luisl/Documents/Travail/Article_COCORIA/solar_wind_boundary_{timestamp_i}.dat'
 
     time = date_dt.strftime("%Y-%m-%dT%H:%M:%S")
-    print(angle)
     create_boundary_fromcfmesh(file, time, rad_out, nb_th, nb_phi, eps, output_dat_temp, full_output=full_output)
     rotation(output_dat_temp, output_dat, angle, full_output=full_output)
     os.remove(output_dat_temp)
