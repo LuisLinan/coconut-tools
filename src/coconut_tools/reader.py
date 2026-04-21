@@ -317,6 +317,7 @@ def Quick_Vr_Viewer(
         log_colorbar=log_colorbar,
         cmap=mycmap,
         do_fieldlines=do_fieldlines,
+        clim=clim,
         V_name = V_name,
         psfile=psfile,
         fig_size=(1920, 1920),
