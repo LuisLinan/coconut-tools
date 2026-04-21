@@ -250,6 +250,7 @@ def Quick_Vr_Viewer(
     base_path: str | Path = ".",
     field: str = "vr",
     vr_clim: tuple[float, float] | None = None,
+    log_colorbar: bool = False,
     do_fieldlines: bool = True,
     V_name: str = "B",
     mycmap: str = "viridis",
@@ -268,6 +269,7 @@ def Quick_Vr_Viewer(
         base_path: Path to the run directory containing the VTU file.
         field: Scalar field to plot.
         vr_clim: Color limits for the field.
+        log_colorbar: If True, use logarithmic color scaling.
         do_fieldlines: If True, draw field lines.
         V_name: Name of the vector array on the mesh ("B" or "V").
         mycmap: Matplotlib colormap name.
@@ -311,6 +313,7 @@ def Quick_Vr_Viewer(
         save_path=figpath,
         field=field,                   # or "br", "rho_dim", etc.
         clim=vr_clim,
+        log_colorbar=log_colorbar,
         cmap=mycmap,
         do_fieldlines=do_fieldlines,
         V_name = V_name,
@@ -570,6 +573,7 @@ def visualize_yplane_disk(
     save_path: str | Path = "plots/",
     field: str = "vr",
     clim: tuple[float, float] | None = None,
+    log_colorbar: bool = False,
     cmap: str = "viridis",
     psfile: str | None = None,
     fig_size: tuple[int, int] = (1920, 1920),
@@ -595,6 +599,7 @@ def visualize_yplane_disk(
         save_path: Output PNG directory or file path.
         field: Scalar to visualize on the disk.
         clim: Color limits for the scalar.
+        log_colorbar: If True, use logarithmic color scaling and scalar bar.
         cmap: Colormap name.
         psfile: If set, save a screenshot to this filename.
         fig_size: Window size in pixels (width, height).
@@ -670,12 +675,35 @@ def visualize_yplane_disk(
     levels = 16
     base = plt.get_cmap(cmap)
     cmap_discrete = ListedColormap(base(np.linspace(0, 1, levels)))
+
+    plot_clim = clim
+    if log_colorbar:
+        scalars = np.asarray(slice_plane[field])
+        positive_scalars = scalars[np.isfinite(scalars) & (scalars > 0.0)]
+        if positive_scalars.size == 0:
+            raise ValueError(
+                f"log_colorbar=True requires strictly positive values for field {field!r} on the slice."
+            )
+
+        if plot_clim is None:
+            plot_clim = (
+                float(positive_scalars.min()),
+                float(positive_scalars.max()),
+            )
+
+        if plot_clim[0] <= 0.0 or plot_clim[1] <= 0.0:
+            raise ValueError(
+                f"log_colorbar=True requires strictly positive clim bounds, got {plot_clim}."
+            )
+        if plot_clim[0] >= plot_clim[1]:
+            raise ValueError(f"Invalid clim bounds {plot_clim}: expected clim[0] < clim[1].")
     
     p.add_mesh(
         slice_plane,
         scalars=field,
         cmap=cmap_discrete,
-        clim=clim,
+        clim=plot_clim,
+        log_scale=log_colorbar,
         show_edges=False,
     )
 
