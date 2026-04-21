@@ -251,6 +251,7 @@ def Quick_Vr_Viewer(
     field: str = "vr",
     vr_clim: tuple[float, float] | None = None,
     log_colorbar: bool = False,
+    clim: tuple[float, float] | None = None,
     do_fieldlines: bool = True,
     V_name: str = "B",
     mycmap: str = "viridis",
