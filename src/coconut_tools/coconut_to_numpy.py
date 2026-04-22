@@ -320,7 +320,7 @@ def cfmesh_to_binned_spherical_grid(
     bf = comment[-nend][0]
     Init = np.loadtxt(lines[bd:bf], dtype=np.float64)
     
-    rho0 = Init[:, 0] * 1.67e-13 / 1.67e-27 # n'=rho/mp=mu*n
+    rho0 = Init[:, 0] * 1.67e-13 # rho # / 1.67e-27 # n'=rho/mp=mu*n
     Vx0  = Init[:, 1] * 480248.0 # [m/s]
     Vy0  = Init[:, 2] * 480248.0 # [m/s]
     Vz0  = Init[:, 3] * 480248.0 # [m/s]
@@ -328,7 +328,7 @@ def cfmesh_to_binned_spherical_grid(
     By   = Init[:, 5] * 2.2e-4 # [T]
     Bz   = Init[:, 6] * 2.2e-4 # [T]
     Pressure = Init[:, 7] * 0.03851 # Pa
-    temp = Pressure / rho0 / 2.0 / 1.38e-23 # P*mu/n'/kb = T [K] with mu=0.5 already hardcoded here !!!
+    temp = Pressure / rho0 / 2.0 / 1.38e-23 * 1.67e-27 # temp with mu=0.5 hardcoded # if * 1.67e-27 removed, P*mu/n'/kb = T [K] with mu=0.5 already hardcoded here !!!
     phi_div = Init[:, 8] * 480248.0 * 2.2e-4 # divergence cleaning variable phi ; vRef*bRef
 
     # If extra fields in CFmesh
@@ -664,7 +664,6 @@ def radial_profile_volume_weighted(
 
     return out
 
-
 def plot_radial_profiles(
     profiles: dict,
     *,
@@ -675,42 +674,7 @@ def plot_radial_profiles(
     title: str | None = None,
     logx: bool = False,
     logy: bool = False,
-):
-    """Simple matplotlib plot for one or more radial profile curves."""
-    r = profiles[x_key]
-    plt.figure()
-    for k in keys:
-        if k not in profiles:
-            raise KeyError(f"'{k}' not in profiles. Available: {list(profiles.keys())}")
-        plt.plot(r, profiles[k], label=k)
-    plt.xlabel(xlabel)
-    plt.ylabel(ylabel)
-    if title:
-        plt.title(title)
-    if logx:
-        plt.xscale("log")
-    if logy:
-        plt.yscale("log")
-    if len(keys) > 1:
-        plt.legend()
-    plt.tight_layout()
-    plt.show()
-
-import numpy as np
-import matplotlib.pyplot as plt
-
-
-def plot_radial_profiles(
-    profiles: dict,
-    *,
-    x_key: str = "r",
-    keys: tuple[str, ...] = ("mean",),
-    xlabel: str = "r",
-    ylabel: str = "Quantity",
-    title: str | None = None,
-    logx: bool = False,
-    logy: bool = False,
-    interpolate_nans: bool = False,   # <-- new argument
+    interpolate_nans: bool = False,
 ):
     """
     Simple matplotlib plot for one or more radial profile curves.

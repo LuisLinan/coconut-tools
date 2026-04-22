@@ -57,7 +57,9 @@ def compare_convergence(
             data = np.loadtxt(lines[2:])
             df = pd.DataFrame(data[:, :9], columns=headers).set_index("iter")
 
-            ax.plot(df.index, df[quantity], linewidth=1, label=label)
+            y = df[quantity].to_numpy(dtype=float)
+            mask = np.isfinite(y) & (np.abs(y) < 1e1)
+            ax.plot(df.index[mask], y[mask], linewidth=1, label=label)
 
         ax.set_xlabel('Iterations')
         ax.set_ylabel(quantity)
