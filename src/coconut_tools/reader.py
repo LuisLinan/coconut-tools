@@ -330,17 +330,19 @@ def Quick_Vr_Viewer(
 
 def Quick_Ra_viewer(
     base_path: str | Path = ".",
-    vtu_relpath: str = "vtu/corona-mhd_0000.vtu",
+    vtu_name: str = "vtu/corona-mhd_0000.vtu",
     volumic_vr: np.ndarray | None = None,
-    off_screen: bool = False,
+    figdir: str = './',
+    psfile: str | None = None,
+    verbose: bool=False,
 ) -> None:
     """Create PyVista 3D visualizations from a VTU file.
 
     Args:
         base_path: Path to the run directory containing the `vtu/` folder.
-        vtu_relpath: Relative path from `base_path` to the VTU file.
+        vtu_name: VTU file.
         volumic_vr: Optional 3D array for volumetric vr rendering.
-        off_screen: If True, enable PyVista off-screen rendering.
+        psfile: figname to save, just show otherwise
 
     Raises:
         FileNotFoundError: If the VTU file is missing.
@@ -350,37 +352,30 @@ def Quick_Ra_viewer(
     """
     
     base_path = Path(base_path).resolve()
-
-    # Directories
-    plots_dir = base_path / "plots"
-    plots_dir.mkdir(exist_ok=True)
-    
-    vtu_path = base_path / vtu_relpath
+    vtu_path = base_path / vtu_name
     
     if not vtu_path.is_file():
         raise FileNotFoundError(f"VTU file not found: {vtu_path}")
     
-    # -----------------------
-    # PyVista slice plots from VTU
-    #if off_screen:
-    #    os.environ.setdefault("PYVISTA_OFF_SCREEN", "1")
-    #    pv.OFF_SCREEN = True
+    if verbose: logger.info("Reading VTU mesh from %s", vtu_path)
+    mesh = read_mesh(str(vtu_path), verbose=verbose)
+    mesh = convert_units(mesh, verbose=verbose)
+    mesh = convert_to_spherical(mesh, verbose=verbose)
     
-    logger.info("Reading VTU mesh from %s", vtu_path)
-    mesh = read_mesh(str(vtu_path))
-    mesh = convert_units(mesh)
-    mesh = convert_to_spherical(mesh)
-    
-    #rho horiz. slice + alfven surface
-    save_path=str(plots_dir / "pyvista_slice_Alv.png")
-    logger.info("Making Rho/AlfvSurf PyVista slice plot -> %s", save_path)
+    if psfile!=None:
+        figdir += psfile
+        if verbose: logger.info("Making Rho/AlfvSurf PyVista slice plot -> %s", figdir)
+        show = False
+    else: show=True
+        
     visualize(mesh, slice_normal="z",
-               slice_plane_scalar="rho_dim",
-               AlfvSurf=True,
-               volumic_vr=volumic_vr,
-               save_path=save_path,
-               rho_iso = 0.,
-               show=not off_screen)
+              slice_plane_scalar="rho_dim",
+              AlfvSurf=True,
+              volumic_vr=volumic_vr,
+              save_path=figdir,
+              rho_iso = 0.,
+              show=show,
+              verbose=verbose)
 
 def _add_carrington_grid(
     plotter: pv.Plotter,

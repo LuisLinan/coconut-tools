@@ -65,7 +65,7 @@ def make_streamlines(mesh,
     )
     return stream
 
-def read_mesh(filename):
+def read_mesh(filename,verbose=True):
     """Load a VTU mesh file.
 
     Args:
@@ -74,19 +74,19 @@ def read_mesh(filename):
     Returns:
         pv.DataSet: PyVista mesh object.
     """
-    logging.info('Reading file...')
+    if verbose: logging.info('Reading file...')
     mesh = pv.read(filename)
 
 
-    logging.info("Arrays in point_data: %s", list(mesh.point_data.keys()))
-    logging.info("Arrays in cell_data: %s", list(mesh.cell_data.keys()))
-    logging.info("Arrays in field_data: %s", list(mesh.field_data.keys()))
+    if verbose: logging.info("Arrays in point_data: %s", list(mesh.point_data.keys()))
+    if verbose: logging.info("Arrays in cell_data: %s", list(mesh.cell_data.keys()))
+    if verbose: logging.info("Arrays in field_data: %s", list(mesh.field_data.keys()))
 
 
-    logging.info('Done!')
+    if verbose: logging.info('Done!')
     return mesh
 
-def convert_units(mesh):
+def convert_units(mesh, verbose=True ):
     """Convert mesh quantities into physical units and add them to the mesh.
 
     Args:
@@ -95,7 +95,7 @@ def convert_units(mesh):
     Returns:
         pv.DataSet: Updated mesh with new fields.
     """
-    logging.info('Converting to physical units...')
+    if verbose: logging.info('Converting to physical units...')
     pts = mesh.points * 6.955e8  # Convert to meters
     mesh['x'], mesh['y'], mesh['z'] = pts[:,0], pts[:,1], pts[:,2] # m
     mesh['rho_dim'] = mesh['rho'] * 1.67e-16 # g/cm3
@@ -112,7 +112,7 @@ def convert_units(mesh):
 
     return mesh
 
-def convert_to_spherical(mesh):
+def convert_to_spherical(mesh, verbose=True):
     """Convert Cartesian coordinates to spherical and compute radial components.
 
     Args:
@@ -121,7 +121,7 @@ def convert_to_spherical(mesh):
     Returns:
         pv.DataSet: Updated mesh with spherical quantities.
     """
-    logging.info('Converting to spherical coordinates...')
+    if verbose: logging.info('Converting to spherical coordinates...')
 
     x, y, z = mesh['x'], mesh['y'], mesh['z']
     vx, vy, vz = mesh['vx_dim'], mesh['vy_dim'], mesh['vz_dim']
@@ -156,6 +156,7 @@ def visualize(
     camera_radius: float = 18.0,
     camera_phi_deg: float = 60.0,
     camera_z: float = 4.0,
+    verbose: bool=True,
 ):
     """Create a PyVista visualization of MHD quantities.
 
@@ -194,7 +195,7 @@ def visualize(
         None
     """
 
-    logging.info("Creating plotter...")
+    if verbose: logging.info("Creating plotter...")
     off = not show
     if off:
         os.environ.setdefault("PYVISTA_OFF_SCREEN", "1")
@@ -214,7 +215,7 @@ def visualize(
 
     # --------------------------------------------------------------------------
     # Slice plot: radial velocity vr
-    logging.info("Adding slice plot ("+slice_plane_scalar+")…")
+    if verbose: logging.info("Adding slice plot ("+slice_plane_scalar+")…")
     slice_plane = mesh.slice(normal=slice_normal, origin=(0, 0, 0))
     if slice_plane_scalar=="vr":
         slice_plane_tit="Radial Velocity [km/s]"
@@ -258,7 +259,7 @@ def visualize(
     # --------------------------------------------------------------------------
     # Alfven surface
     if AlfvSurf:
-        logging.info("Adding Alfven surface…")
+        if verbose: logging.info("Adding Alfven surface…")
         va = np.sqrt(mesh['br']**2+mesh['btheta']**2+mesh['bphi']**2)/np.sqrt(4.*np.pi*mesh['rho_dim'])
         Ma = np.sqrt(mesh['vr']**2+mesh['vtheta']**2+mesh['vphi']**2)*1.e5/va
         #print(mesh.n_points, mesh.n_cells, Ma.shape, Ma.size)
@@ -276,7 +277,7 @@ def visualize(
 
     # --------------------------------------------------------------------------
     # Clipped inner sphere: br
-    logging.info("Adding clipped sphere (br)…")
+    if verbose: logging.info("Adding clipped sphere (br)…")
     sphere = pv.Sphere(center=(0, 0, 0), radius=1.01)
     clipped = mesh.clip_surface(sphere)
 
@@ -301,7 +302,7 @@ def visualize(
 
     # --------------------------------------------------------------------------
     # Magnetic-field streamlines
-    logging.info("Adding magnetic field streamlines…")
+    if verbose: logging.info("Adding magnetic field streamlines…")
     mesh["B"] = np.column_stack([mesh["bx_dim"], mesh["by_dim"], mesh["bz_dim"]])
 
     stream = make_streamlines(
@@ -332,7 +333,7 @@ def visualize(
     # --------------------------------------------------------------------------
     # Density isosurface
     if rho_iso != 0.0:
-        logging.info("Adding density isosurface...")
+        if verbose: logging.info("Adding density isosurface...")
 
         rmin, rmax = mesh.get_data_range("rho_dim")
 
@@ -355,14 +356,14 @@ def visualize(
                 opacity=0.4,
                 show_scalar_bar=False,
             )
-            logging.info(f"Density isosurface at rho = {rho_iso:.2e} g/cm^3")
+            if verbose: logging.info(f"Density isosurface at rho = {rho_iso:.2e} g/cm^3")
 
     # --------------------------------------------------------------------------
     # Render + save
     p.show(interactive=False, auto_close=False, window_size=[1800, 900])
 
     if save_path:
-        logging.info(f"Saving figure to {save_path}…")
+        if verbose: logging.info(f"Saving figure to {save_path}…")
         p.screenshot(save_path)
 
     if show:
