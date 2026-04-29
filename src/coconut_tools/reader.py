@@ -262,6 +262,7 @@ def Quick_Vr_Viewer(
     phi_degrees: bool = True, 
     cam_dist: float = 100.0,
     clean_invalid: bool = False,
+    AlfvSurf=False,
 ) -> None:
     """Quick viewer for a y-plane disk plot.
 
@@ -323,7 +324,8 @@ def Quick_Vr_Viewer(
         phi=phi,
         phi_degrees=phi_degrees,
         cam_dist=cam_dist,
-        clean_invalid=clean_invalid
+        clean_invalid=clean_invalid,
+        AlfvSurf=AlfvSurf
     )
 
 
@@ -450,7 +452,6 @@ def visualize_spherical_surface_from_vtu(
     grid_width: float = 1.0,
     cam_dist=None,
     clean_invalid: bool=False,
-
 ) -> None:
     """
     Plot a scalar quantity on a spherical surface at radius r_surf
@@ -594,6 +595,8 @@ def visualize_yplane_disk(
     phi_degrees: bool = True, 
     cam_dist: float = 100.0,
     clean_invalid: bool = False,
+    AlfvSurf: bool = False,
+    verbose=True,
 ) -> None:
     """Produce a centered, full-disk 2D visualization of the y=0 plane.
 
@@ -629,7 +632,7 @@ def visualize_yplane_disk(
         tmp = remove_invalid_cells(mesh, field)
         mesh = tmp
 
-    logger.info("Creating centered y-plane disk plot -> %s", save_path)
+    if verbose: logger.info("Creating centered y-plane disk plot -> %s", save_path)
     
     # 1) choose slice plane normal
     plane_l = plane.lower()
@@ -733,7 +736,7 @@ def visualize_yplane_disk(
         #    (use mesh.streamlines_from_source; it uses the active vectors or vectors=...)
         # --------------------------------------------------------------------------
         # Magnetic-field streamlines
-        logger.info("Adding magnetic field streamlines.")
+        if verbose: logger.info("Adding magnetic field streamlines.")
         if V_name == "B":
             mesh["B"] = np.column_stack([mesh["bx_dim"], mesh["by_dim"], mesh["bz_dim"]])
         elif V_name == "V":
@@ -769,13 +772,21 @@ def visualize_yplane_disk(
     #    (0, 0, 1),    # up vector
     #]
 
+    if AlfvSurf:
+        if verbose: logger.info("Adding Alfven surface…")
+        va = np.sqrt(mesh['br']**2+mesh['btheta']**2+mesh['bphi']**2)/np.sqrt(4.*np.pi*mesh['rho_dim'])
+        Ma = np.sqrt(mesh['vr']**2+mesh['vtheta']**2+mesh['vphi']**2)*1.e5/va
+        mesh["Ma"]  = Ma # .point_array ? Ma.swapaxes(-2,-1).ravel("C") ?
+        AlfSurf=mesh.contour(scalars="Ma",isosurfaces=[1.])
+        AlfvenSurf=p.add_mesh(AlfSurf,opacity=0.4,color='lightblue')
+
     # 3) set camera
     p.camera_position = [eye, (0.0, 0.0, 0.0), up]
     p.camera.zoom(1.0)
 
     if psfile != None:
         out = str(Path(save_path) / psfile)
-        p.screenshot(out)
+        p.screenshot(out,window_size=[4000,4000])
         
     else:
         p.show()
