@@ -153,7 +153,7 @@ def visualize(
     volumic_vr: float | None = None,
     rho_iso: float = 1e-13,
     AlfvSurf: bool = False,
-    camera_radius: float = 18.0,
+    camera_radius: float = 18.0, #cylindrical coordinates
     camera_phi_deg: float = 60.0,
     camera_z: float = 4.0,
     verbose: bool=True,

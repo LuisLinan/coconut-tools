@@ -335,6 +335,9 @@ def Quick_Ra_viewer(
     figdir: str = './',
     psfile: str | None = None,
     verbose: bool=False,
+    camera_radius: float = 18.0, #cylindrical coordinates
+    camera_phi_deg: float = 60.0,
+    camera_z: float = 4.0,
 ) -> None:
     """Create PyVista 3D visualizations from a VTU file.
 
@@ -367,7 +370,9 @@ def Quick_Ra_viewer(
         if verbose: logger.info("Making Rho/AlfvSurf PyVista slice plot -> %s", figdir)
         show = False
     else: show=True
-        
+    
+    pv.global_theme.allow_empty_mesh = True
+    
     visualize(mesh, slice_normal="z",
               slice_plane_scalar="rho_dim",
               AlfvSurf=True,
@@ -375,6 +380,9 @@ def Quick_Ra_viewer(
               save_path=figdir,
               rho_iso = 0.,
               show=show,
+              camera_radius=camera_radius,
+              camera_phi_deg=camera_phi_deg,
+              camera_z=camera_z,
               verbose=verbose)
 
 def _add_carrington_grid(
