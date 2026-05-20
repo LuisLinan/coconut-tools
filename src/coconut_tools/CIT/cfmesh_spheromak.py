@@ -275,23 +275,23 @@ def create_example_config(config_path: str | Path) -> Path:
 
     parser = configparser.ConfigParser()
     parser["Paths"] = {
-        "input_cfmesh": "tests/local_test/corona.CFmesh",
-        "output_dir": "tests/_outputs/cit",
-        "case_name": "spheromak_test",
+        "input_cfmesh": "E:/COCONUT/2013/full_mhd/corona.CFmesh",
+        "output_dir": "E:/COCONUT/2013/cme/",
+        "case_name": "spheromak_2013",
     }
     parser["Spheromak"] = {
         "lat_deg": "0.0",
         "lon_deg": "0.0",
-        "radius_rsun": "5.0",
-        "speed_km_s": "800.0",
+        "radius_rsun": "0.5",
+        "speed_km_s": "1200.0",
         "mass_density_kg_m3": "auto",
         "temperature_k": "auto",
         "helicity_sign": "1",
         "tilt_deg": "0.0",
-        "toroidal_flux_wb": "1.0e14",
+        "toroidal_flux_wb": "2.0e14",
     }
     parser["Placement"] = {
-        "center_radius_rsun": "10.0",
+        "center_radius_rsun": "2.5",
     }
     parser["Plasma"] = {
         "density_factor": "1.5",
@@ -465,12 +465,14 @@ def _print_injected_spheromak_characteristics(
         "#        [deg HEEQ] [deg HEEQ] [RSun]  [km/s]  [kg/m^3]  [K]      "
         "[+- 1]     [deg]      [Wb]"
     )
+    euhforia_number_density = target_density_kg_m3 / 1.27
+    
     print(
         f"{config.lat_deg:7.2f}  "
         f"{config.lon_deg:8.2f}  "
         f"{config.radius_rsun:6.3f}  "
         f"{config.speed_km_s:6.1f}  "
-        f"{target_density_kg_m3:.3e}  "
+        f"{euhforia_number_density:.3e}  "
         f"{target_temperature_k:.3e}  "
         f"{config.helicity_sign:9d}  "
         f"{config.tilt_deg:10.2f}  "
@@ -632,7 +634,7 @@ def mass_density_and_temperature_to_pressure(
         Pressure in Pascal.
     """
     number_density = mass_density_kg_m3 / PROTON_MASS_KG
-    return number_density * NUMBER_DENSITY_FACTOR * BOLTZMANN_SI * temperature_k
+    return number_density * NUMBER_DENSITY_FACTOR * BOLTZMANN_SI * temperature_k / 1.27
 
 
 def code_pressure_and_density_to_temperature(
@@ -652,7 +654,7 @@ def code_pressure_and_density_to_temperature(
     number_density = mass_density / PROTON_MASS_KG
     pressure_pa = pressure_code * PRESSURE_CODE_TO_PA
     denominator = np.maximum(number_density * NUMBER_DENSITY_FACTOR * BOLTZMANN_SI, 1.0e-30)
-    return pressure_pa / denominator
+    return 1.27 * pressure_pa / denominator
 
 
 def write_modified_cfmesh(
@@ -989,17 +991,6 @@ def _parse_optional_float(value: str) -> float | None:
 
 if __name__ == "__main__":
     CONFIG_PATH = Path("tests/_outputs/cit/spheromak_example.ini")
-    WRITE_EXAMPLE_CONFIG = True
-
-    if WRITE_EXAMPLE_CONFIG:
-        create_example_config(CONFIG_PATH)
-    else:
-        apply_spheromak_to_cfmesh(CONFIG_PATH)
-
-    CONFIG_PATH = Path("tests/_outputs/cit/spheromak_example.ini")
-    WRITE_EXAMPLE_CONFIG = False
-
-    if WRITE_EXAMPLE_CONFIG:
-        create_example_config(CONFIG_PATH)
-    else:
-        apply_spheromak_to_cfmesh(CONFIG_PATH)
+    create_example_config(CONFIG_PATH)
+    
+    apply_spheromak_to_cfmesh(CONFIG_PATH)

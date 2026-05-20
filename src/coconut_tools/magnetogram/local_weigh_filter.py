@@ -75,11 +75,13 @@ def filter3(image: np.ndarray, dx: float, dy: float, alpha: float, Rn: float, im
     logger.info(f"Starting local filter with shape {u.shape}, Rn={Rn:.3f}, h={h:.3f}")
     time_start = time.time()
 
-    with Pool() as pool:
-        results = pool.starmap(
-            main_loop_integration,
-            [(u, i, j, Rn, h, dx, dy) for i in range(u.shape[0]) for j in range(u.shape[1])]
-        )
+    tasks = [(u, i, j, Rn, h, dx, dy) for i in range(u.shape[0]) for j in range(u.shape[1])]
+    try:
+        with Pool() as pool:
+            results = pool.starmap(main_loop_integration, tasks)
+    except OSError as exc:
+        logger.warning(f"Multiprocessing unavailable ({exc}); falling back to serial filtering.")
+        results = [main_loop_integration(*task) for task in tasks]
 
     u_new = np.array(results).reshape(u.shape)
     logger.info(f"Filtering completed in {datetime.timedelta(seconds=time.time() - time_start)}")

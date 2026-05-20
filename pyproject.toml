@@ -21,6 +21,7 @@ dependencies = [
   "matplotlib",
   "natsort",
   "numpy",
+  "opencv-python",
   "pandas",
   "pyevtk",
   "pyvista",

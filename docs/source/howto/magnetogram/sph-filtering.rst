@@ -1,71 +1,142 @@
-Filtered spherical harmonics (SPH)
-==================================
+Filtered Spherical Harmonics
+============================
 
 Goal
 ----
-Filter synoptic magnetograms via spherical harmonic decomposition to smooth
-small-scale noise and control the intensity range, while keeping large-scale
-features that drive the corona.
+The SPH pipeline projects the radial magnetic field on spherical harmonics,
+keeps modes up to ``lmax``, optionally damps high-degree modes with ``alpha``,
+then reconstructs the map used as the COCONUT inner boundary.
 
 Module
 ------
 ``coconut_tools.magnetogram.sph_filtering``
 
-API
----
+High-Level API
+--------------
+Use ``process_config`` for normal runs:
+
 .. code-block:: python
 
-   Br_filt, coef = project_and_reconstruct(
-       Br, Theta, Phi,
-       lmax, amp=1, alpha=0
-   )
+   from coconut_tools.magnetogram.sph_filtering import process_config
 
-Parameters
-~~~~~~~~~~
-- **Br**: 2D array of radial magnetic field (θ, φ).
-- **Theta, Phi**: grids (radians).
-- **lmax**: maximum spherical harmonic degree kept.
-- **amp**: global scaling factor (default 1).
-- **alpha**: high-ℓ damping factor
-  (scales coefficients by ``1 / (1 + alpha * l²(l+1)²)``).
+   results = process_config(config)
 
-Helpers
--------
-- ``read_magnetogram(file, map_type)`` → load HMI, GONG, ADAPT maps.
-- ``write_bc_file(name, Br, theta, phi, r_st=1.0)`` → save a COCONUT boundary.
-- ``plot_maps(Br, Theta, Phi, visu_type="sinlat")`` → quick visualization.
+The function accepts either a single-date configuration or a time-series
+configuration. It downloads the magnetograms, reads or interpolates ``Br``,
+applies the SPH reconstruction, writes the COCONUT ``.dat`` file, and writes a
+diagnostic figure when ``show_map`` is true.
 
-Example workflow
-----------------
+Single-Date Example
+-------------------
+To process one magnetogram, provide ``date`` and omit ``total_hours``:
+
+.. code-block:: python
+
+   from coconut_tools.magnetogram.sph_filtering import process_config
+
+   config = {
+       "date": "2020-12-07T15:00:00",
+       "map_type": "HMI_small",
+       "lmax": 30,
+       "alpha": 1e-6,
+       "amp": 1,
+       "flux_correct": False,
+       "write_map": True,
+       "show_map": True,
+       "output_dir": "./boundary/",
+       "output_path_fig": "./figures/hmi_sph.png",
+   }
+
+   results = process_config(config)
+
+Multi-Date GONG Example
+-----------------------
+To process three days with a 3-hour cadence, set ``cadence_hours=3`` and
+``total_hours=72``. This processes 24 target dates.
+
+.. code-block:: python
+
+   from coconut_tools.magnetogram.sph_filtering import process_config
+
+   config = {
+       "date": "2025-10-09T18:00:00",
+       "map_type": "GONG",
+       "cadence_hours": 3,
+       "total_hours": 72,
+       "interpolation": True,
+       "interpolation_order": 2,
+       "flux_correct": True,
+       "lmax": 20,
+       "alpha": 0,
+       "amp": 1,
+       "write_map": True,
+       "show_map": True,
+       "output_dir": "./boundary/",
+       "download_dir": "./raw/",
+       "output_path_fig": "./figures/gong_sph.png",
+   }
+
+   results = process_config(config)
+
+For each target date, the output file is named like:
+
+.. code-block:: text
+
+   map_gong_lmax20_sph_YYYYMMDDHHMMSS.dat
+
+The diagnostic figures are named like:
+
+.. code-block:: text
+
+   gong_sph_YYYYMMDDHHMMSS.png
+
+when a single ``output_path_fig`` is provided for a multi-date run.
+
+SPH Parameters
+--------------
+- ``lmax``: maximum spherical harmonic degree kept in the reconstruction.
+- ``amp``: global scaling factor applied during reconstruction, default ``1``.
+- ``alpha``: high-degree damping factor. The coefficients are scaled by
+  ``1 / (1 + alpha * l**2 * (l + 1)**2)``.
+
+Start with ``lmax=20`` and ``alpha=0``. Raise ``lmax`` to keep more spatial
+detail, and increase ``alpha`` to damp high-degree structure.
+
+Advanced API
+------------
+The lower-level functions are still available when a custom workflow is needed:
+
 .. code-block:: python
 
    from coconut_tools.magnetogram.sph_filtering import (
        generate_output_and_map_names,
-       read_magnetogram, project_and_reconstruct,
-       write_bc_file, plot_maps
+       read_magnetogram,
+       project_and_reconstruct,
+       write_bc_file,
+       plot_maps,
    )
 
-   date = "2020-12-07T15:00:00"
-   map_type = "HMI_small"
-   output_dir = "./"
-
-   # Names
    output_name, local_file = generate_output_and_map_names(
-       date, map_type, output_dir, lmax=30, method="SPH"
+       "2020-12-07T15:00:00",
+       "HMI_small",
+       "./boundary/",
+       lmax=30,
+       method_used="sph",
    )
 
-   # Load map
-   Br, Theta, Phi = read_magnetogram(local_file, map_type)
+   Br, Theta, Phi = read_magnetogram(local_file, "HMI_small")
+   Br_filt, coef = project_and_reconstruct(Br, Theta, Phi, lmax=30, amp=1, alpha=1e-6)
+   write_bc_file(output_name, Br_filt, Theta[:, 0], Phi[0, :])
+   plot_maps(
+       Br,
+       Br_filt,
+       Theta[:, 0],
+       Phi[0, :],
+       "HMI_small",
+       output_path="./figures/hmi_sph.png",
+       date="2020-12-07T15:00:00",
+   )
 
-   # Filter
-   Br_filt, _ = project_and_reconstruct(Br, Theta, Phi, lmax=30, alpha=1e-6)
-
-   # Save and plot
-   write_bc_file(output_name, Br_filt, Theta[:,0], Phi[0,:])
-   plot_maps(Br_filt, Theta, Phi, save_path="filtered.png")
-
-Notes
------
-- Start with ``lmax=20, alpha=0``.  
-- Raise ``lmax`` gradually to add detail; increase ``alpha`` for stronger damping.
-- ``lmax=50, alpha=3e-6`` worked well in practice, but is slower.
+For GONG and ADAPT interpolation workflows, use
+``generate_output_and_interpolation_map_names`` and
+``read_interpolated_magnetogram`` instead of the single-map helpers.

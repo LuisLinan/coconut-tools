@@ -140,12 +140,23 @@ def load_br_map_from_bcfile(
     total = int(br_grid.size)
     if filled == 0:
         raise ValueError("Failed to grid the BC data: all grid cells are NaN.")
-    if filled < total:
+
+    filled_pole_gaps = 0
+    for row_idx in range(n_lat):
+        finite = np.isfinite(br_grid[row_idx])
+        if finite.sum() == 1 and not finite.all():
+            br_grid[row_idx, ~finite] = float(np.nanmean(br_grid[row_idx, finite]))
+            filled_pole_gaps += int((~finite).sum())
+
+    filled_after_poles = int(np.isfinite(br_grid).sum())
+    if filled_after_poles < total:
         logger.warning(
             "Grid has missing values: filled=%d of %d cells. Plot will show gaps.",
-            filled,
+            filled_after_poles,
             total,
         )
+    elif filled_pole_gaps:
+        logger.debug("Filled %d pole longitude gap(s).", filled_pole_gaps)
 
     return BrMap(lon_deg=lon_unique, lat_deg=lat_unique, br=br_grid)
 

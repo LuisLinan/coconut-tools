@@ -8,15 +8,22 @@ Author: Jose Murteira
 Cleaned and modularized by: Luis
 """
 import logging
+from typing import Any
 
 import numpy as np
 import scipy.ndimage
 from coconut_tools.magnetogram.nonlinear_diffusion_filter import nonlinearDiffusionFilter
 from coconut_tools.magnetogram.sph_filtering import (
+    append_timestamp_to_path,
+    build_processing_dates,
+    correct_net_flux,
+    default_figure_path,
+    generate_output_and_interpolation_map_names,
     read_magnetogram,
+    read_interpolated_magnetogram,
     generate_output_and_map_names,
     write_bc_file,
-    plot_maps
+    plot_maps,
 )
 from coconut_tools.logger_config import setup_logger
 
@@ -67,8 +74,182 @@ def filter_radial_field(
     return Br_filtered, timestep
 
 
+def _as_bool(value: Any) -> bool:
+    """Convert common config values to bool."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+    return bool(value)
+
+
+def process_magnetogram_date(
+    config: dict[str, Any],
+    target_date,
+    method_used: str = "NLD",
+    output_path_fig: str | None = None,
+) -> dict[str, Any]:
+    """Process one target date with the nonlinear diffusion filter.
+
+    Args:
+        config (dict[str, Any]): Processing configuration.
+        target_date: Date to process.
+        method_used (str): Method label included in output filenames.
+        output_path_fig (str | None): Diagnostic figure path.
+
+    Returns:
+        dict[str, Any]: Paths and processing metadata.
+    """
+    map_type = config["map_type"]
+    output_dir = config.get("output_dir", "../")
+    download_dir = config.get("download_dir", output_dir)
+    lmax = config.get("lmax", 20)
+    r_st = config.get("r_st", 1.0)
+    adapt_map = config.get("adapt_map", 6)
+    write_map = _as_bool(config.get("write_map", True))
+    show_map = _as_bool(config.get("show_map", True))
+    visu_type = config.get("visu_type", "sinlat")
+    interpolation_order = config.get("interpolation_order", config.get("Interp_order", 2))
+    use_interpolation = _as_bool(config.get("interpolation", map_type in {"GONG", "ADAPT"}))
+
+    tau = config.get("tau", 5)
+    iterations = config.get("iterations", 7)
+    apply_gaussian = _as_bool(config.get("apply_gaussian", True))
+    gaussian_sigma = config.get("gaussian_sigma", 1.0)
+    dx_override = config.get("dx_override", 1.0)
+    dy_override = config.get("dy_override", 1.0)
+
+    if use_interpolation and map_type in {"GONG", "ADAPT"}:
+        output_name, local_files, selection = generate_output_and_interpolation_map_names(
+            target_date,
+            map_type,
+            output_dir,
+            lmax,
+            method_used=method_used,
+            download_dir=download_dir,
+        )
+        Br, Theta, Phi, Br_linear = read_interpolated_magnetogram(
+            local_files,
+            map_type,
+            selection,
+            adapt_map=adapt_map,
+            interpolation_order=interpolation_order,
+        )
+        local_file = local_files
+    else:
+        output_name, local_file = generate_output_and_map_names(
+            target_date,
+            map_type,
+            output_dir,
+            lmax,
+            method_used=method_used,
+        )
+        Br, Theta, Phi = read_magnetogram(local_file, map_type, adapt_map)
+        Br_linear = None
+        selection = None
+
+    if _as_bool(config.get("flux_correct", False)):
+        Br = correct_net_flux(Br, Theta[:, 0])
+
+    Br_filtered, timestep = filter_radial_field(
+        Br,
+        Phi[0, :],
+        Theta[:, 0],
+        iterations=iterations,
+        apply_gaussian=apply_gaussian,
+        gaussian_sigma=gaussian_sigma,
+        dx_override=dx_override,
+        dy_override=dy_override,
+        tau=tau,
+    )
+
+    if write_map:
+        write_bc_file(output_name, Br_filtered, Theta[:, 0], Phi[0, :], r_st)
+
+    if show_map:
+        figure_path = output_path_fig or default_figure_path(output_dir, map_type, target_date)
+        plot_maps(
+            Br,
+            Br_filtered,
+            Theta[:, 0],
+            Phi[0, :],
+            map_type,
+            visu_type,
+            output_path=figure_path,
+            date=target_date,
+        )
+    else:
+        figure_path = None
+
+    return {
+        "date": target_date,
+        "output_name": output_name,
+        "local_file": local_file,
+        "figure_path": figure_path,
+        "selection": selection,
+        "Br_linear": Br_linear,
+        "timestep": timestep,
+    }
+
+
+def process_config(config: dict[str, Any], method_used: str = "NLD") -> list[dict[str, Any]]:
+    """Process a single-date or multi-date nonlinear diffusion configuration.
+
+    Args:
+        config (dict[str, Any]): Processing configuration.
+        method_used (str): Method label included in output filenames.
+
+    Returns:
+        list[dict[str, Any]]: Per-date processing results.
+    """
+    target_dates = build_processing_dates(
+        config["date"],
+        cadence_hours=config.get("cadence_hours", config.get("candence")),
+        total_hours=config.get("total_hours"),
+    )
+    output_path_fig = config.get("output_path_fig")
+    use_unique_figures = len(target_dates) > 1 and output_path_fig is not None
+    results = []
+    for target_date in target_dates:
+        figure_path = (
+            append_timestamp_to_path(output_path_fig, target_date)
+            if use_unique_figures
+            else output_path_fig
+        )
+        results.append(
+            process_magnetogram_date(
+                config,
+                target_date,
+                method_used=method_used,
+                output_path_fig=figure_path,
+            )
+        )
+    return results
+
+
 if __name__ == "__main__":
     # --- Example runs ---
+    # Multi-date example:
+    # config = {
+    #     "date": "2025-10-09T18:00:00",
+    #     "map_type": "GONG",
+    #     "cadence_hours": 3,
+    #     "total_hours": 72,
+    #     "interpolation": True,
+    #     "interpolation_order": 2,
+    #     "flux_correct": True,
+    #     "lmax": 20,
+    #     "tau": 5,
+    #     "iterations": 7,
+    #     "apply_gaussian": True,
+    #     "gaussian_sigma": 1.0,
+    #     "write_map": True,
+    #     "show_map": True,
+    #     "visu_type": "sinlat",
+    #     "output_dir": "../COCONUT/",
+    #     "download_dir": "../raw/",
+    # }
+    # process_config(config, method_used="NLD")
 
     configs = [
         {
@@ -89,42 +270,29 @@ if __name__ == "__main__":
         },
     ]
 
+    configs = [
+        {
+        "date": "2012-07-13T00:00:00",
+        "map_type": "GONG",
+        "cadence_hours": 3,
+        "total_hours": 240,
+        "interpolation": True,
+        "interpolation_order": 2,
+        "flux_correct": False,
+        "write_map": True,
+        "show_map": True,
+        "visu_type": "sinlat",
+        "output_dir": "E:/COCONUT/2012/nld/",
+        "output_path_fig": "E:/COCONUT/2012/nld/image/",
+        "download_dir": "E:/COCONUT/2012/nld/raw/",
+        "tau": 5, "iterations": 7
+    }]
+
     for config in configs:
         try:
-            date = config["date"]
-            map_type = config["map_type"]
-            output_dir = config.get("output_dir", "../")
-            output_path_fig = config.get("output_path_fig", f"{output_dir}/{map_type.lower()}_map.png")
-            lmax = config.get("lmax", None)
-            r_st = 1.0
-            adapt_map = config.get("adapt_map", 6)
-
-            write_map = config.get("write_map", True)
-            show_map = config.get("show_map", True)
-            visu_type = config.get("visu_type", "sinlat")
-
-            tau  = config.get("tau", 5)
-            iterations = config.get("iterations", 7)
-
-            output_name, local_file = generate_output_and_map_names(date, map_type, output_dir, lmax, "NLD")
-            Br, Theta, Phi = read_magnetogram(local_file, map_type, adapt_map)
-
-            # Use phi and theta vectors from the 2D grid
-            Br_filtered, timestep = filter_radial_field(Br, Phi[0, :], Theta[:, 0], iterations=iterations,tau=tau)
-
-            """
-            seuil = 40
-            max_val = np.max(np.abs(Br_filtered))
-            if max_val > seuil:
-                scalaire = seuil / max_val
-                Br_filtered = Br_filtered * scalaire
-            """
-
-            if write_map:
-                write_bc_file(output_name, Br_filtered, Theta[:, 0], Phi[0, :], r_st)
-
-            if show_map:
-                plot_maps(Br, Br_filtered, Theta[:, 0], Phi[0, :], map_type, visu_type, output_path=output_path_fig)
-        except:
-            logging.warning(f'fail to find {config["date"]} and {config["map_type"]}')
+            process_config(config, method_used="NLD")
+        except Exception as exc:
+            logger.warning(
+                f'Failed to process {config["date"]} and {config["map_type"]}: {exc}'
+            )
             continue

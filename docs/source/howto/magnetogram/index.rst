@@ -1,7 +1,7 @@
-Magnetogram Processing & Filtering
-==================================
+Magnetogram Processing and Filtering
+====================================
 
-How to smooth/regularize synoptic magnetograms (HMI/GONG/ADAPT)
+How to download, interpolate, smooth, and write synoptic magnetograms
 before running COCONUT, and how this choice affects the simulation frame.
 
 .. toctree::

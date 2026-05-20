@@ -638,65 +638,67 @@ def create_plot_max_quantities_vs_b0(
     logger.info(f"Max quantities plot saved to {output_path}")
 
 if __name__ == "__main__":
+    
+    input_dir = Path("E:/coconut_spheromak/alpha/result_fullmhd/")
+    output_dir = Path("E:/coconut_spheromak/alpha/result_fullmhd/")
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    
+
+    for dat_file in input_dir.glob("solar_wind_boundary_*.dat"):
+    #    # extrait le timestamp
+    #    timestamp = dat_file.stem.replace("solar_wind_boundary_", "")
+
+        output_file = output_dir / f"surface.png"
+
+        Surface_2D_onetime_file_axes(
+            inputfile=str(dat_file),
+            outputfile=str(output_file),
+            mode="all",
+            extended=True,
+            showP=False
+        )
+
+        output_file = output_dir / f"surface2.png"
+        Surface_2D_onetime(
+            inputfile=str(dat_file),
+            outputfile=str(output_file),
+            mode="all",
+            extended=True,
+            showP=False
+        )
+
+    input_dir = Path("E:/coconut_spheromak/alpha/result_fullmhd_lown/")
+    output_dir = Path("E:/coconut_spheromak/alpha/result_fullmhd_lown/")
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    
+
+    for dat_file in input_dir.glob("solar_wind_boundary_*.dat"):
+    #    # extrait le timestamp
+    #    timestamp = dat_file.stem.replace("solar_wind_boundary_", "")
+
+        output_file = output_dir / f"surface.png"
+        Surface_2D_onetime_file_axes(
+            inputfile=str(dat_file),
+            outputfile=str(output_file),
+            mode="all",
+            extended=True,
+            showP=False
+        )
+
+        output_file = output_dir / f"surface2.png"
+        Surface_2D_onetime(
+            inputfile=str(dat_file),
+            outputfile=str(output_file),
+            mode="all",
+            extended=True,
+            showP=False
+        )
+
     """
-    input_dir = Path("E:/euhforia/dat8/")
-    output_dir = Path("E:/euhforia/image/inner_boundary/dat8/")
-
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    
-
-    for dat_file in input_dir.glob("solar_wind_boundary_*.dat"):
-    #    # extrait le timestamp
-    #    timestamp = dat_file.stem.replace("solar_wind_boundary_", "")
-
-        output_file = output_dir / f"surface.png"
-
-        Surface_2D_onetime_file_axes(
-            inputfile=str(dat_file),
-            outputfile=str(output_file),
-            mode="all",
-            extended=True,
-            showP=False
-        )
-
-        output_file = output_dir / f"surface2.png"
-        Surface_2D_onetime(
-            inputfile=str(dat_file),
-            outputfile=str(output_file),
-            mode="all",
-            extended=True,
-            showP=False
-        )
-
-    input_dir = Path("E:/euhforia/dat4/")
-    output_dir = Path("E:/euhforia/image/inner_boundary/dat4/")
-
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    
-
-    for dat_file in input_dir.glob("solar_wind_boundary_*.dat"):
-    #    # extrait le timestamp
-    #    timestamp = dat_file.stem.replace("solar_wind_boundary_", "")
-
-        output_file = output_dir / f"surface.png"
-        Surface_2D_onetime_file_axes(
-            inputfile=str(dat_file),
-            outputfile=str(output_file),
-            mode="reduced",
-            extended=True,
-            showP=False
-        )
-
-        output_file = output_dir / f"surface2.png"
-        Surface_2D_onetime(
-            inputfile=str(dat_file),
-            outputfile=str(output_file),
-            mode="reduced",
-            extended=True,
-            showP=False
-        )
 
     input_dir = Path("C:/Users/luisl/Desktop/fluxrope/")
     output_dir = Path("C:/Users/luisl/Desktop/fluxrope/")
@@ -748,7 +750,7 @@ if __name__ == "__main__":
             showP=False
         )
 
-    """
+    
     input_dir = "E:/euhforia/CFcase_large/result_cme/test_hdf_output/"
 
     label_dict = {
@@ -766,9 +768,6 @@ if __name__ == "__main__":
         label_dict=label_dict,
         color_map=color_map
     )
-    
-    """
-
 
     create_plot_comparison(
         data_indices={3: "ζ=3", 4: "ζ=4", 5: "ζ=5", 6: "ζ=6"},

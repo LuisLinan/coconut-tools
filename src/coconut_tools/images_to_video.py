@@ -3,12 +3,15 @@ images_to_video.py
 
 Build a chronological MP4 and GIF from a time-ordered series of images.
 
-The input filenames are expected to follow the pattern:
+The input filenames are expected to follow one of these patterns:
     <prefix>_YYYY-MM-DDTHH-MM-SS.<ext>
+    <prefix>_YYYYMMDDHHMMSS.<ext>
 
 Example:
     bclt_2019-07-02T12-03-58.png
     n_2019-07-02T12-03-58.pdf
+    map_gong_lmax20_sph_20251009180000.dat
+    gong_sph_20251009180000.png
 """
 
 from __future__ import annotations
@@ -17,7 +20,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 import re
-from typing import Iterable, List
+from typing import List
 
 import numpy as np
 import imageio
@@ -28,6 +31,11 @@ logger = setup_logger(__name__)
 
 
 TIMESTAMP_FORMAT = "%Y-%m-%dT%H-%M-%S"
+COMPACT_TIMESTAMP_FORMAT = "%Y%m%d%H%M%S"
+TIMESTAMP_PATTERNS = (
+    (r"\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}", TIMESTAMP_FORMAT),
+    (r"\d{14}", COMPACT_TIMESTAMP_FORMAT),
+)
 
 
 @dataclass(frozen=True)
@@ -42,14 +50,27 @@ class MediaConfig:
         extension (str): Image extension without dot (e.g., "png" or "pdf").
         fps (float): Frames per second for outputs.
         gif_loop (int): GIF loop count. 0 means infinite.
+        visu_type (str): Projection used when rendering COCONUT .dat files.
+        cmap (str): Matplotlib colormap used when rendering COCONUT .dat files.
+        vmin (float | None): Color scale minimum for rendered .dat files.
+        vmax (float | None): Color scale maximum for rendered .dat files.
+        centered_color_scale (bool): If True, use a symmetric Br color scale
+            around zero when vmin/vmax are not explicitly provided.
+        frame_dpi (int): DPI of generated frames when rendering .dat files.
     """
 
     input_dir: Path
-    output_dir: Path | None
+    output_dir: Path | str | None
     prefix: str
     extension: str = "png"
     fps: float = 3.0
     gif_loop: int = 0
+    visu_type: str = "sinlat"
+    cmap: str = "RdBu_r"
+    vmin: float | None = None
+    vmax: float | None = None
+    centered_color_scale: bool = True
+    frame_dpi: int = 96
 
 
 def _parse_timestamp(filename: str, prefix: str) -> datetime | None:
@@ -62,14 +83,16 @@ def _parse_timestamp(filename: str, prefix: str) -> datetime | None:
     Returns:
         datetime | None: Parsed datetime if successful, otherwise None.
     """
-    pattern = rf"^{re.escape(prefix)}_(\d{{4}}-\d{{2}}-\d{{2}}T\d{{2}}-\d{{2}}-\d{{2}})$"
-    match = re.match(pattern, filename)
-    if not match:
-        return None
-    try:
-        return datetime.strptime(match.group(1), TIMESTAMP_FORMAT)
-    except ValueError:
-        return None
+    for timestamp_pattern, timestamp_format in TIMESTAMP_PATTERNS:
+        pattern = rf"^{re.escape(prefix)}_({timestamp_pattern})$"
+        match = re.match(pattern, filename)
+        if not match:
+            continue
+        try:
+            return datetime.strptime(match.group(1), timestamp_format)
+        except ValueError:
+            return None
+    return None
 
 
 def _parse_unix_timestamp(filename: str, prefix: str, postfix: str | None = None) -> datetime | None:
@@ -110,6 +133,7 @@ def _find_sorted_images(input_dir: Path, prefix: str, extension: str) -> List[Pa
         list[Path]: Sorted list of image file paths.
     """
     logger.info("Scanning for files in %s", input_dir)
+    extension = extension.lstrip(".")
     pattern = f"{prefix}_*.{extension}"
     candidates = sorted(input_dir.glob(pattern))
     if not candidates:
@@ -125,12 +149,12 @@ def _find_sorted_images(input_dir: Path, prefix: str, extension: str) -> List[Pa
         with_timestamps.append((timestamp, path))
 
     if not with_timestamps:
-        logger.error("No files matched the expected timestamp format for prefix %s", prefix)
+        logger.error("No files matched the expected timestamp formats for prefix %s", prefix)
         return []
 
     with_timestamps.sort(key=lambda item: item[0])
     sorted_paths = [path for _, path in with_timestamps]
-    logger.info("Found %d image(s) to process", len(sorted_paths))
+    logger.info("Found %d file(s) to process", len(sorted_paths))
     return sorted_paths
 
 
@@ -149,6 +173,7 @@ def _find_sorted_images_unix_timestamp(
         list[Path]: Sorted list of image file paths.
     """
     logger.info("Scanning for files in %s", input_dir)
+    extension = extension.lstrip(".")
     pattern = f"{prefix}_*.{extension}"
     candidates = sorted(input_dir.glob(pattern))
     if not candidates:
@@ -169,7 +194,7 @@ def _find_sorted_images_unix_timestamp(
 
     with_timestamps.sort(key=lambda item: item[0])
     sorted_paths = [path for _, path in with_timestamps]
-    logger.info("Found %d image(s) to process", len(sorted_paths))
+    logger.info("Found %d file(s) to process", len(sorted_paths))
     return sorted_paths
 
 
@@ -191,17 +216,164 @@ def _normalize_frame(frame: np.ndarray) -> np.ndarray:
     return frame
 
 
-def _resolve_output_dir(input_dir: Path, output_dir: Path | None) -> Path:
+def _fill_missing_longitudes(br: np.ndarray) -> np.ndarray:
+    """Fill row gaps created by COCONUT pole de-duplication.
+
+    Args:
+        br (np.ndarray): Gridded Br map that may contain NaNs.
+
+    Returns:
+        np.ndarray: Br map with rows completed from their finite row mean.
+    """
+    filled = np.array(br, copy=True)
+    for row_idx in range(filled.shape[0]):
+        finite = np.isfinite(filled[row_idx])
+        if finite.any() and not finite.all():
+            filled[row_idx, ~finite] = float(np.nanmean(filled[row_idx, finite]))
+    return filled
+
+
+def _resolve_dat_color_limits(files: List[Path], config: MediaConfig) -> tuple[float | None, float | None]:
+    """Resolve a stable color scale for a sequence of COCONUT .dat frames.
+
+    Args:
+        files (list[Path]): Chronologically sorted files.
+        config (MediaConfig): Media configuration.
+
+    Returns:
+        tuple[float | None, float | None]: Color scale limits.
+    """
+    if not files or files[0].suffix.lower() != ".dat":
+        return config.vmin, config.vmax
+    if config.vmin is not None and config.vmax is not None:
+        return float(config.vmin), float(config.vmax)
+
+    from coconut_tools.plot_coconut_input import load_br_map_from_bcfile
+
+    global_min = np.inf
+    global_max = -np.inf
+    for path in files:
+        try:
+            br_map = load_br_map_from_bcfile(path)
+        except Exception as exc:
+            logger.warning("Could not inspect %s for color limits: %s", path.name, exc)
+            continue
+        br = _fill_missing_longitudes(br_map.br)
+        if not np.isfinite(br).any():
+            continue
+        global_min = min(global_min, float(np.nanmin(br)))
+        global_max = max(global_max, float(np.nanmax(br)))
+
+    if not np.isfinite(global_min) or not np.isfinite(global_max):
+        return config.vmin, config.vmax
+
+    if config.centered_color_scale:
+        limit = max(
+            abs(float(config.vmin)) if config.vmin is not None else abs(global_min),
+            abs(float(config.vmax)) if config.vmax is not None else abs(global_max),
+        )
+        return -limit, limit
+
+    vmin = float(config.vmin) if config.vmin is not None else global_min
+    vmax = float(config.vmax) if config.vmax is not None else global_max
+    return vmin, vmax
+
+
+def _render_coconut_dat_frame(
+    path: Path,
+    config: MediaConfig,
+    color_limits: tuple[float | None, float | None],
+) -> np.ndarray:
+    """Render a COCONUT photospheric .dat file as an RGB frame.
+
+    Args:
+        path (Path): COCONUT boundary file.
+        config (MediaConfig): Media configuration.
+        color_limits (tuple[float | None, float | None]): Color scale limits.
+
+    Returns:
+        np.ndarray: RGB frame.
+    """
+    if config.visu_type not in {"lat", "sinlat"}:
+        raise ValueError("visu_type must be either 'lat' or 'sinlat'.")
+
+    from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
+    from matplotlib.figure import Figure
+    from coconut_tools.plot_coconut_input import load_br_map_from_bcfile
+
+    br_map = load_br_map_from_bcfile(path)
+    br = _fill_missing_longitudes(br_map.br)
+
+    y = br_map.lat_deg if config.visu_type == "lat" else np.sin(np.deg2rad(br_map.lat_deg))
+    y_label = "Latitude (deg)" if config.visu_type == "lat" else "sin(Latitude)"
+    vmin, vmax = color_limits
+
+    fig = Figure(figsize=(10, 5), dpi=config.frame_dpi)
+    canvas = FigureCanvas(fig)
+    ax = fig.add_subplot(111)
+
+    lon_grid, y_grid = np.meshgrid(br_map.lon_deg, y)
+    mesh = ax.pcolormesh(
+        lon_grid,
+        y_grid,
+        br,
+        shading="auto",
+        cmap=config.cmap,
+        vmin=vmin,
+        vmax=vmax,
+    )
+    ax.set_xlabel("Longitude (deg)")
+    ax.set_ylabel(y_label)
+    ax.set_xlim(0.0, 360.0)
+    ax.set_xticks(np.arange(0.0, 361.0, 60.0))
+    ax.grid(True, alpha=0.3)
+
+    timestamp = _parse_timestamp(path.stem, config.prefix)
+    if timestamp is not None:
+        ax.set_title(f"{config.prefix} - {timestamp:%Y-%m-%d %H:%M:%S} UTC")
+    else:
+        ax.set_title(path.stem)
+
+    cbar = fig.colorbar(mesh, ax=ax)
+    cbar.set_label("Br")
+    fig.tight_layout()
+
+    canvas.draw()
+    return np.asarray(canvas.buffer_rgba())[..., :3].copy()
+
+
+def _read_frame(
+    path: Path,
+    config: MediaConfig,
+    color_limits: tuple[float | None, float | None],
+) -> np.ndarray:
+    """Read or render one frame.
+
+    Args:
+        path (Path): Frame source file.
+        config (MediaConfig): Media configuration.
+        color_limits (tuple[float | None, float | None]): Color scale limits
+            used for rendered .dat files.
+
+    Returns:
+        np.ndarray: Frame array.
+    """
+    if path.suffix.lower() == ".dat":
+        return _render_coconut_dat_frame(path, config, color_limits)
+    return imageio.v3.imread(path)
+
+
+def _resolve_output_dir(input_dir: Path, output_dir: Path | str | None) -> Path:
     """Resolve and create the output directory if needed.
 
     Args:
         input_dir (Path): Base input directory.
-        output_dir (Path | None): Desired output directory.
+        output_dir (Path | str | None): Desired output directory.
 
     Returns:
         Path: Existing or newly created output directory.
     """
-    resolved = output_dir or (input_dir / "output_media")
+    resolved = Path(output_dir) if output_dir is not None else input_dir / "output_media"
     resolved.mkdir(parents=True, exist_ok=True)
     logger.info("Output directory: %s", resolved)
     return resolved
@@ -225,6 +397,7 @@ def build_gif_and_video(config: MediaConfig, postfix: str | None = None) -> None
     files = _find_sorted_images(input_dir, config.prefix, config.extension)
     if not files:
         return
+    color_limits = _resolve_dat_color_limits(files, config)
 
     fps = max(float(config.fps), 0.1)
     postfix_tag = f"_{postfix}" if postfix else ""
@@ -240,7 +413,7 @@ def build_gif_and_video(config: MediaConfig, postfix: str | None = None) -> None
         ) as gif_writer:
             for idx, path in enumerate(files, start=1):
                 logger.info("Reading frame %d/%d: %s", idx, len(files), path.name)
-                frame = imageio.v3.imread(path)
+                frame = _read_frame(path, config, color_limits)
                 frame = _normalize_frame(frame)
                 mp4_writer.append_data(frame)
                 gif_writer.append_data(frame)
@@ -271,6 +444,7 @@ def build_gif_and_video_unix_timestamp(config: MediaConfig, postfix: str | None 
     files = _find_sorted_images_unix_timestamp(input_dir, config.prefix, config.extension, postfix=postfix)
     if not files:
         return
+    color_limits = _resolve_dat_color_limits(files, config)
 
     fps = max(float(config.fps), 0.1)
     postfix_tag = f"_{postfix}" if postfix else ""
@@ -286,7 +460,7 @@ def build_gif_and_video_unix_timestamp(config: MediaConfig, postfix: str | None 
         ) as gif_writer:
             for idx, path in enumerate(files, start=1):
                 logger.info("Reading frame %d/%d: %s", idx, len(files), path.name)
-                frame = imageio.v3.imread(path)
+                frame = _read_frame(path, config, color_limits)
                 frame = _normalize_frame(frame)
                 mp4_writer.append_data(frame)
                 gif_writer.append_data(frame)
@@ -300,7 +474,33 @@ def build_gif_and_video_unix_timestamp(config: MediaConfig, postfix: str | None 
 
 if __name__ == "__main__":
     """Entry point with inline configuration (no argparse)."""
+
+    # Magnetogram examples:
+    #
+    # 1) Video from diagnostic PNGs created by process_config(...):
+    config = MediaConfig(
+        input_dir=Path(r"E:/COCONUT/2012/nld/image/"),
+        output_dir=r"E:/COCONUT/2012/nld/image/from_image/",
+        prefix="",
+        extension="png",
+        fps=3.0,
+    )
+    build_gif_and_video(config)
+    #
+    # 2) Video rendered directly from COCONUT .dat files:
+    config = MediaConfig(
+        input_dir=Path(r"E:/COCONUT/2012/nld/"),
+        output_dir=r"E:/COCONUT/2012/nld/image/from_dat/",
+        prefix="map_gong_lmax20_NLD",
+        extension="dat",
+        fps=3.0,
+        visu_type="sinlat",
+        vmin=-30.0,
+        vmax=30.0,
+    )
+    build_gif_and_video(config)
     
+    """
     prefix =  ["bclt","blon","br","vr","vlon","nscaled","vclt"]
     
     for pre in prefix:
@@ -325,7 +525,6 @@ if __name__ == "__main__":
         )
         build_gif_and_video(config)
 
-    """
     postfix = ["expansion_factor", "magnetogram", "number_density", "radial_field", "field_lower_boundary",
                "radial_velocity", "temperature","open_and_closed_field_regions"]
     for post in postfix:

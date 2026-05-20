@@ -1,56 +1,177 @@
-Magnetogram filtering for COCONUT (overview)
-============================================
+Magnetogram Filtering for COCONUT
+=================================
 
 Context
 -------
-In **COCONUT**, the inner boundary is prescribed from the **radial magnetic field (Br)**
-of a synoptic magnetogram (HMI, GONG, ADAPT…).  
-Directly injecting the raw magnetogram is problematic: the fields are too sharp and
-strong, leading to convergence issues. Therefore, **filters** are applied to smooth
-the map while preserving the large-scale structure of active regions.
+COCONUT uses the radial magnetic field, ``Br``, of a synoptic magnetogram as
+the inner boundary condition. Raw magnetograms are often too sharp or too
+intense to inject directly in a coronal MHD run, so ``coconut_tools`` provides
+filters that smooth the map while preserving the large-scale structure of
+active regions.
 
-⚠️ Important: in COCONUT the **first pixel** of the magnetogram corresponds to
-**Carrington longitude 0°** in the simulation.  
-The simulation’s frame thus **depends on the magnetogram** used. Do **not** shift or
-reorder the map here — frame rotation is handled later at the heliospheric
-boundary stage (see :doc:`/howto/boundary/create-dat-rotate`).
+The first longitude pixel written by these tools corresponds to Carrington
+longitude 0 degrees in the COCONUT frame. Do not shift or reorder the map in
+these filters to prepare a different heliospheric frame; frame rotation is
+handled later at the boundary stage, see
+:doc:`/howto/boundary/create-dat-rotate`.
 
-Available filters
+Available Filters
 -----------------
-The package ``coconut_tools.magnetogram`` provides three main filtering approaches:
+The package ``coconut_tools.magnetogram`` provides three filtering pipelines:
 
-- **Filtered spherical harmonics (SPH)**: expansion up to degree ``lmax``, with optional
-  high-ℓ damping controlled by ``alpha``.
-- **Nonlinear diffusion filter (ND)**: Perona–Malik style diffusion that smooths noise
-  while preserving edges.
-- **Local weighted (Yaroslavsky)**: fast neighborhood-based smoothing with
-  spatial and contrast weighting.
+- Filtered spherical harmonics, implemented in
+  ``coconut_tools.magnetogram.sph_filtering``.
+- Local weighted filtering, also called Yaroslavsky filtering, implemented in
+  ``coconut_tools.magnetogram.Yaroslavsky_filter``.
+- Nonlinear diffusion filtering, implemented in
+  ``coconut_tools.magnetogram.NLD_implicit_method``.
 
-Recommendations (based on practice and tests)
----------------------------------------------
-- Mesh ~ **2 million cells** → use **SPH** (retains large AR features with fewer cells).
-- Mesh ~ **6 million cells** → SPH or ND/Yaroslavsky both acceptable.
-- Typical parameter ranges:
+The three modules expose the same high-level entry point:
 
-  - SPH: start ``lmax=20, alpha=0``. For stronger fields, raise ``lmax`` (30–50) and adjust ``alpha`` between 10⁻⁶ – 10⁻⁵.
-  - ND: try ``tau≈5`` with ~6–7 iterations.
-  - Yaroslavsky: tune neighborhood radius ``Rn`` and contrast parameter
-    ``alpha_factor``; optional Gaussian prefilter.
+.. code-block:: python
 
-Performance
------------
-- SPH: minutes for high ``lmax`` (can be parallelized).
-- ND: tens of seconds.
-- Yaroslavsky: sub-second (depending on grid size).
+   results = process_config(config)
 
-Further reading
+``process_config`` returns one result dictionary per processed target date.
+
+Common Processing Logic
+-----------------------
+All three filters follow the same pipeline:
+
+1. Build the list of target dates from the configuration.
+2. Download the required magnetogram files.
+3. Read the magnetogram and, for GONG or ADAPT, optionally interpolate it in
+   time from four neighboring magnetograms.
+4. Optionally remove the net magnetic flux.
+5. Apply the selected filter.
+6. Write the COCONUT ``.dat`` boundary file and, optionally, a diagnostic
+   figure.
+
+Single Date and Time Series
+---------------------------
+The initial date is given with the ``date`` key, using an ISO timestamp:
+
+.. code-block:: python
+
+   "date": "2025-10-09T18:00:00"
+
+To process only one magnetogram, omit ``total_hours``. In that case
+``cadence_hours`` is not needed.
+
+To process a time series, set both ``cadence_hours`` and ``total_hours``. The
+processed dates are:
+
+.. code-block:: text
+
+   date + k * cadence_hours, while date + k * cadence_hours < date + total_hours
+
+For example, three days with a 3-hour cadence are configured with:
+
+.. code-block:: python
+
+   "cadence_hours": 3,
+   "total_hours": 72,
+
+This produces 24 processed magnetograms: the initial date, then every 3 hours,
+up to ``date + 69h``.
+
+Temporal Interpolation
+----------------------
+Temporal interpolation is controlled by a single boolean option:
+
+.. code-block:: python
+
+   "interpolation": True
+
+When enabled for ``GONG`` or ``ADAPT``, the code downloads four magnetograms
+around each target date and interpolates ``Br`` at the requested time. The
+interpolation order is selected with:
+
+.. code-block:: python
+
+   "interpolation_order": 2
+
+Use ``1`` for linear interpolation and ``2`` for cubic Hermite interpolation.
+The default is cubic Hermite.
+
+Temporal interpolation is currently implemented only for ``GONG`` and
+``ADAPT``. For ``HMI_small``, ``HMI_polfil``, and ``WSO``, the pipeline uses the
+single magnetogram selected for the target Carrington rotation.
+
+For ``ADAPT``, ``adapt_map`` selects the realization stored in the FITS file.
+This is a Python zero-based index, so ``adapt_map=6`` selects the seventh ADAPT
+realization.
+
+Net Flux Correction
+-------------------
+Set ``flux_correct`` to remove the map-averaged net radial magnetic flux before
+filtering:
+
+.. code-block:: python
+
+   "flux_correct": True
+
+This subtracts the surface-weighted mean ``Br`` from the input map. It is
+applied before the selected filter.
+
+Common Configuration Keys
+-------------------------
+The following keys are shared by the three filters:
+
+- ``date``: initial ISO timestamp, for example ``"2025-10-09T18:00:00"``.
+- ``map_type``: one of ``"GONG"``, ``"ADAPT"``, ``"HMI_small"``,
+  ``"HMI_polfil"``, or ``"WSO"``.
+- ``output_dir``: directory where COCONUT ``.dat`` files are written.
+- ``download_dir``: optional directory for downloaded FITS files. If omitted,
+  ``output_dir`` is used.
+- ``cadence_hours`` and ``total_hours``: optional time-series controls.
+- ``interpolation``: enable or disable four-magnetogram interpolation for GONG
+  and ADAPT.
+- ``interpolation_order``: ``1`` for linear, ``2`` for cubic Hermite.
+- ``flux_correct``: enable or disable net-flux correction.
+- ``adapt_map``: ADAPT realization index, default ``6``.
+- ``lmax``: value included in output filenames. For SPH it is also the
+  spherical harmonic truncation degree.
+- ``r_st``: radius written in the COCONUT boundary file, default ``1.0``.
+- ``write_map``: write the COCONUT ``.dat`` file, default ``True``.
+- ``show_map``: write a diagnostic figure, default ``True``.
+- ``output_path_fig``: optional diagnostic figure path.
+- ``visu_type``: map projection used in the diagnostic figure, default
+  ``"sinlat"``.
+
+Output Names
+------------
+The output filename always includes the filter method and the processed target
+date:
+
+.. code-block:: text
+
+   map_gong_lmax20_sph_YYYYMMDDHHMMSS.dat
+   map_gong_lmax20_Yaroslavsky_YYYYMMDDHHMMSS.dat
+   map_gong_lmax20_NLD_YYYYMMDDHHMMSS.dat
+
+If ``output_path_fig`` is provided for a multi-date run, the timestamp is
+inserted before the extension so figures do not overwrite each other. If no
+figure path is provided, figures are written by default as:
+
+.. code-block:: text
+
+   output_dir/{map_type_lower}_YYYYMMDDHHMMSS.png
+
+Each diagnostic figure includes the processed date in its title.
+
+Recommendations
 ---------------
-For an in-depth discussion and benchmark of these techniques, see:
+- For meshes around 2 million cells, start with the SPH filter. It keeps the
+  dominant active-region structure while reducing small-scale detail.
+- For meshes around 6 million cells, SPH, nonlinear diffusion, and Yaroslavsky
+  filtering are all viable.
+- For SPH, start with ``lmax=20`` and ``alpha=0``. Increase ``lmax`` to keep
+  more detail, and increase ``alpha`` to damp high-degree modes.
+- For nonlinear diffusion, start with ``tau=5`` and around 6 to 7 iterations.
+- For Yaroslavsky filtering, tune ``Rn`` and ``alpha``.
 
-**Murteira, J. et al. (2025)**, *Magnetogram filtering techniques for global coronal modelling*.  
-
-
-See also
+See Also
 --------
 - :doc:`sph-filtering`
 - :doc:`nonlinear-diffusion`

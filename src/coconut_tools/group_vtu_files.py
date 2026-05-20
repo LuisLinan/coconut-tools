@@ -123,14 +123,27 @@ def merge_all_snapshots(
 if __name__ == "__main__":
 
     merge_all_snapshots(
-        input_dir="E:/euhforia/2017/vtu/",
-        output_dir="E:/euhforia/2017/vtu/",
+        input_dir="E:/coconut_spheromak/alpha/result_fullmhd",
+        output_dir="E:/coconut_spheromak/alpha/result_fullmhd",
         start_time=0,
         timestep=1,
-        nbmax=2,
+        nbmax=1,
         num_processes=5,
         nb_proc=140,
         use_pool=False,
-        stat = False,
+        stat = True,
+        remove= True
+    )
+
+    merge_all_snapshots(
+        input_dir="E:/coconut_spheromak/alpha/result_fullmhd_lown",
+        output_dir="E:/coconut_spheromak/alpha/result_fullmhd_lown",
+        start_time=0,
+        timestep=1,
+        nbmax=1,
+        num_processes=5,
+        nb_proc=140,
+        use_pool=False,
+        stat = True,
         remove= True
     )
