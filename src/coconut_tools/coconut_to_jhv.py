@@ -24,10 +24,15 @@ python3 coconut_to_jhv.py input.vtu fieldlines.json \
   --flip-longitude \
   --show
   --progress
+
+NB: you can also read COCONUT CFmesh files by passing a .CFmesh filename instead of .vtu. The script will detect the format and parse it accordingly, as long as the expected structure is present.
+contact: Q.Noraz
 """
 
 import argparse
 import json
+import os
+import re
 from datetime import datetime, timezone
 
 import numpy as np
@@ -70,6 +75,99 @@ def read_coconut_vtu(filename):
         raise ValueError("Magnetic-field components must all be point data or all be cell data.")
 
     return mesh
+
+
+def readstruct(lines):
+    """Parse a CFmesh file structure and return section indices."""
+    exp = re.compile(r'!NB_ELEM (-?\d+)')
+    nbelements, idx0, idx1, idx2, idx3, nend = 0, 0, 0, 0, 0, 0
+    comment = []
+
+    for i, line in enumerate(lines):
+        if line.startswith("!"):
+            comment.append((i, line))
+            if line.startswith("!LIST_NODE"):
+                idx1 = i + 1
+            elif line.startswith("!LIST_STATE 1"):
+                idx2 = i + 1
+            elif line.startswith("!LIST_ELEM"):
+                idx0 = i + 1
+            elif line.startswith("!NB_ELEM "):
+                nbelements = int(exp.search(line).group(1))
+            elif line.startswith("!TRS_NAME Outlet"):
+                idx3 = i
+            elif line.startswith("!END"):
+                nend += 1
+
+    return idx0, idx1, idx2, idx3, nbelements, nend, comment
+
+
+def read_coconut_cfmesh(filename):
+    """Read a CFmesh file and build a PyVista mesh with magnetic cell data."""
+    if not os.path.isfile(filename):
+        raise FileNotFoundError(f"CFmesh file not found: {filename}")
+
+    with open(filename, "r") as f:
+        lines = f.readlines()
+
+    idx0, idx1, idx2, idx3, nbelements, nend, comment = readstruct(lines)
+    if nbelements <= 0 or idx0 <= 0 or idx1 <= 0 or idx2 <= 0:
+        raise ValueError(f"CFmesh file missing required structure sections: {filename}")
+    if nend <= 0:
+        raise ValueError(f"CFmesh file missing !END markers: {filename}")
+
+    connectivity = np.loadtxt(lines[idx0:idx0 + nbelements], dtype=int)
+    if connectivity.ndim == 1:
+        connectivity = connectivity.reshape(1, -1)
+
+    coordinates = np.loadtxt(lines[idx1:idx2 - 1], dtype=float)
+
+    nodes = connectivity[:, :6]
+    n_cells = nodes.shape[0]
+
+    # Build VTK cell connectivity for 6-node wedges.
+    cells = np.empty(n_cells * 7, dtype=np.int64)
+    cells[0::7] = 6
+    cells[1::7] = nodes[:, 0]
+    cells[2::7] = nodes[:, 1]
+    cells[3::7] = nodes[:, 2]
+    cells[4::7] = nodes[:, 3]
+    cells[5::7] = nodes[:, 4]
+    cells[6::7] = nodes[:, 5]
+
+    cell_types = np.full(n_cells, 13, dtype=np.uint8)
+    mesh = pv.UnstructuredGrid(cells, cell_types, coordinates)
+
+    bd = comment[-nend - 1][0] + 1
+    bf = comment[-nend][0]
+    state_data = np.loadtxt(lines[bd:bf], dtype=np.float64)
+    if state_data.ndim == 1:
+        state_data = state_data.reshape(1, -1)
+    if state_data.shape[0] != n_cells:
+        raise ValueError(
+            f"Expected {n_cells} state records but found {state_data.shape[0]} in CFmesh {filename}"
+        )
+
+    Bx = state_data[:, 4]
+    By = state_data[:, 5]
+    Bz = state_data[:, 6]
+
+    mesh.cell_data["B"] = np.column_stack([Bx * 2.2e-4, By * 2.2e-4, Bz * 2.2e-4])
+    mesh = mesh.cell_data_to_point_data(pass_cell_data=True)
+
+    return mesh
+
+
+def read_coconut_input(filename):
+    """Read either a VTU or CFmesh input and return a PyVista mesh with B vectors."""
+    ext = os.path.splitext(filename)[1].lower()
+    if ext in {".vtu", ".pvtu", ".vtk"}:
+        return read_coconut_vtu(filename)
+    if ext in {".cfmesh"}:
+        return read_coconut_cfmesh(filename)
+    raise ValueError(
+        f"Unsupported input format for {filename}. Use .vtu or .CFmesh."
+    )
 
 
 def make_seed_grid(radius=1.05, n_points=500, lat_min=-80, lat_max=80, use_tqdm=False):
@@ -257,15 +355,15 @@ def preview(mesh, stream, show=False, screenshot=None, tube_radius=0.01):
     plotter.close()
 
 
-def export_vtu_to_jhv_json(input_vtu, output_json,
+def export_to_jhv_json(input_file, output_json,
                            n_seed_points=500, source_radius=1.05, max_steps=1000,
                            max_lines=None, thickness=0.004,
                            lon_offset_deg=0.0, flip_longitude=False,
                            show=False, screenshot=None, use_tqdm=False):
     """Complete minimal pipeline with simple stage prints and timings."""
     t0 = time.perf_counter()
-    print("Stage: reading VTU ->", input_vtu)
-    mesh = read_coconut_vtu(input_vtu)
+    print("Stage: reading input ->", input_file)
+    mesh = read_coconut_input(input_file)
     print(f"Read VTU in {time.perf_counter() - t0:.2f}s")
 
     t1 = time.perf_counter()
@@ -309,8 +407,8 @@ def export_vtu_to_jhv_json(input_vtu, output_json,
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Minimal COCONUT VTU -> JHelioviewer SunJSON exporter")
-    parser.add_argument("input_vtu")
+    parser = argparse.ArgumentParser(description="Minimal COCONUT VTU/CFmesh -> JHelioviewer SunJSON exporter")
+    parser.add_argument("input_file", help="Path to a .vtu or .CFmesh COCONUT output file")
     parser.add_argument("output_json")
     parser.add_argument("--n-seed-points", type=int, default=500)
     parser.add_argument("--source-radius", type=float, default=1.05)
@@ -324,8 +422,8 @@ def main():
     parser.add_argument("--progress", action="store_true", help="Enable tqdm progress bars in loops")
     args = parser.parse_args()
 
-    export_vtu_to_jhv_json(
-        args.input_vtu,
+    export_to_jhv_json(
+        args.input_file,
         args.output_json,
         n_seed_points=args.n_seed_points,
         source_radius=args.source_radius,
