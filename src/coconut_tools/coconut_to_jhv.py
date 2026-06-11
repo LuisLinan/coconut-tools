@@ -62,7 +62,8 @@ RSUN_M = 6.955e8
 
 
 def radial_component(points, vectors):
-    """Project Cartesian vectors onto the local radial direction."""
+    """Project Cartesian vectors onto the local radial direction unit vector.
+       i.e. Br = (x * Bx + y * By + z * Bz) / sqrt(x**2 + y**2 + z**2)"""
     points = np.asarray(points, dtype=float)
     vectors = np.asarray(vectors, dtype=float)
     radii = np.linalg.norm(points, axis=1)
@@ -111,7 +112,7 @@ def read_coconut_vtu(filename):
         mesh.point_data["By"] * 2.2e-4,
         mesh.point_data["Bz"] * 2.2e-4,
     ])
-    mesh.point_data["Br_raw"] = radial_component(mesh.points, magnetic_field_t)
+    mesh.point_data["Br_raw"] = radial_component(mesh.points, magnetic_field_t) #Tesla, converted to Gauss in Br_raw for coloring
 
     return mesh
 
@@ -350,7 +351,7 @@ def adaptive_br_limits(field_values_per_line, fallback=1.0):
     if not finite_values:
         return (-fallback, fallback)
 
-    field_gauss = np.concatenate(finite_values) * 1e4
+    field_gauss = np.concatenate(finite_values) * 1e4 # conversion from Tesla to Gauss
     limit = 2.0 * float(np.std(field_gauss))
     if limit <= 0.0:
         limit = fallback
@@ -361,6 +362,7 @@ def xyz_to_sunjson_coordinates(xyz, lon_offset_deg=0.0, flip_longitude=False):
     """
     Cartesian Rsun coordinates -> [radius, Carrington longitude, latitude].
     Output units are [Rsun, degree, degree].
+    It takes xyz as a list of (N, 3) arrays in Cartesian Rsun coordinates.
     """
     xyz = np.asarray(xyz, dtype=float)
     x, y, z = xyz.T
@@ -379,7 +381,8 @@ def xyz_to_sunjson_coordinates(xyz, lon_offset_deg=0.0, flip_longitude=False):
 def write_sunjson(lines_xyz, output_json, thickness=0.004,
                   color=(255, 255, 255, 255), lon_offset_deg=0.0,
                   flip_longitude=False, time=None, use_tqdm=False, lines_colors=None):
-    """Write field lines to the simple SunJSON format read by JHelioviewer."""
+    """Write field lines to the simple SunJSON format read by JHelioviewer.
+     takes lines_xyz as a list of (N, 3) arrays in Cartesian Rsun coordinates, and optional per-line colors."""
     if time is None:
         time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
 
