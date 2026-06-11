@@ -108,7 +108,7 @@ Each script can be used in two ways:
 
    .. code-block:: python
 
-      from coconut_tools import plot
+      from coconut_tools.plot import plot
       plot.main("output_directory")
 
 2. **Executed directly**
@@ -117,7 +117,7 @@ Each script can be used in two ways:
 
    .. code-block:: bash
 
-      python src/coconut_tools/plot.py
+      python -m coconut_tools.plot.plot
 
 What you will find in these entry points:
 

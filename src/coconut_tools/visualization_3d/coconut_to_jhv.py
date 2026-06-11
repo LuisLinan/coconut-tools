@@ -33,7 +33,7 @@ The screenshot and SunJSON export share a blue-white-red colormap with symmetric
 limits of +/-2 standard deviations of the interpolated Br values (in Gauss).
 
 or from ipython environment:
-from coconut_tools.coconut_to_jhv import export_to_jhv_json
+from coconut_tools.visualization_3d.coconut_to_jhv import export_to_jhv_json
 export_to_jhv_json(
     input_file='corona.CFmesh',
     output_json='fieldlines.json',

@@ -21,13 +21,13 @@ Full documentation: **https://coconut-tools.readthedocs.io/**
 ## Features
 
 ### Reading and visualization
-- `how_to_read_output.py` – Example utilities to load COCONUT outputs  
-- `plot.py`, `plot_convergence.py`, `pyvista_slice.py` – Tools to visualize simulation outputs  
-- `group_vtu_files.py` – Prepares and groups VTU outputs for use in Paraview  
-- `tomography.py` – Comparison between COCONUT results and observational data
+- `tools/how_to_read_output.py` – Example utilities to load COCONUT outputs
+- `plot/` and `visualization_3d/` – Tools to visualize simulation outputs
+- `postprocessing/group_vtu_files.py` – Prepares and groups VTU outputs for use in Paraview
+- `plot/tomography.py` – Comparison between COCONUT results and observational data
 
 ### Input preparation
-- `create_dat.py`, `rotation_angle.py` – Prepare boundary/input data for coupling with heliospheric models (e.g. EUHFORIA)
+- `toheliosphere/create_dat.py`, `tools/rotation_angle.py` – Prepare boundary/input data for coupling with heliospheric models (e.g. EUHFORIA)
 
 ### CME flux rope models (`pyTDM/`)
 - Adapted from the original package by Florian Regnault (for PLUTO), extended and modified by Luis Linan and Jinhan Guo to inject CME models (RBSL, TDm) into COCONUT initial conditions

@@ -16,7 +16,7 @@ Examples
 --------
 As a module::
 
-    from coconut_tools.solarmach_plot import run_solarmach, DEFAULT_BODIES
+    from coconut_tools.tools.solarmach_plot import run_solarmach, DEFAULT_BODIES
 
     run_solarmach(
         date="2025-08-13 12:00:00",

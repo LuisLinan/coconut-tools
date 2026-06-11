@@ -26,7 +26,7 @@ def test_pyvista_slice_saves_png(big_vtu_path: Path, monkeypatch):
     out_png = outdir / "pyvista_slice.png"
 
     # Import the pipeline pieces
-    from coconut_tools.pyvista_slice import (
+    from coconut_tools.visualization_3d.pyvista_slice import (
         read_mesh,
         convert_units,
         convert_to_spherical,

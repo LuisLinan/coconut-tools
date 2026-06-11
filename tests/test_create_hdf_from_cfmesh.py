@@ -25,7 +25,7 @@ def test_create_hdf_from_cfmesh(big_cfmesh_path: Path):
     time_step = 1.0  # multiplier or step index, depending on your implementation
 
     # Import and call the function under test
-    from coconut_tools.create_hdf import create_hdf_from_cfmesh
+    from coconut_tools.postprocessing.create_hdf import create_hdf_from_cfmesh
 
     result = create_hdf_from_cfmesh(
         satellite_cartesian,

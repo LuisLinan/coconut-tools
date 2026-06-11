@@ -225,7 +225,7 @@ Example Python usage:
 
 .. code-block:: python
 
-   from coconut_tools import group_vtu_files
+   from coconut_tools.postprocessing import group_vtu_files
 
 Example function call:
 

@@ -8,7 +8,7 @@ Aberystwyth archive to compare with COCONUT outputs.
 
 Module
 ------
-``coconut_tools.download_tomo_file``
+``coconut_tools.tools.download_tomo_file``
 
 What it downloads
 -----------------

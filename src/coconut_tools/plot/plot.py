@@ -22,11 +22,11 @@ Note:
 import os
 import math
 from typing import Literal
-from coconut_tools.read_dat_files import read_data
+from coconut_tools.toheliosphere.read_dat_files import read_data
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.ticker import AutoMinorLocator
-from coconut_tools.logger_config import setup_logger
+from coconut_tools.tools.logger_config import setup_logger
 from pathlib import Path
 
 logger = setup_logger(__name__)

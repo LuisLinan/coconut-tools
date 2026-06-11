@@ -5,7 +5,7 @@ Goal
 ----
 Provide a **Python-only** path to explore COCONUT outputs in 3D: slices, clipping,
 streamlines, and isosurfaces — without opening ParaView. This page showcases the
-module ``coconut_tools.pyvista_slice`` and highlights PyVista features you can
+module ``coconut_tools.visualization_3d.pyvista_slice`` and highlights PyVista features you can
 adapt to your own analysis. The demo figure is **illustrative**, not publication-ready:
 read the code to see **how** each element is built and tailor it to your needs. 
 
@@ -18,7 +18,7 @@ When to use this
 
 Module overview
 ---------------
-``coconut_tools.pyvista_slice`` exposes a minimal pipeline:
+``coconut_tools.visualization_3d.pyvista_slice`` exposes a minimal pipeline:
 
 1) **Read** a merged VTU snapshot:
 

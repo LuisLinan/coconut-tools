@@ -14,7 +14,7 @@ import scipy.integrate
 import time
 import datetime
 from multiprocessing import Pool
-from coconut_tools.logger_config import setup_logger
+from coconut_tools.tools.logger_config import setup_logger
 
 logger = setup_logger(__name__)
 

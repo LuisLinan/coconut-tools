@@ -8,7 +8,7 @@ and expose the main physical quantities in convenient Python dictionaries.
 
 Module
 ------
-``coconut_tools.how_to_read_output``
+``coconut_tools.tools.how_to_read_output``
 
 Prerequisites
 -------------
@@ -96,7 +96,7 @@ Minimal VTU example
 
 .. code-block:: python
 
-   from coconut_tools import how_to_read_output as reader
+   from coconut_tools.tools import how_to_read_output as reader
 
    # Example VTU file path (merged snapshot)
    input_path = "./example_coconut_output.vtu"   # replace with a real file path
@@ -109,7 +109,7 @@ Minimal CFmesh example
 
 .. code-block:: python
 
-   from coconut_tools import how_to_read_output as reader
+   from coconut_tools.tools import how_to_read_output as reader
 
    input_path = "./example_coconut_output.CFmesh"   # replace with a real file path
    result = reader.read_cfmesh_file(input_path)

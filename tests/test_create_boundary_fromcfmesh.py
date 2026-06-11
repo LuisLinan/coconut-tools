@@ -12,7 +12,7 @@ def test_create_boundary_dat(big_cfmesh_path: Path):
     out_dat = outdir / "test.dat"
 
     # Import the function under test
-    from coconut_tools.create_dat import create_boundary_fromcfmesh
+    from coconut_tools.toheliosphere.create_dat import create_boundary_fromcfmesh
 
     # Parameters
     when = datetime.strptime("2024-04-09T05:04:00", "%Y-%m-%dT%H:%M:%S")

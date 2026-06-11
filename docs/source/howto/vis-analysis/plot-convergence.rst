@@ -11,7 +11,7 @@ and generates side-by-side comparison plots.
 
 Module
 ------
-``coconut_tools.plot_convergence``
+``coconut_tools.plot.plot_convergence``
 
 What it reads
 -------------
@@ -76,7 +76,7 @@ Minimal usage
 .. code-block:: python
 
    from pathlib import Path
-   from coconut_tools.plot_convergence import compare_convergence  # adjust import to your package layout
+   from coconut_tools.plot.plot_convergence import compare_convergence
 
    input_dir  = Path("/run/media/luis/TOSHIBA EXT/coolfluid/Test_conver/")
    output_dir = input_dir / "plot"

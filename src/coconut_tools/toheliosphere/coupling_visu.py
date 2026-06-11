@@ -10,7 +10,7 @@ import re
 from glob import glob
 from datetime import datetime
 import cv2
-from color import citrus, citrus_low
+from coconut_tools.tools.color import citrus, citrus_low
 
 
 def get_sorted_datetimes(folder_path):

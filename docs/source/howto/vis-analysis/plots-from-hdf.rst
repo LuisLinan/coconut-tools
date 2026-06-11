@@ -5,7 +5,7 @@ Goal
 ----
 Once you have created HDF5 files with :doc:`create-hdf`, you can reuse them to
 plot time series, generate surface maps, and compare multiple simulations.  
-This page documents the functions in ``coconut_tools.plot`` and the expected
+This page documents the functions in ``coconut_tools.plot.plot`` and the expected
 content of the HDF5 files.
 
 Prerequisites
@@ -19,7 +19,7 @@ Prerequisites
 
 Module
 ------
-``coconut_tools.plot``
+``coconut_tools.plot.plot``
 
 1) Plot boundary in-situ style profiles (one or several HDF5 files)
 -------------------------------------------------------------------
@@ -49,7 +49,7 @@ Module
 
 .. code-block:: python
 
-   from coconut_tools.plot import plot_boundary_profil
+   from coconut_tools.plot.plot import plot_boundary_profil
 
    inputdir = "./data_tests/"
    outputfile = "./data_tests/test_plot_boundary.png"
@@ -76,7 +76,7 @@ you can render 2D fields for a **single snapshot**.
 
 .. code-block:: python
 
-   from coconut_tools.plot import Surface_2D_onetime
+   from coconut_tools.plot.plot import Surface_2D_onetime
 
    Surface_2D_onetime(
        inputfile="./data_tests/test.dat",
@@ -102,7 +102,7 @@ you can render 2D fields for a **single snapshot**.
 
 .. code-block:: python
 
-   from coconut_tools.plot import create_plot_B
+   from coconut_tools.plot.plot import create_plot_B
 
    create_plot_B(
        path_min="/path/to/min/Data_16.hdf5",
@@ -129,7 +129,7 @@ you can render 2D fields for a **single snapshot**.
 
 .. code-block:: python
 
-   from coconut_tools.plot import create_plot_comparison
+   from coconut_tools.plot.plot import create_plot_comparison
 
    create_plot_comparison(
        data_indices={3: "ζ=3", 4: "ζ=4", 5: "ζ=5", 6: "ζ=6"},
@@ -159,7 +159,7 @@ you can render 2D fields for a **single snapshot**.
 
 .. code-block:: python
 
-   from coconut_tools.plot import create_plot_max_quantities_vs_b0
+   from coconut_tools.plot.plot import create_plot_max_quantities_vs_b0
    import numpy as np
 
    dict_folder_min = {z: b0 for z, b0 in zip(range(2,21), np.linspace(1, 20, 19))}

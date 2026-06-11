@@ -19,7 +19,7 @@ This page shows how to:
 
 Script module
 -------------
-``coconut_tools.tomography``
+``coconut_tools.plot.tomography``
 
 Docstring overview:
 
@@ -94,8 +94,8 @@ Typical call pattern (with automatic download of the tomography file if missing)
 .. code-block:: python
 
    import os
-   from coconut_tools.tomography import compare_tomography_with_simulation
-   from coconut_tools.download_tomo_file import download_tomography_file
+   from coconut_tools.plot.tomography import compare_tomography_with_simulation
+   from coconut_tools.tools.download_tomo_file import download_tomography_file
 
    date = "20190704"
    altitude = "5-0"

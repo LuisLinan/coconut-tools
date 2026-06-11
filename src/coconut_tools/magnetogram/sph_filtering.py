@@ -28,7 +28,13 @@ from astropy.io import fits
 from scipy import interpolate
 from scipy import special as scisp
 import matplotlib.pyplot as plt
-from coconut_tools.logger_config import setup_logger
+from coconut_tools.tools.logger_config import setup_logger
+from coconut_tools.tools.rotation_angle import (
+    compute_carrington_central_meridian,
+    compute_rotation_angle,
+    increasing_longitude_axis,
+    is_br_longitude_increasing,
+)
 
 logger = setup_logger(__name__)
 
@@ -372,6 +378,44 @@ def parse_date_from_filename(name, fmt, split_token):
         logger.warning(f"Skipping file {name} due to parsing error: {e}")
         return None
 
+
+def magnetogram_display_date(
+    file_path: str,
+    map_type: str,
+    target_date: str | datetime,
+    interpolated: bool = False,
+) -> datetime:
+    """Return the date that should be displayed for a processed magnetogram."""
+    target = parse_iso_datetime(target_date)
+    if interpolated or map_type in {"HMI_small", "HMI_polfil"}:
+        return target
+
+    name = os.path.basename(file_path)
+    if map_type == "GONG":
+        try:
+            return datetime.strptime(name[5:16], "%y%m%dt%H%M")
+        except ValueError as exc:
+            logger.warning("Could not parse GONG observation date from %s: %s", name, exc)
+    elif map_type == "ADAPT":
+        try:
+            return datetime.strptime(name.split("_")[2], "%Y%m%d%H%M")
+        except (IndexError, ValueError) as exc:
+            logger.warning("Could not parse ADAPT observation date from %s: %s", name, exc)
+    elif map_type.lower() == "wso":
+        logger.info(
+            "WSO filenames contain a Carrington rotation but no precise observation "
+            "time; using the target date for the figure."
+        )
+        return target
+
+    logger.warning(
+        "Could not determine the observation date from %s; using target date %s.",
+        name,
+        target.isoformat(),
+    )
+    return target
+
+
 def generate_output_and_map_names(
     date,
     map_type,
@@ -509,6 +553,133 @@ def circular_shift_longitude(Br: np.ndarray, shift: int) -> np.ndarray:
     return np.hstack((Br[:, -shift:], Br[:, :-shift]))
 
 
+def ensure_increasing_longitude(
+    Br: np.ndarray,
+    file_path: str,
+    map_type: str,
+) -> np.ndarray:
+    """Flip Br columns when the native FITS longitude axis is decreasing."""
+    if map_type.lower() == "wso":
+        return Br
+    if is_br_longitude_increasing(file_path):
+        return Br
+    logger.info("Flipping Br columns to obtain increasing longitude.")
+    return np.ascontiguousarray(Br[:, ::-1])
+
+
+def rotate_longitude_to_stonyhurst(
+    Br: np.ndarray,
+    angle_degrees: float,
+    has_duplicate_endpoint: bool = False,
+    zero_column: int | None = None,
+) -> np.ndarray:
+    """Rotate an increasing-longitude Br map so Stonyhurst longitude starts at zero."""
+    unique_longitudes = Br.shape[1] - 1 if has_duplicate_endpoint else Br.shape[1]
+    if zero_column is None:
+        zero_column = round((angle_degrees % 360.0) / 360.0 * unique_longitudes)
+    shift = -zero_column
+    logger.info(
+        "Rotating Br to Stonyhurst by %.6f degrees (%d longitude cells).",
+        angle_degrees,
+        shift,
+    )
+    if not has_duplicate_endpoint:
+        return np.roll(Br, shift=shift, axis=1)
+
+    rotated = np.roll(Br[:, :-1], shift=shift, axis=1)
+    return np.hstack((rotated, rotated[:, :1]))
+
+
+def processed_longitude_axis(
+    file_path: str,
+    map_type: str,
+    temporal: bool = False,
+) -> np.ndarray:
+    """Return physical longitudes ordered like Br after reading and preprocessing."""
+    if map_type.lower() == "wso":
+        return np.linspace(0.0, 360.0, 73)
+
+    lon = increasing_longitude_axis(file_path)
+    if temporal and map_type == "GONG":
+        lon = np.roll(lon, extract_gong_longitude_shift(file_path))
+    return lon
+
+
+def closest_longitude_column(longitude: np.ndarray, target_degrees: float) -> tuple[int, float]:
+    """Return the column closest to a target periodic longitude and its residual."""
+    residuals = (np.asarray(longitude) - target_degrees + 180.0) % 360.0 - 180.0
+    index = int(np.nanargmin(np.abs(residuals)))
+    return index, float(residuals[index])
+
+
+def apply_configured_longitude_rotation(
+    Br: np.ndarray,
+    Br_linear: np.ndarray | None,
+    local_file: str | list[str],
+    map_type: str,
+    target_date: str | datetime,
+    use_interpolation: bool,
+    rotate_to_stonyhurst: bool,
+) -> tuple[np.ndarray, np.ndarray | None, float | None]:
+    """Apply the configured Carrington-to-Stonyhurst longitude rotation."""
+    if not rotate_to_stonyhurst:
+        return Br, Br_linear, None
+
+    if use_interpolation and map_type in {"GONG", "ADAPT"}:
+        # Interpolated GONG maps have already been shifted from their
+        # filename-encoded origin to Carrington zero before interpolation.
+        rotation_angle = compute_carrington_central_meridian(target_date)
+        rotation_date = parse_iso_datetime(target_date)
+    else:
+        source_file = local_file[0] if isinstance(local_file, list) else local_file
+        rotation_angle, rotation_date = compute_rotation_angle(
+            source_file,
+            date_hmi=parse_iso_datetime(target_date).isoformat(),
+        )
+
+    source_file = local_file[0] if isinstance(local_file, list) else local_file
+    longitude = processed_longitude_axis(
+        source_file,
+        map_type,
+        temporal=use_interpolation and map_type == "GONG",
+    )
+    if map_type == "GONG":
+        target_longitude = compute_carrington_central_meridian(rotation_date)
+    else:
+        target_longitude = rotation_angle
+    zero_column, residual = closest_longitude_column(longitude, target_longitude)
+    logger.info(
+        "Stonyhurst zero uses longitude column %d with residual %.6f degrees.",
+        zero_column,
+        residual,
+    )
+
+    has_duplicate_endpoint = map_type.lower() == "wso"
+    Br = rotate_longitude_to_stonyhurst(
+        Br,
+        rotation_angle,
+        has_duplicate_endpoint=has_duplicate_endpoint,
+        zero_column=zero_column,
+    )
+    if Br_linear is not None:
+        Br_linear = rotate_longitude_to_stonyhurst(
+            Br_linear,
+            rotation_angle,
+            has_duplicate_endpoint=has_duplicate_endpoint,
+            zero_column=zero_column,
+        )
+    return Br, Br_linear, rotation_angle
+
+
+def read_first_fits_image(file_path: str) -> np.ndarray:
+    """Read the first FITS HDU containing image data."""
+    with fits.open(file_path) as hdul:
+        for hdu in hdul:
+            if hdu.data is not None and hdu.data.ndim >= 2:
+                return np.asarray(hdu.data)
+    raise ValueError(f"No magnetogram image HDU found in FITS file: {file_path}")
+
+
 def build_regular_theta_phi(Br: np.ndarray, map_type: str) -> tuple[np.ndarray, np.ndarray]:
     """Build the 1D theta/phi grids used by sph_filtering.
 
@@ -522,11 +693,11 @@ def build_regular_theta_phi(Br: np.ndarray, map_type: str) -> tuple[np.ndarray, 
     nb_th, nb_phi = Br.shape
     if map_type == "ADAPT":
         theta = np.linspace(0.0, np.pi, nb_th)
-        phi = np.linspace(0.0, 2.0 * np.pi, nb_phi)
+        phi = np.linspace(0.0, 2.0 * np.pi, nb_phi, endpoint=False)
     else:
         sinlat = np.linspace(-1.0, 1.0, nb_th)
         theta = np.arcsin(sinlat) + np.pi / 2.0
-        phi = np.linspace(0.0, 2.0 * np.pi, nb_phi)
+        phi = np.linspace(0.0, 2.0 * np.pi, nb_phi, endpoint=False)
     return theta, phi
 
 
@@ -541,11 +712,13 @@ def read_temporal_br_map(file_path: str, map_type: str, adapt_map: int = 0) -> n
     Returns:
         np.ndarray: Radial magnetic field map.
     """
-    input_data = fits.getdata(file_path, ext=0)
+    input_data = read_first_fits_image(file_path)
     if map_type == "ADAPT":
-        return np.nan_to_num(input_data[adapt_map, ::-1, :])
+        Br = np.nan_to_num(input_data[adapt_map, ::-1, :])
+        return ensure_increasing_longitude(Br, file_path, map_type)
     if map_type == "GONG":
         Br = np.nan_to_num(input_data[::-1, :])
+        Br = ensure_increasing_longitude(Br, file_path, map_type)
         return circular_shift_longitude(Br, extract_gong_longitude_shift(file_path))
     raise ValueError(f"Temporal interpolation is not supported for {map_type}")
 
@@ -641,11 +814,12 @@ def read_magnetogram(file_path, map_type, adapt_map=0):
     logger.info('Reading file')
 
     if map_type == 'ADAPT':
-        input_data = fits.getdata(file_path, ext=0)
+        input_data = read_first_fits_image(file_path)
         Br_map = input_data[adapt_map, ::-1, :]
+        Br_map = ensure_increasing_longitude(Br_map, file_path, map_type)
         nb_th, nb_phi = Br_map.shape
         theta = np.linspace(0., np.pi, nb_th)
-        phi = np.linspace(0., 2.0*np.pi, nb_phi)
+        phi = np.linspace(0., 2.0*np.pi, nb_phi, endpoint=False)
         Theta, Phi = build_theta_phi(theta, phi)
 
     elif map_type.lower() == 'wso':
@@ -695,12 +869,13 @@ def read_magnetogram(file_path, map_type, adapt_map=0):
         Theta, Phi = build_theta_phi(theta, phi)
 
     else:
-        input_data = fits.getdata(file_path)
+        input_data = read_first_fits_image(file_path)
         Br_data = input_data[::-1, :]
+        Br_data = ensure_increasing_longitude(Br_data, file_path, map_type)
         nb_th, nb_phi = Br_data.shape
         sinlat = np.linspace(-1., 1., nb_th)
         theta = np.arcsin(sinlat) + np.pi/2.
-        phi = np.linspace(0., 2.0*np.pi, nb_phi)
+        phi = np.linspace(0., 2.0*np.pi, nb_phi, endpoint=False)
         Theta, Phi = build_theta_phi(theta, phi)
         Br_map = np.nan_to_num(Br_data)
 
@@ -949,6 +1124,33 @@ def default_figure_path(output_dir: str, map_type: str, date: str | datetime) ->
     return os.path.join(output_dir, f"{map_type.lower()}_{format_timestamp(date)}.png")
 
 
+def resolve_figure_path(
+    output_path_fig: str | None,
+    output_dir: str,
+    map_type: str,
+    date: str | datetime,
+    use_unique_name: bool = False,
+) -> str:
+    """Build a figure filename from an optional file or directory path."""
+    if not output_path_fig:
+        return default_figure_path(output_dir, map_type, date)
+
+    filename = os.path.basename(output_path_fig)
+    if filename.lower() == ".png":
+        return default_figure_path(os.path.dirname(output_path_fig), map_type, date)
+
+    if (
+        output_path_fig.endswith(("/", "\\"))
+        or os.path.isdir(output_path_fig)
+        or not os.path.splitext(output_path_fig)[1]
+    ):
+        return default_figure_path(output_path_fig, map_type, date)
+
+    if use_unique_name:
+        return append_timestamp_to_path(output_path_fig, date)
+    return output_path_fig
+
+
 def generate_output_and_interpolation_map_names(
     date,
     map_type,
@@ -1016,6 +1218,7 @@ def process_magnetogram_date(
     alpha = config.get("alpha", 0)
     interpolation_order = config.get("interpolation_order", config.get("Interp_order", 2))
     use_interpolation = _as_bool(config.get("interpolation", map_type in {"GONG", "ADAPT"}))
+    rotate_to_stonyhurst = _as_bool(config.get("rotate_to_stonyhurst", True))
 
     if use_interpolation and map_type in {"GONG", "ADAPT"}:
         output_name, local_files, selection = generate_output_and_interpolation_map_names(
@@ -1046,6 +1249,23 @@ def process_magnetogram_date(
         Br_linear = None
         selection = None
 
+    figure_date = magnetogram_display_date(
+        local_file[0] if isinstance(local_file, list) else local_file,
+        map_type,
+        target_date,
+        interpolated=use_interpolation and map_type in {"GONG", "ADAPT"},
+    )
+
+    Br, Br_linear, rotation_angle = apply_configured_longitude_rotation(
+        Br,
+        Br_linear,
+        local_file,
+        map_type,
+        target_date,
+        use_interpolation,
+        rotate_to_stonyhurst,
+    )
+
     if _as_bool(config.get("flux_correct", False)):
         Br = correct_net_flux(Br, Theta[:, 0])
 
@@ -1064,19 +1284,21 @@ def process_magnetogram_date(
             map_type,
             visu_type,
             output_path=figure_path,
-            date=target_date,
+            date=figure_date,
         )
     else:
         figure_path = None
 
     return {
         "date": parse_iso_datetime(target_date),
+        "magnetogram_date": figure_date,
         "output_name": output_name,
         "local_file": local_file,
         "figure_path": figure_path,
         "selection": selection,
         "Br_linear": Br_linear,
         "coefbr": coefbr,
+        "rotation_angle": rotation_angle,
     }
 
 
@@ -1091,6 +1313,7 @@ def process_config(config: dict[str, Any], method_used: str = "sph") -> list[dic
         cadence_hours: Cadence in hours.
         total_hours: Total duration in hours.
         interpolation: Use four-map interpolation for GONG/ADAPT.
+        rotate_to_stonyhurst: Rotate longitude to the Stonyhurst frame. Defaults to True.
         flux_correct: Remove net magnetic flux if True.
 
     Args:
@@ -1106,13 +1329,15 @@ def process_config(config: dict[str, Any], method_used: str = "sph") -> list[dic
         total_hours=config.get("total_hours"),
     )
     output_path_fig = config.get("output_path_fig")
-    use_unique_figures = len(target_dates) > 1 and output_path_fig is not None
+    use_unique_figures = len(target_dates) > 1
     results = []
     for target_date in target_dates:
-        figure_path = (
-            append_timestamp_to_path(output_path_fig, target_date)
-            if use_unique_figures
-            else output_path_fig
+        figure_path = resolve_figure_path(
+            output_path_fig,
+            config.get("output_dir", "../"),
+            config["map_type"],
+            target_date,
+            use_unique_name=use_unique_figures,
         )
         results.append(
             process_magnetogram_date(
@@ -1127,119 +1352,53 @@ def process_config(config: dict[str, Any], method_used: str = "sph") -> list[dic
 
 
 if __name__ == "__main__":
-    # --- Example runs ---
-    # Multi-date example:
-    # {
-    #     "date": "2025-10-09T18:00:00",
-    #     "map_type": "GONG",
-    #     "cadence_hours": 3,
-    #     "total_hours": 72,
-    #     "interpolation": True,
-    #     "interpolation_order": 2,
-    #     "flux_correct": True,
-    #     "lmax": 20,
-    #     "output_dir": "../",
-    #     "download_dir": "../raw/",
-    # }
-    """
-    configs = [
-        {
-            "date": '2020-12-07T15:00:00', "map_type": 'GONG',
-            "lmax": 15, "amp": 1, "write_map": True, "show_map": True,
-            "visu_type": "sinlat",
-            "output_dir": "../", "output_path_fig": "../hmi_20201207.png",
-            "alpha" : 0
-        },
-        {
-            "date": '2022-03-11T12:00:00', "map_type": 'GONG',
-            "lmax": 15, "amp": 0.8, "write_map": False, "show_map": True,
-            "visu_type": "sinlat",
-            "output_dir": "../", "output_path_fig": "../gong_20220311.png",
-            "alpha": 0
-        },
-        {
-            "date": '2023-08-15T00:00:00', "map_type": 'ADAPT', "adapt_map": 4,
-            "lmax": 15, "amp": 1.2, "write_map": True, "show_map": False,
-            "visu_type": "sinlat",
-            "output_dir": "../", "output_path_fig": "../adapt_20230815.png",
-            "alpha": 0
-        },
-        {
-            "date": '2024-09-12T06:00:00', "map_type": 'WSO',
-            "lmax": 15, "amp": 1.0, "write_map": True, "show_map": True,
-            "visu_type": "sinlat",
-            "output_dir": "../", "output_path_fig": "../wso_20240912.png",
-            "alpha": 0
-        }
-    ]
-    """
-    """    
-    configs = [
-        {
-            "date": '2013-03-13T12:00:00', "map_type": 'GONG',
-            "lmax": 20, "amp": 1, "write_map": True, "show_map": True,
-            "visu_type": "sinlat",
-            "output_dir": "E:/euhforia/magnetogram/alpha/", "output_path_fig": "E:/euhforia/magnetogram/alpha/GONG_20130313T120000.png",
-            "alpha": 3*10**(-6)
-        }]
-    """
+
 
     configs = [
-    {
-        "date": '2017-09-04T18:00:00', "map_type": 'HMI_polfil',
-        "lmax": 20, "amp": 1, "write_map": True, "show_map": True,
-        "visu_type": "sinlat",
-        "output_dir": "E:/euhforia/magnetogram/2017/old/", "output_path_fig": "E:/euhforia/magnetogram/2017/old/hmi_lmax20.png",
-    },
         {
-            "date": '2017-09-04T18:00:00', "map_type": 'HMI_polfil',
-            "lmax": 10, "amp": 1, "write_map": True, "show_map": True,
+            "date": '2012-07-13T00:00:00', "map_type": 'GONG',
+            "lmax": 20, "amp": 1, "write_map": True, "show_map": True,
             "visu_type": "sinlat",
-            "output_dir": "E:/euhforia/magnetogram/2017/old/",
-            "output_path_fig": "E:/euhforia/magnetogram/2017/old/hmi_lmax10.png",
+            "output_dir": "C:/Users/luisl/Desktop/testmagnetogram/boundary/fix/",
+            "output_path_fig": "C:/Users/luisl/Desktop/testmagnetogram/boundary/fix/image/gong_lmax20.png",
+            "alpha": 3 * 10 ** (-6),
+            "rotate_to_stonyhurst": True
         },
         {
-            "date": '2017-09-04T18:00:00', "map_type": 'HMI_polfil',
-            "lmax": 15, "amp": 1, "write_map": True, "show_map": True,
+            "date": '2012-07-13T00:00:00', "map_type": 'WSO',
+            "lmax": 20, "amp": 1, "write_map": True, "show_map": True,
             "visu_type": "sinlat",
-            "output_dir": "E:/euhforia/magnetogram/2017/old/",
-            "output_path_fig": "E:/euhforia/magnetogram/2017/old/hmi_lmax15.png",
+            "output_dir": "C:/Users/luisl/Desktop/testmagnetogram/boundary/fix/",
+            "output_path_fig": "C:/Users/luisl/Desktop/testmagnetogram/boundary/fix/image/wso_lmax20.png",
+            "alpha": 3 * 10 ** (-6),
+            "rotate_to_stonyhurst": True
         },
         {
-            "date": '2017-09-04T18:00:00', "map_type": 'HMI_polfil',
-            "lmax": 50, "amp": 1, "write_map": True, "show_map": True,
+            "date": '2012-07-13T00:00:00', "map_type": 'ADAPT',
+            "lmax": 20, "amp": 1, "write_map": True, "show_map": True,
             "visu_type": "sinlat",
-            "output_dir": "E:/euhforia/magnetogram/2017/alpha/",
-            "output_path_fig": "E:/euhforia/magnetogram/2017/alpha/hmi_lmax50.png",
-            "alpha": 3 * 10 ** (-6)
-        },
-    {
-        "date": '2017-09-04T18:00:00', "map_type": 'GONG',
-        "lmax": 20, "amp": 1, "write_map": True, "show_map": True,
-        "visu_type": "sinlat",
-        "output_dir": "E:/euhforia/magnetogram/2017/old/", "output_path_fig": "E:/euhforia/magnetogram/2017/old/gong_lmax20.png",
-    },
-        {
-            "date": '2017-09-04T18:00:00', "map_type": 'GONG',
-            "lmax": 10, "amp": 1, "write_map": True, "show_map": True,
-            "visu_type": "sinlat",
-            "output_dir": "E:/euhforia/magnetogram/2017/old/",
-            "output_path_fig": "E:/euhforia/magnetogram/2017/old/gong_lmax10.png",
+            "output_dir": "C:/Users/luisl/Desktop/testmagnetogram/boundary/fix/",
+            "output_path_fig": "C:/Users/luisl/Desktop/testmagnetogram/boundary/fix/image/adapt_lmax20.png",
+            "alpha": 3 * 10 ** (-6),
+            "rotate_to_stonyhurst": True
         },
         {
-            "date": '2017-09-04T18:00:00', "map_type": 'GONG',
-            "lmax": 15, "amp": 1, "write_map": True, "show_map": True,
+            "date": '2012-07-13T00:00:00', "map_type": 'HMI_polfil',
+            "lmax": 20, "amp": 1, "write_map": True, "show_map": True,
             "visu_type": "sinlat",
-            "output_dir": "E:/euhforia/magnetogram/2017/old/",
-            "output_path_fig": "E:/euhforia/magnetogram/2017/old/gong_lmax15.png",
+            "output_dir": "C:/Users/luisl/Desktop/testmagnetogram/boundary/fix/",
+            "output_path_fig": "C:/Users/luisl/Desktop/testmagnetogram/boundary/fix/image/hmi_polfil_lmax20.png",
+            "alpha": 3 * 10 ** (-6),
+            "rotate_to_stonyhurst": True
         },
         {
-            "date": '2017-09-04T18:00:00', "map_type": 'GONG',
-            "lmax": 50, "amp": 1, "write_map": True, "show_map": True,
+            "date": '2012-07-13T00:00:00', "map_type": 'HMI_small',
+            "lmax": 20, "amp": 1, "write_map": True, "show_map": True,
             "visu_type": "sinlat",
-            "output_dir": "E:/euhforia/magnetogram/2017/alpha/",
-            "output_path_fig": "E:/euhforia/magnetogram/2017/alpha/gong_lmax50.png",
-            "alpha": 3 * 10 ** (-6)
+            "output_dir": "C:/Users/luisl/Desktop/testmagnetogram/boundary/fix/",
+            "output_path_fig": "C:/Users/luisl/Desktop/testmagnetogram/boundary/fix/image/hmi_small_lmax20.png",
+            "alpha": 3 * 10 ** (-6),
+            "rotate_to_stonyhurst": True
         },
     ]
 
@@ -1247,7 +1406,7 @@ if __name__ == "__main__":
         "date": "2012-07-13T00:00:00",
         "map_type": "GONG",
         "cadence_hours": 3,
-        "total_hours": 240,
+        "total_hours": 3,
         "interpolation": True,
         "interpolation_order": 2,
         "flux_correct": False,
@@ -1256,10 +1415,11 @@ if __name__ == "__main__":
         "write_map": True,
         "show_map": True,
         "visu_type": "sinlat",
-        "output_dir": "E:/COCONUT/2012/alpha/",
-        "output_path_fig": "E:/COCONUT/2012/alpha/image/",
-        "download_dir": "E:/COCONUT/2012/raw/",
-        "alpha": 3 * 10 ** (-6)
+        "output_dir": "C:/Users/luisl/Desktop/testmagnetogram/boundary/fix/",
+        "output_path_fig": "C:/Users/luisl/Desktop/testmagnetogram/boundary/fix/image",
+        "download_dir": "C:/Users/luisl/Desktop/testmagnetogram/boundary/fix/",
+        "alpha": 3 * 10 ** (-6),
+        "rotate_to_stonyhurst": True
     }
 
     process_config(config, method_used="sph")

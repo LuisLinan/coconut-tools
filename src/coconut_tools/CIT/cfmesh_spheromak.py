@@ -16,7 +16,7 @@ from scipy.spatial import cKDTree
 from vtk import VTK_WEDGE
 
 from coconut_tools.CIT.spheromak_model import LocalLFFSpheromak, LocalSpheromakParameters
-from coconut_tools.logger_config import setup_logger
+from coconut_tools.tools.logger_config import setup_logger
 
 logger = setup_logger(__name__)
 

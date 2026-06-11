@@ -7,9 +7,9 @@ import numpy as np
 import scipy.special
 import coco.core.constants as constants
 from PyQt5.QtCore import QObject, pyqtSignal
-from spheromak_base import LFFSpheromak
+from coconut_tools.CIT.spheromak_scripts.spheromak_base import LFFSpheromak
 import matplotlib.pyplot as plt
-from functions import read, writeouputfile, Surface_2D_onetime
+from coconut_tools.plot.plot import Surface_2D_onetime
 import glob
 
 
@@ -215,6 +215,13 @@ class LFFSpheromakModel(QObject):
         self.model.parameters.z_center = center[2]
 
     def createboundary(self, solar_wind_file, time_step,output_dir,savefig):
+        try:
+            from functions import read, writeouputfile
+        except ModuleNotFoundError as exc:
+            raise ModuleNotFoundError(
+                "createboundary requires the external 'functions' module "
+                "provided by the original spheromak application."
+            ) from exc
 
 
         base_dir = os.path.dirname(solar_wind_file)

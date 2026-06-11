@@ -14,3 +14,4 @@ Recipes for preparing outputs for visualization and quick analysis.
    pyvista-threeD
    plots-from-hdf
    coco_reader_doc
+   coconut_to_jhv

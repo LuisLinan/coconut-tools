@@ -25,7 +25,7 @@ from typing import List
 import numpy as np
 import imageio
 
-from coconut_tools.logger_config import setup_logger
+from coconut_tools.tools.logger_config import setup_logger
 
 logger = setup_logger(__name__)
 
@@ -248,7 +248,7 @@ def _resolve_dat_color_limits(files: List[Path], config: MediaConfig) -> tuple[f
     if config.vmin is not None and config.vmax is not None:
         return float(config.vmin), float(config.vmax)
 
-    from coconut_tools.plot_coconut_input import load_br_map_from_bcfile
+    from coconut_tools.plot.plot_coconut_input import load_br_map_from_bcfile
 
     global_min = np.inf
     global_max = -np.inf
@@ -299,7 +299,7 @@ def _render_coconut_dat_frame(
 
     from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
     from matplotlib.figure import Figure
-    from coconut_tools.plot_coconut_input import load_br_map_from_bcfile
+    from coconut_tools.plot.plot_coconut_input import load_br_map_from_bcfile
 
     br_map = load_br_map_from_bcfile(path)
     br = _fill_missing_longitudes(br_map.br)

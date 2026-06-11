@@ -15,16 +15,18 @@ from typing import Any
 
 from coconut_tools.magnetogram.local_weigh_filter import filter3
 from coconut_tools.magnetogram.sph_filtering import (
-    append_timestamp_to_path,
+    apply_configured_longitude_rotation,
     build_processing_dates,
     correct_net_flux,
-    default_figure_path,
     generate_output_and_interpolation_map_names,
+    generate_output_and_map_names,
+    magnetogram_display_date,
+    parse_iso_datetime,
+    plot_maps,
     read_magnetogram,
     read_interpolated_magnetogram,
-    generate_output_and_map_names,
+    resolve_figure_path,
     write_bc_file,
-    plot_maps,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -113,6 +115,7 @@ def process_magnetogram_date(
     sig = config.get("sig", 0.0)
     interpolation_order = config.get("interpolation_order", config.get("Interp_order", 2))
     use_interpolation = _as_bool(config.get("interpolation", map_type in {"GONG", "ADAPT"}))
+    rotate_to_stonyhurst = _as_bool(config.get("rotate_to_stonyhurst", True))
 
     if use_interpolation and map_type in {"GONG", "ADAPT"}:
         output_name, local_files, selection = generate_output_and_interpolation_map_names(
@@ -143,6 +146,22 @@ def process_magnetogram_date(
         Br_linear = None
         selection = None
 
+    figure_date = magnetogram_display_date(
+        local_file[0] if isinstance(local_file, list) else local_file,
+        map_type,
+        target_date,
+        interpolated=use_interpolation and map_type in {"GONG", "ADAPT"},
+    )
+    Br, Br_linear, rotation_angle = apply_configured_longitude_rotation(
+        Br,
+        Br_linear,
+        local_file,
+        map_type,
+        target_date,
+        use_interpolation,
+        rotate_to_stonyhurst,
+    )
+
     if _as_bool(config.get("flux_correct", False)):
         Br = correct_net_flux(Br, Theta[:, 0])
 
@@ -160,7 +179,12 @@ def process_magnetogram_date(
         write_bc_file(output_name, Br_filtered, Theta[:, 0], Phi[0, :], r_st)
 
     if show_map:
-        figure_path = output_path_fig or default_figure_path(output_dir, map_type, target_date)
+        figure_path = resolve_figure_path(
+            output_path_fig,
+            output_dir,
+            map_type,
+            target_date,
+        )
         plot_maps(
             Br,
             Br_filtered,
@@ -169,18 +193,20 @@ def process_magnetogram_date(
             map_type,
             visu_type,
             output_path=figure_path,
-            date=target_date,
+            date=figure_date,
         )
     else:
         figure_path = None
 
     return {
-        "date": target_date,
+        "date": parse_iso_datetime(target_date),
+        "magnetogram_date": figure_date,
         "output_name": output_name,
         "local_file": local_file,
         "figure_path": figure_path,
         "selection": selection,
         "Br_linear": Br_linear,
+        "rotation_angle": rotation_angle,
     }
 
 
@@ -200,13 +226,15 @@ def process_config(config: dict[str, Any], method_used: str = "Yaroslavsky") -> 
         total_hours=config.get("total_hours"),
     )
     output_path_fig = config.get("output_path_fig")
-    use_unique_figures = len(target_dates) > 1 and output_path_fig is not None
+    use_unique_figures = len(target_dates) > 1
     results = []
     for target_date in target_dates:
-        figure_path = (
-            append_timestamp_to_path(output_path_fig, target_date)
-            if use_unique_figures
-            else output_path_fig
+        figure_path = resolve_figure_path(
+            output_path_fig,
+            config.get("output_dir", "../"),
+            config["map_type"],
+            target_date,
+            use_unique_name=use_unique_figures,
         )
         results.append(
             process_magnetogram_date(

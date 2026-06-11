@@ -9,7 +9,7 @@ of a snapshot and writes a unified file (``.pvtu`` / merged ``.vtu``) for conven
 
 Module
 ------
-``coconut_tools.group_vtu_files``
+``coconut_tools.postprocessing.group_vtu_files``
 
 - Utility to merge ``.vtu`` files from multiple processors into a single file for ParaView visualization.
 - For time-dependent runs: filenames like ``corona-flow0-P{j}-iter_<N>.vtu`` (one per processor ``j`` and iteration ``N``).
@@ -45,7 +45,7 @@ Typical usage (time-dependent)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 .. code-block:: python
 
-   from coconut_tools import group_vtu_files
+   from coconut_tools.postprocessing import group_vtu_files
 
    group_vtu_files.merge_all_snapshots(
        input_dir="/scratch/leuven/342/vsc34280/time-evolving/run/results/",

@@ -16,7 +16,7 @@ This How-To shows how to:
 
 Module
 ------
-``coconut_tools.create_hdf``
+``coconut_tools.postprocessing.create_hdf``
 
 Functions
 -------------------
@@ -144,7 +144,7 @@ Example — VTU inputs (one HDF5 per satellite)
 .. code-block:: python
 
    from pathlib import Path
-   from coconut_tools.create_hdf import create_hdf_from_vtu
+   from coconut_tools.postprocessing.create_hdf import create_hdf_from_vtu
 
    satellite_cartesian = {"STA": [-10.0, 0.0, 0.0]}   # positions in R_sun (x, y, z)
    delta_t  = 0.005
@@ -169,7 +169,7 @@ Example — CFmesh inputs (nearest or RBF)
 .. code-block:: python
 
    from pathlib import Path
-   from coconut_tools.create_hdf import create_hdf_from_cfmesh
+   from coconut_tools.postprocessing.create_hdf import create_hdf_from_cfmesh
 
    satellite_cartesian = {"STA": [-10.0, 0.0, 0.0]}   # (x, y, z) in R_sun
    delta_t  = 0.005

@@ -47,7 +47,8 @@ docs = [
   "furo",
   "sphinx-autodoc-typehints",
   "sphinx-copybutton",
-  "sphinx-design"
+  "sphinx-design",
+  "myst-parser"
 ]
 
 test = [

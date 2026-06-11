@@ -15,7 +15,7 @@ The main entry point is the function:
 
 .. code-block:: python
 
-   import coconut_tools.reader as rc
+   import coconut_tools.visualization_3d.reader as rc
    rc.run_coconut_reader(...)
 
 Notes and Recommendations
@@ -25,7 +25,7 @@ Notes and Recommendations
 
   .. code-block:: python
 
-     from coconut_tools import group_vtu_files
+     from coconut_tools.postprocessing import group_vtu_files
 
      group_vtu_files.merge_all_snapshots(
          input_dir="./",
@@ -75,7 +75,7 @@ The function ``run_coconut_reader`` runs the full workflow.
 
 .. code-block:: python
 
-   import coconut_tools.reader as rc
+   import coconut_tools.visualization_3d.reader as rc
 
    rc.run_coconut_reader(
        cfmesh_name="corona.CFmesh",
@@ -324,6 +324,6 @@ Source code documentation is available in:
 
 ::
 
-   coconut_tools/src/coconut-tools/*.py
+   src/coconut_tools/visualization_3d/*.py
 
 contact: Q. Noraz

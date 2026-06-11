@@ -13,7 +13,7 @@ from typing import List, Tuple
 import pandas as pd
 import pyvista as pyv
 
-from coconut_tools.logger_config import setup_logger
+from coconut_tools.tools.logger_config import setup_logger
 
 logger = setup_logger(__name__)
 
@@ -58,7 +58,7 @@ def readstruct(lines: List[str]) -> Tuple[int, int, int, int, int, int, list]:
     return idx0, idx1, idx2, idx3, nbelements, nend, comment
 
 
-def read_cfmesh_file(input_cfmesh: str) -> dict:
+def read_cfmesh_file(input_cfmesh: str) -> dict: 
     """Read and parse a CFmesh output file from COCONUT simulations.
 
     Args:
@@ -225,6 +225,8 @@ def read_vtu_to_spherical_vectors(input_vtu: str) -> dict:
 
 
 if __name__ == "__main__":
+
+    help(read_cfmesh_file)
 
     # Example VTU file path for test
     input_path = "./example_coconut_output.vtu"  # Replace with real file path

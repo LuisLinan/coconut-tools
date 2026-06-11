@@ -16,8 +16,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.interpolate import RBFInterpolator
 
-from coconut_tools.create_dat import readstruct
-from coconut_tools.logger_config import setup_logger
+from coconut_tools.toheliosphere.create_dat import readstruct
+from coconut_tools.tools.logger_config import setup_logger
 
 logger = setup_logger(__name__)
 

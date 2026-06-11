@@ -12,7 +12,7 @@ import numpy as np
 import pyvista as pv
 from scipy.stats import binned_statistic_dd
 import matplotlib.pyplot as plt
-from coconut_tools.create_dat import readstruct
+from coconut_tools.toheliosphere.create_dat import readstruct
 
 ###########################################
 # From .vtu !!! Should filter invalid cells -> see reader.py
@@ -713,8 +713,8 @@ def plot_radial_profiles(
     plt.show()
 
 """
-from coconut_tools.reader import cfmesh_to_binned_spherical_grid
-from coconut_tools.coconut_to_numpy import radial_profile_volume_weighted, plot_radial_profiles
+from coconut_tools.visualization_3d.reader import cfmesh_to_binned_spherical_grid
+from coconut_tools.visualization_3d.coconut_to_numpy import radial_profile_volume_weighted, plot_radial_profiles
 
 (r, th, ph,
  vr, vlon, vclt,
@@ -885,7 +885,7 @@ def read_cfmesh_cells(
     with open(inputfile, "r") as f:
         lines = f.readlines()
 
-    # readstruct(lines) is from coconut_tools.create_dat
+    # readstruct(lines) is from coconut_tools.toheliosphere.create_dat
     idx0, idx1, idx2, idx3, nbelements, nend, comment = readstruct_fn(lines)
 
     connectivity = np.loadtxt(lines[idx0:idx0 + nbelements], dtype=int)
@@ -966,9 +966,9 @@ def read_cfmesh_cells(
 
 
 """
-from coconut_tools.coconut_to_numpy import read_cfmesh_cells, radial_profiles_volume2_weighted, plot_radial_profiles
+from coconut_tools.visualization_3d.coconut_to_numpy import read_cfmesh_cells, radial_profiles_volume2_weighted, plot_radial_profiles
 
-from coconut_tools.create_dat import readstruct
+from coconut_tools.toheliosphere.create_dat import readstruct
 
 centers, r, vol, fields = read_cfmesh_cells("corona.CFmesh", readstruct_fn=readstruct)
 
@@ -1135,8 +1135,8 @@ def plot_hist2d_pdf(
     return ax
 
 """
-import coconut_tools.coconut_to_numpy as ctn
-from coconut_tools.create_dat import readstruct
+import coconut_tools.visualization_3d.coconut_to_numpy as ctn
+from coconut_tools.toheliosphere.create_dat import readstruct
 centers, r, vol, fields = ctn.read_cfmesh_cells("corona.CFmesh", readstruct_fn=readstruct)
 H, xed, yed = ctn.hist2d_pdf(fields["r"], fields["rho"], bins_x=3000, bins_y=300, weights=vol, density=True,logy=True)
 plt.ion()

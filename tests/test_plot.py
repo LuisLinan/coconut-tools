@@ -18,7 +18,7 @@ def test_plots():
     # --------------------------------------------------------------------------------------------
     # 1) Plot profile from HDF -> test_plot_hdf.png
     # --------------------------------------------------------------------------------------------
-    from coconut_tools.plot import plot_boundary_profil, Surface_2D_onetime
+    from coconut_tools.plot.plot import plot_boundary_profil, Surface_2D_onetime
 
     plot_png = out_base / "test_plot_hdf.png"
 

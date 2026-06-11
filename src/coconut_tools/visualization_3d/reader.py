@@ -20,11 +20,11 @@ import matplotlib.pyplot as plt
 
 from matplotlib.colors import ListedColormap
 
-from coconut_tools.create_dat import (readstruct,create_boundary_fromcfmesh)
-from coconut_tools.read_dat_files import read_data
-from coconut_tools.plot import Surface_2D_onetime
-from coconut_tools.logger_config import setup_logger
-from coconut_tools.pyvista_slice import (
+from coconut_tools.toheliosphere.create_dat import (readstruct,create_boundary_fromcfmesh)
+from coconut_tools.toheliosphere.read_dat_files import read_data
+from coconut_tools.plot.plot import Surface_2D_onetime
+from coconut_tools.tools.logger_config import setup_logger
+from coconut_tools.visualization_3d.pyvista_slice import (
     read_mesh,
     convert_units,
     convert_to_spherical,

@@ -30,7 +30,7 @@ Examples
 --------
 Basic usage:
 
->>> from coconut_tools.solarmach_plot import plot_synoptic_aligned
+>>> from coconut_tools.tools.solarmach_plot import plot_synoptic_aligned
 >>> fig, ax, info = plot_synoptic_aligned("/path/to/file.fits", vmin=-100, vmax=100)
 >>> info["lon0_used"]
 123.0

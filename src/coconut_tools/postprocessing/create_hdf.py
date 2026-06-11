@@ -30,10 +30,10 @@ import numpy as np
 import natsort
 import pyvista as pv
 from vtk.util.numpy_support import vtk_to_numpy
-from coconut_tools.logger_config import setup_logger
+from coconut_tools.tools.logger_config import setup_logger
 import errno
 from datetime import datetime
-from coconut_tools.read_dat_files import read_data as read_dat
+from coconut_tools.toheliosphere.read_dat_files import read_data as read_dat
 
 
 logger = setup_logger(__name__)

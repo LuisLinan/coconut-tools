@@ -20,7 +20,7 @@ def test_compare_tomography_with_simulation(big_vtu_path: Path):
     datfile = outdir / f"tomo_sta_cor2a_{date}_{altitude}.dat"
 
     # Import the functions under test
-    from coconut_tools.tomography import download_tomography_file, compare_tomography_with_simulation
+    from coconut_tools.plot.tomography import download_tomography_file, compare_tomography_with_simulation
 
     # Ensure datfile is available
     if not datfile.exists():

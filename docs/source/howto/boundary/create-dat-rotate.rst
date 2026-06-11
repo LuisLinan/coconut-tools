@@ -18,7 +18,7 @@ To provide an **inner boundary** to heliospheric models such as **EUHFORIA** or 
 Step 1 — Create the ``.dat`` from CFmesh
 ----------------------------------------
 
-The function ``create_boundary_fromcfmesh`` in ``coconut_tools.create_dat`` extracts a spherical surface from a CFmesh file.
+The function ``create_boundary_fromcfmesh`` in ``coconut_tools.toheliosphere.create_dat`` extracts a spherical surface from a CFmesh file.
 
 .. code-block:: python
 
@@ -45,7 +45,7 @@ The function ``create_boundary_fromcfmesh`` in ``coconut_tools.create_dat`` extr
 
 .. code-block:: python
 
-   from coconut_tools import create_dat
+   from coconut_tools.toheliosphere import create_dat
    from datetime import datetime
 
    cfmesh = "/path/to/corona_flow.CFmesh"
@@ -85,7 +85,7 @@ Step 3 — Compute rotation angle
 
 .. code-block:: python
 
-   from coconut_tools.rotation_angle import compute_rotation_angle
+   from coconut_tools.tools.rotation_angle import compute_rotation_angle
 
    angle_deg = compute_rotation_angle(
        mag_name_path="/path/to/magnetogram.fits",
@@ -100,11 +100,11 @@ The function supports **GONG**, **ADAPT (CM/CAR)** and **HMI**.
 Step 4 — Apply the rotation
 ---------------------------
 
-Function in ``coconut_tools.create_dat``:
+Function in ``coconut_tools.toheliosphere.create_dat``:
 
 .. code-block:: python
 
-   from coconut_tools.create_dat import rotation
+   from coconut_tools.toheliosphere.create_dat import rotation
 
    rotation(
        input_dat="boundary_21p5.dat",
@@ -137,8 +137,8 @@ In practice you often want to process a **whole sequence of CFmesh snapshots** t
 
    import os, glob
    from datetime import datetime, timedelta
-   from coconut_tools.create_dat import create_boundary_fromcfmesh, rotation
-   from coconut_tools.rotation_angle import compute_rotation_angle
+   from coconut_tools.toheliosphere.create_dat import create_boundary_fromcfmesh, rotation
+   from coconut_tools.tools.rotation_angle import compute_rotation_angle
 
    magnetogram_path = "../hmi.Synoptic_Mr_small.2238.fits"
    date_hmi = "2020-12-07T15:00:00"
