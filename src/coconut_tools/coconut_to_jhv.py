@@ -56,7 +56,6 @@ import pyvista as pv
 import time
 from matplotlib import colormaps
 from matplotlib.colors import Normalize
-from scipy.interpolate import RBFInterpolator
 
 
 RSUN_M = 6.955e8
@@ -262,13 +261,16 @@ def trace_fieldlines(mesh, n_seed_points=200, source_radius=1.05, max_steps=1000
     )
 
 
-def stream_to_lines(stream, max_lines=None, min_points=2, use_tqdm=False):
+def stream_to_lines(stream, max_lines=None, min_points=2, use_tqdm=False,
+                    return_point_ids=False):
     """Convert a PyVista streamline object into a list of (N, 3) Cartesian arrays.
 
     If `use_tqdm` is True and `tqdm` is available, show progress while
-    extracting lines from the internal VTK cell array.
+    extracting lines from the internal VTK cell array. If `return_point_ids`
+    is True, also return the streamline point indices for each line.
     """
     lines = []
+    line_point_ids = []
     points = np.asarray(stream.points)
     cells = np.asarray(stream.lines)
 
@@ -294,6 +296,7 @@ def stream_to_lines(stream, max_lines=None, min_points=2, use_tqdm=False):
         ids = cells[i + 1 : i + 1 + n]
         if n >= min_points:
             lines.append(points[ids])
+            line_point_ids.append(ids.copy())
             if pbar is not None:
                 pbar.update(1)
             if max_lines is not None and len(lines) >= max_lines:
@@ -303,35 +306,9 @@ def stream_to_lines(stream, max_lines=None, min_points=2, use_tqdm=False):
     if pbar is not None:
         pbar.close()
 
+    if return_point_ids:
+        return lines, line_point_ids
     return lines
-
-
-def interpolate_field_on_lines(mesh, lines_xyz, field_name="Br_raw"):
-    """Interpolate a point field along streamlines using RBFInterpolator.
-    
-    Args:
-        mesh: PyVista mesh with point_data fields.
-        lines_xyz: List of (N, 3) arrays, each a streamline in Cartesian coordinates.
-        field_name: Name of the point_data field to interpolate.
-    
-    Returns:
-        List of (N,) arrays with interpolated field values per line.
-    """
-    if field_name not in mesh.point_data:
-        raise ValueError(f"Field '{field_name}' not found in mesh.point_data")
-    
-    coords = np.asarray(mesh.points)
-    field_values = np.asarray(mesh.point_data[field_name])
-    
-    # Build RBFInterpolator on mesh points
-    interpolator = RBFInterpolator(coords, field_values, kernel="thin_plate_spline", neighbors=50)
-    
-    field_per_line = []
-    for line_xyz in lines_xyz:
-        interp_vals = interpolator(line_xyz)
-        field_per_line.append(interp_vals)
-    
-    return field_per_line
 
 
 def field_to_rgba(field_values, cmap_name="bwr", vmin=-15.0, vmax=15.0):
@@ -540,34 +517,50 @@ def export_to_jhv_json(input_file, output_json,
     #stream = trace_fieldlines(mesh, n_seed_points, source_radius, max_steps) #random
     t3 = time.perf_counter()
     print("Stage: extracting lines from streamlines")
-    lines = stream_to_lines(stream, max_lines=max_lines, use_tqdm=use_tqdm)
+    lines, line_point_ids = stream_to_lines(
+        stream,
+        max_lines=max_lines,
+        use_tqdm=use_tqdm,
+        return_point_ids=True,
+    )
     print(f"Extracted {len(lines)} lines in {time.perf_counter() - t3:.2f}s")
 
-    # Interpolate field and prepare colors if requested
+    # Collect the VTK-interpolated field values and prepare colors if requested.
     lines_colors = None
     br_limits = None
     if color_by == "br":
         if "Br_raw" not in mesh.point_data:
             print("Warning: Br_raw field not found in mesh; skipping coloring")
         else:
-            print("Stage: interpolating Br field along streamlines")
-            t_interp = time.perf_counter()
-            br_per_line = interpolate_field_on_lines(mesh, lines, field_name="Br_raw")
-            br_limits = adaptive_br_limits(br_per_line)
-            lines_colors = [
-                field_to_rgba(
-                    br_vals,
-                    cmap_name="bwr",
-                    vmin=br_limits[0],
-                    vmax=br_limits[1],
+            print("Stage: collecting Br field along streamlines")
+            t_color = time.perf_counter()
+            field_stream = stream
+            if "Br_raw" not in field_stream.point_data:
+                field_stream = stream.sample(mesh)
+
+            if "Br_raw" not in field_stream.point_data:
+                print("Warning: Br_raw could not be sampled on streamlines; skipping coloring")
+            else:
+                stream_br = np.asarray(field_stream.point_data["Br_raw"])
+                br_per_line = [stream_br[ids] for ids in line_point_ids]
+                br_limits = adaptive_br_limits(br_per_line)
+                lines_colors = [
+                    field_to_rgba(
+                        br_vals,
+                        cmap_name="bwr",
+                        vmin=br_limits[0],
+                        vmax=br_limits[1],
+                    )
+                    for br_vals in br_per_line
+                ]
+                print(
+                    f"Adaptive Br color range: "
+                    f"[{br_limits[0]:.3g}, {br_limits[1]:.3g}] G"
                 )
-                for br_vals in br_per_line
-            ]
-            print(
-                f"Adaptive Br color range: "
-                f"[{br_limits[0]:.3g}, {br_limits[1]:.3g}] G"
-            )
-            print(f"Interpolated and colored in {time.perf_counter() - t_interp:.2f}s")
+                print(
+                    f"Collected and colored in "
+                    f"{time.perf_counter() - t_color:.2f}s"
+                )
 
     t4 = time.perf_counter()
     print("Stage: preview (show/screenshot)")
