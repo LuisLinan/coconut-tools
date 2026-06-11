@@ -19,11 +19,27 @@ Assumption:
 Examples:
 python3 coconut_to_jhv.py corona-mhd_0.vtu fieldlines.json --show
 python3 coconut_to_jhv.py corona-mhd_0.vtu fieldlines.json --screenshot preview.png
+python3 coconut_to_jhv.py corona-mhd_0.vtu fieldlines.json \
+  --screenshot preview.png \
+  --color-by br
 python3 coconut_to_jhv.py input.vtu fieldlines.json \
   --longitude-offset-deg 180 \
   --flip-longitude \
   --show
   --progress
+
+Use ``--color-by br`` to color field-line points by the radial magnetic field.
+The screenshot and SunJSON export share a blue-white-red colormap with symmetric
+limits of +/-2 standard deviations of the interpolated Br values (in Gauss).
+
+or from ipython environment:
+from coconut_tools.coconut_to_jhv import export_to_jhv_json
+export_to_jhv_json(
+    input_file='corona.CFmesh',
+    output_json='fieldlines.json',
+    screenshot='preview.png',
+    use_tqdm=True,
+)
 
 NB: you can also read COCONUT CFmesh files by passing a .CFmesh filename instead of .vtu. The script will detect the format and parse it accordingly, as long as the expected structure is present.
 contact: Q.Noraz
@@ -38,9 +54,26 @@ from datetime import datetime, timezone
 import numpy as np
 import pyvista as pv
 import time
+from matplotlib import colormaps
+from matplotlib.colors import Normalize
+from scipy.interpolate import RBFInterpolator
 
 
 RSUN_M = 6.955e8
+
+
+def radial_component(points, vectors):
+    """Project Cartesian vectors onto the local radial direction."""
+    points = np.asarray(points, dtype=float)
+    vectors = np.asarray(vectors, dtype=float)
+    radii = np.linalg.norm(points, axis=1)
+
+    radial = np.zeros(len(points), dtype=float)
+    nonzero = radii > 0.0
+    radial[nonzero] = np.einsum(
+        "ij,ij->i", points[nonzero], vectors[nonzero]
+    ) / radii[nonzero]
+    return radial
 
 
 def read_coconut_vtu(filename):
@@ -73,6 +106,13 @@ def read_coconut_vtu(filename):
         mesh = mesh.cell_data_to_point_data(pass_cell_data=True)
     else:
         raise ValueError("Magnetic-field components must all be point data or all be cell data.")
+
+    magnetic_field_t = np.column_stack([
+        mesh.point_data["Bx"] * 2.2e-4,
+        mesh.point_data["By"] * 2.2e-4,
+        mesh.point_data["Bz"] * 2.2e-4,
+    ])
+    mesh.point_data["Br_raw"] = radial_component(mesh.points, magnetic_field_t)
 
     return mesh
 
@@ -154,6 +194,9 @@ def read_coconut_cfmesh(filename):
 
     mesh.cell_data["B"] = np.column_stack([Bx * 2.2e-4, By * 2.2e-4, Bz * 2.2e-4])
     mesh = mesh.cell_data_to_point_data(pass_cell_data=True)
+    mesh.point_data["Br_raw"] = radial_component(
+        mesh.points, mesh.point_data["B"]
+    )
 
     return mesh
 
@@ -170,7 +213,7 @@ def read_coconut_input(filename):
     )
 
 
-def make_seed_grid(radius=1.05, n_points=500, lat_min=-80, lat_max=80, use_tqdm=False):
+def make_seed_grid(radius=1.05, n_points=200, lat_min=-80, lat_max=80, use_tqdm=False):
     """Create an approximately uniform longitude/latitude seed grid.
 
     If `use_tqdm` is True and the `tqdm` package is available, show a
@@ -208,7 +251,7 @@ def make_seed_grid(radius=1.05, n_points=500, lat_min=-80, lat_max=80, use_tqdm=
     return pv.PolyData(np.array(points))
 
 
-def trace_fieldlines(mesh, n_seed_points=500, source_radius=1.05, max_steps=1000):
+def trace_fieldlines(mesh, n_seed_points=200, source_radius=1.05, max_steps=1000):
     """Return PyVista streamline PolyData. This object contains the line geometry."""
     return mesh.streamlines(
         vectors="B",
@@ -263,6 +306,80 @@ def stream_to_lines(stream, max_lines=None, min_points=2, use_tqdm=False):
     return lines
 
 
+def interpolate_field_on_lines(mesh, lines_xyz, field_name="Br_raw"):
+    """Interpolate a point field along streamlines using RBFInterpolator.
+    
+    Args:
+        mesh: PyVista mesh with point_data fields.
+        lines_xyz: List of (N, 3) arrays, each a streamline in Cartesian coordinates.
+        field_name: Name of the point_data field to interpolate.
+    
+    Returns:
+        List of (N,) arrays with interpolated field values per line.
+    """
+    if field_name not in mesh.point_data:
+        raise ValueError(f"Field '{field_name}' not found in mesh.point_data")
+    
+    coords = np.asarray(mesh.points)
+    field_values = np.asarray(mesh.point_data[field_name])
+    
+    # Build RBFInterpolator on mesh points
+    interpolator = RBFInterpolator(coords, field_values, kernel="thin_plate_spline", neighbors=50)
+    
+    field_per_line = []
+    for line_xyz in lines_xyz:
+        interp_vals = interpolator(line_xyz)
+        field_per_line.append(interp_vals)
+    
+    return field_per_line
+
+
+def field_to_rgba(field_values, cmap_name="bwr", vmin=-15.0, vmax=15.0):
+    """Convert scalar field values to RGBA tuples using a colormap (in Gauss).
+    
+    Args:
+        field_values: (N,) array of scalar values (in Tesla, converted to Gauss)
+        cmap_name: Name of matplotlib colormap.
+        vmin, vmax: Colormap limits in Gauss.
+    
+    Returns:
+        (N, 4) array of RGBA tuples in [0, 255] range.
+    """
+    # Convert Tesla to Gauss: 1 T = 10000 G
+    field_gauss = np.asarray(field_values) * 1e4
+    
+    # Normalize to [0, 1]
+    norm = Normalize(vmin=vmin, vmax=vmax)
+    normalized = norm(field_gauss)
+    
+    # Apply colormap
+    cmap = colormaps.get_cmap(cmap_name)
+    rgba_01 = cmap(normalized)  # returns (N, 4) in [0, 1]
+    
+    # Convert to [0, 255] for JSON
+    rgba_255 = (rgba_01 * 255).astype(np.uint8)
+    
+    return rgba_255
+
+
+def adaptive_br_limits(field_values_per_line, fallback=1.0):
+    """Return symmetric Gauss limits at two standard deviations from zero."""
+    finite_values = [
+        np.asarray(values, dtype=float)[np.isfinite(values)]
+        for values in field_values_per_line
+        if np.asarray(values).size > 0
+    ]
+    finite_values = [values for values in finite_values if values.size > 0]
+    if not finite_values:
+        return (-fallback, fallback)
+
+    field_gauss = np.concatenate(finite_values) * 1e4
+    limit = 2.0 * float(np.std(field_gauss))
+    if limit <= 0.0:
+        limit = fallback
+    return (-limit, limit)
+
+
 def xyz_to_sunjson_coordinates(xyz, lon_offset_deg=0.0, flip_longitude=False):
     """
     Cartesian Rsun coordinates -> [radius, Carrington longitude, latitude].
@@ -284,7 +401,7 @@ def xyz_to_sunjson_coordinates(xyz, lon_offset_deg=0.0, flip_longitude=False):
 
 def write_sunjson(lines_xyz, output_json, thickness=0.004,
                   color=(255, 255, 255, 255), lon_offset_deg=0.0,
-                  flip_longitude=False, time=None, use_tqdm=False):
+                  flip_longitude=False, time=None, use_tqdm=False, lines_colors=None):
     """Write field lines to the simple SunJSON format read by JHelioviewer."""
     if time is None:
         time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
@@ -298,18 +415,26 @@ def write_sunjson(lines_xyz, output_json, thickness=0.004,
         except Exception:
             print("tqdm not available; continuing without progress bars")
 
-    for line_xyz in line_iter:
+    for idx, line_xyz in enumerate(line_iter):
         coords = xyz_to_sunjson_coordinates(
             line_xyz,
             lon_offset_deg=lon_offset_deg,
             flip_longitude=flip_longitude,
         )
 
+        # Use per-line colors if provided, otherwise use single default color
+        if lines_colors is not None and idx < len(lines_colors):
+            colors = [
+                [int(channel) for channel in rgba]
+                for rgba in lines_colors[idx]
+            ]
+        else:
+            colors = [[int(channel) for channel in color]]
+
         geometry.append({
             "type": "line",
             "coordinates": coords.tolist(),
-            # One color is enough: JHelioviewer repeats the last color.
-            "colors": [list(color)],
+            "colors": colors,
             "thickness": float(thickness),
         })
 
@@ -326,8 +451,16 @@ def write_sunjson(lines_xyz, output_json, thickness=0.004,
     print(f"Wrote {len(lines_xyz)} field lines, {n_points} points -> {output_json}")
 
 
-def preview(mesh, stream, show=False, screenshot=None, tube_radius=0.01):
-    """Intermediate PyVista preview. The tube is only for display, not export."""
+def preview(mesh, stream, show=False, screenshot=None, tube_radius=0.01,
+            color_by=None, br_limits=None):
+    """Intermediate PyVista preview. The tube is only for display, not export.
+    
+    Args:
+        mesh: PyVista mesh with point_data fields (for coloring).
+        stream: PyVista streamline PolyData.
+        color_by: None or 'br' to color by Br in Gauss.
+        br_limits: Optional symmetric color limits shared with the JSON export.
+    """
     if not show and screenshot is None:
         return
 
@@ -337,7 +470,31 @@ def preview(mesh, stream, show=False, screenshot=None, tube_radius=0.01):
     plotter.add_mesh(pv.Sphere(radius=1.0), color="lightgray", opacity=0.35)
 
     if stream.n_points > 0:
-        plotter.add_mesh(stream.tube(radius=tube_radius), color="white")
+        if color_by == "br" and "Br_raw" in mesh.point_data:
+            colored_stream = stream.copy()
+            if "Br_raw" not in colored_stream.point_data:
+                colored_stream = colored_stream.sample(mesh)
+
+            if "Br_raw" in colored_stream.point_data:
+                colored_stream.point_data["Br_gauss"] = (
+                    colored_stream.point_data["Br_raw"] * 1e4
+                )
+                if br_limits is None:
+                    br_limits = adaptive_br_limits(
+                        [colored_stream.point_data["Br_raw"]]
+                    )
+                plotter.add_mesh(
+                    colored_stream.tube(radius=tube_radius),
+                    scalars="Br_gauss",
+                    cmap="bwr",
+                    show_scalar_bar=False,
+                    clim=list(br_limits),
+                )
+            else:
+                print("Warning: Br_raw could not be sampled on streamlines; using white preview")
+                plotter.add_mesh(stream.tube(radius=tube_radius), color="white")
+        else:
+            plotter.add_mesh(stream.tube(radius=tube_radius), color="white")
     else:
         print("Warning: no streamlines to preview.")
 
@@ -356,10 +513,10 @@ def preview(mesh, stream, show=False, screenshot=None, tube_radius=0.01):
 
 
 def export_to_jhv_json(input_file, output_json,
-                           n_seed_points=500, source_radius=1.05, max_steps=1000,
+                           n_seed_points=200, source_radius=1.05, max_steps=1000,
                            max_lines=None, thickness=0.004,
                            lon_offset_deg=0.0, flip_longitude=False,
-                           show=False, screenshot=None, use_tqdm=False):
+                           show=False, screenshot=None, use_tqdm=False, color_by=None):
     """Complete minimal pipeline with simple stage prints and timings."""
     t0 = time.perf_counter()
     print("Stage: reading input ->", input_file)
@@ -386,9 +543,42 @@ def export_to_jhv_json(input_file, output_json,
     lines = stream_to_lines(stream, max_lines=max_lines, use_tqdm=use_tqdm)
     print(f"Extracted {len(lines)} lines in {time.perf_counter() - t3:.2f}s")
 
+    # Interpolate field and prepare colors if requested
+    lines_colors = None
+    br_limits = None
+    if color_by == "br":
+        if "Br_raw" not in mesh.point_data:
+            print("Warning: Br_raw field not found in mesh; skipping coloring")
+        else:
+            print("Stage: interpolating Br field along streamlines")
+            t_interp = time.perf_counter()
+            br_per_line = interpolate_field_on_lines(mesh, lines, field_name="Br_raw")
+            br_limits = adaptive_br_limits(br_per_line)
+            lines_colors = [
+                field_to_rgba(
+                    br_vals,
+                    cmap_name="bwr",
+                    vmin=br_limits[0],
+                    vmax=br_limits[1],
+                )
+                for br_vals in br_per_line
+            ]
+            print(
+                f"Adaptive Br color range: "
+                f"[{br_limits[0]:.3g}, {br_limits[1]:.3g}] G"
+            )
+            print(f"Interpolated and colored in {time.perf_counter() - t_interp:.2f}s")
+
     t4 = time.perf_counter()
     print("Stage: preview (show/screenshot)")
-    preview(mesh, stream, show=show, screenshot=screenshot)
+    preview(
+        mesh,
+        stream,
+        show=show,
+        screenshot=screenshot,
+        color_by=color_by,
+        br_limits=br_limits,
+    )
     print(f"Preview done in {time.perf_counter() - t4:.2f}s")
 
     t5 = time.perf_counter()
@@ -400,6 +590,7 @@ def export_to_jhv_json(input_file, output_json,
         lon_offset_deg=lon_offset_deg,
         flip_longitude=flip_longitude,
         use_tqdm=use_tqdm,
+        lines_colors=lines_colors,
     )
     print(f"Wrote SunJSON in {time.perf_counter() - t5:.2f}s")
 
@@ -410,7 +601,7 @@ def main():
     parser = argparse.ArgumentParser(description="Minimal COCONUT VTU/CFmesh -> JHelioviewer SunJSON exporter")
     parser.add_argument("input_file", help="Path to a .vtu or .CFmesh COCONUT output file")
     parser.add_argument("output_json")
-    parser.add_argument("--n-seed-points", type=int, default=500)
+    parser.add_argument("--n-seed-points", type=int, default=200)
     parser.add_argument("--source-radius", type=float, default=1.05)
     parser.add_argument("--max-steps", type=int, default=1000)
     parser.add_argument("--max-lines", type=int, default=None)
@@ -420,7 +611,11 @@ def main():
     parser.add_argument("--show", action="store_true")
     parser.add_argument("--screenshot", default=None)
     parser.add_argument("--progress", action="store_true", help="Enable tqdm progress bars in loops")
+    parser.add_argument("--color-by", choices=["none", "br"], default="none", 
+                       help="Color field lines in JSON and preview: 'br' for radial magnetic field")
     args = parser.parse_args()
+
+    color_by_arg = None if args.color_by == "none" else args.color_by
 
     export_to_jhv_json(
         args.input_file,
@@ -435,6 +630,7 @@ def main():
         show=args.show,
         screenshot=args.screenshot,
         use_tqdm=args.progress,
+        color_by=color_by_arg,
     )
 
 
