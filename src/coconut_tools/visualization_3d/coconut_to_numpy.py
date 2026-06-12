@@ -2,11 +2,47 @@
 
 This module provides helpers to extract data from CFmesh and vtu files,
 for MHD quantities.
+
+Example:
+    from coconut_tools.coconut_to_numpy import (
+        compute_cfmesh_unstructured_cartesian_gradients,
+        compute_cfmesh_unstructured_spherical_gradients,
+        compute_binned_spherical_grid_cartesian_gradients,
+        compute_binned_spherical_grid_spherical_gradients,
+    )
+    from coconut_tools.create_dat import readstruct
+
+    centers, cart_grads = compute_cfmesh_unstructured_cartesian_gradients(
+        "corona.CFmesh",
+        readstruct_fn=readstruct,
+    )
+    # cart_grads[name] has shape (n_cells, 3) for (d/dx, d/dy, d/dz)
+
+    centers, sph_grads = compute_cfmesh_unstructured_spherical_gradients(
+        "corona.CFmesh",
+        readstruct_fn=readstruct,
+    )
+    # sph_grads[name] has shape (n_cells, 3) for (d/dr, d/dtheta, d/dphi)
+
+    grad_cart = compute_binned_spherical_grid_cartesian_gradients(
+        r_centers, theta_centers, phi_centers, rho_3d
+    )
+    # grad_cart has shape (nr, ntheta, nphi, 3)
+
+    grad_sph = compute_binned_spherical_grid_spherical_gradients(
+        r_centers, theta_centers, phi_centers, rho_3d
+    )
+    # grad_sph has shape (nr, ntheta, nphi, 3)
 """
 
 # contact: Q. Noraz
 
 from __future__ import annotations
+
+import errno
+import logging
+import os
+from collections import defaultdict
 
 import numpy as np
 import pyvista as pv
@@ -14,8 +50,10 @@ from scipy.stats import binned_statistic_dd
 import matplotlib.pyplot as plt
 from coconut_tools.toheliosphere.create_dat import readstruct
 
+logger = logging.getLogger(__name__)
+
 ###########################################
-# From .vtu !!! Should filter invalid cells -> see reader.py
+# From .vtu !!! Should filter invalid cells if needed -> see reader.py
 ###########################################
 
 def _cart_to_spherical(x, y, z):
@@ -1003,6 +1041,332 @@ plot_radial_profiles(
     logy=True,
 )
 """
+
+### Compute local gradients on the unstructured CFmesh grid, using least-squares from neighbors defined by shared nodes.
+
+def _read_cfmesh_connectivity(inputfile: str, readstruct_fn):
+    with open(inputfile, "r") as f:
+        lines = f.readlines()
+    idx0, idx1, idx2, idx3, nbelements, nend, comment = readstruct_fn(lines)
+    return np.loadtxt(lines[idx0:idx0 + nbelements], dtype=int)
+
+
+def _cell_neighbors_from_connectivity(
+    connectivity: np.ndarray,
+    *,
+    min_shared_nodes: int = 3,
+    max_neighbors: int = 20,
+):
+    """Build a neighbor list by shared CFmesh node counts."""
+    node_to_cells: dict[int, list[int]] = defaultdict(list)
+    for cell_index, nodes in enumerate(connectivity[:, :6]):
+        for node in nodes:
+            node_to_cells[int(node)].append(cell_index)
+
+    neighbors: list[np.ndarray] = []
+    for cell_index, nodes in enumerate(connectivity[:, :6]):
+        counts: dict[int, int] = {}
+        for node in nodes:
+            for neighbor_cell in node_to_cells[int(node)]:
+                if neighbor_cell == cell_index:
+                    continue
+                counts[neighbor_cell] = counts.get(neighbor_cell, 0) + 1
+
+        neighbor_cells = [
+            neighbor_cell
+            for neighbor_cell, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+            if count >= min_shared_nodes
+        ]
+        neighbors.append(np.asarray(neighbor_cells[:max_neighbors], dtype=int))
+    return neighbors
+
+
+def _least_squares_gradients(
+    points,
+    values,
+    neighbors,
+    *,
+    min_neighbors: int = 4,
+    rcond=None,
+):
+    """Compute local least-squares gradients in Cartesian coordinates."""
+    points = np.asarray(points, dtype=float)
+    values = np.asarray(values, dtype=float)
+
+    if values.ndim == 1:
+        values = values[:, None]
+
+    n_cells = points.shape[0]
+    n_components = values.shape[1]
+    gradients = np.full((n_cells, n_components, 3), np.nan)
+
+    for i, neigh in enumerate(neighbors):
+        if neigh.size < min_neighbors:
+            continue
+
+        delta_x = points[neigh] - points[i]
+        delta_q = values[neigh] - values[i]
+
+        finite_mask = np.isfinite(delta_x).all(axis=1) & np.isfinite(delta_q).all(axis=1)
+        if finite_mask.sum() < min_neighbors:
+            continue
+
+        A = delta_x[finite_mask]
+        B = delta_q[finite_mask]
+        if B.ndim == 1:
+            B = B[:, None]
+
+        coef, *_ = np.linalg.lstsq(A, B, rcond=rcond)
+        gradients[i] = coef.T
+
+    if gradients.shape[1] == 1:
+        return gradients[:, 0, :]
+    return gradients
+
+
+def compute_cfmesh_unstructured_cartesian_gradients(
+    inputfile: str,
+    *,
+    readstruct_fn,
+    field_names: list[str] | None = None,
+    min_shared_nodes: int = 3,
+    max_neighbors: int = 20,
+    min_neighbors: int = 4,
+):
+    """Compute least-squares gradients on CFmesh cell centers in Cartesian space.
+
+    The mesh stencil is inferred from shared CFmesh node connectivity.
+    Gradients are returned in the global Cartesian basis (d/dx, d/dy, d/dz).
+    """
+    centers, _, _, fields = read_cfmesh_cells(inputfile, readstruct_fn=readstruct_fn)
+    connectivity = _read_cfmesh_connectivity(inputfile, readstruct_fn=readstruct_fn)
+    neighbors = _cell_neighbors_from_connectivity(
+        connectivity,
+        min_shared_nodes=min_shared_nodes,
+        max_neighbors=max_neighbors,
+    )
+
+    if field_names is None:
+        field_names = [
+            k for k in fields.keys()
+            if k not in ("x", "y", "z", "r", "theta", "phi")
+        ]
+
+    gradients = {}
+    for name in field_names:
+        if name not in fields:
+            raise KeyError(f"Field '{name}' not found in CFmesh fields.")
+        gradients[name] = _least_squares_gradients(
+            centers,
+            fields[name],
+            neighbors,
+            min_neighbors=min_neighbors,
+        )
+
+    return centers, gradients
+
+
+def _spherical_grid_bin_centers_to_cartesian(
+    r_centers: np.ndarray,
+    theta_centers: np.ndarray,
+    phi_centers: np.ndarray,
+):
+    r = r_centers[:, None, None]
+    theta = theta_centers[None, :, None]
+    phi = phi_centers[None, None, :]
+    x = r * np.sin(theta) * np.cos(phi)
+    y = r * np.sin(theta) * np.sin(phi)
+    z = r * np.cos(theta)
+    return np.stack([x, y, z], axis=-1)
+
+
+def _spherical_basis_vectors(theta: np.ndarray, phi: np.ndarray):
+    """Return orthonormal spherical basis vectors at given angles."""
+    theta = np.asarray(theta, dtype=float)
+    phi = np.asarray(phi, dtype=float)
+
+    sin_th = np.sin(theta)
+    cos_th = np.cos(theta)
+    sin_ph = np.sin(phi)
+    cos_ph = np.cos(phi)
+
+    e_r = np.stack([sin_th * cos_ph, sin_th * sin_ph, cos_th], axis=-1)
+    e_theta = np.stack([cos_th * cos_ph, cos_th * sin_ph, -sin_th], axis=-1)
+    e_phi = np.stack([-sin_ph, cos_ph, np.zeros_like(theta)], axis=-1)
+    return e_r, e_theta, e_phi
+
+
+def cartesian_gradients_to_spherical(
+    grad_cart: np.ndarray,
+    *,
+    x: np.ndarray | None = None,
+    y: np.ndarray | None = None,
+    z: np.ndarray | None = None,
+    r: np.ndarray | None = None,
+    theta: np.ndarray | None = None,
+    phi: np.ndarray | None = None,
+):
+    """Convert Cartesian gradient components into spherical basis components.
+
+    The returned gradient has the same shape as `grad_cart`, with the last axis
+    ordered as (g_r, g_theta, g_phi) in the local spherical basis.
+    """
+    grad_cart = np.asarray(grad_cart, dtype=float)
+    if grad_cart.ndim < 1 or grad_cart.shape[-1] != 3:
+        raise ValueError("grad_cart must have shape (..., 3)")
+
+    if x is not None or y is not None or z is not None:
+        if x is None or y is None or z is None:
+            raise ValueError("x, y, z must be provided together")
+        x, y, z = np.broadcast_arrays(np.asarray(x, dtype=float), np.asarray(y, dtype=float), np.asarray(z, dtype=float))
+        theta, phi = _cart_to_spherical(x, y, z)[1:]
+    elif r is not None or theta is not None or phi is not None:
+        if r is None or theta is None or phi is None:
+            raise ValueError("r, theta, phi must be provided together")
+        _, theta, phi = np.broadcast_arrays(
+            np.asarray(r, dtype=float),
+            np.asarray(theta, dtype=float),
+            np.asarray(phi, dtype=float),
+        )
+    else:
+        raise ValueError("Either x/y/z or r/theta/phi must be provided")
+
+    basis = _spherical_basis_vectors(theta, phi)
+    grad_sph = np.stack([np.sum(grad_cart * b, axis=-1) for b in basis], axis=-1)
+    return grad_sph
+
+
+def compute_cfmesh_unstructured_spherical_gradients(
+    inputfile: str,
+    *,
+    readstruct_fn,
+    field_names: list[str] | None = None,
+    min_shared_nodes: int = 3,
+    max_neighbors: int = 20,
+    min_neighbors: int = 4,
+):
+    """Compute spherical-basis gradients at CFmesh cell centers.
+
+    This wraps `compute_cfmesh_unstructured_cartesian_gradients` and converts
+    the returned gradients from global Cartesian into local spherical basis.
+    """
+    centers, cart_gradients = compute_cfmesh_unstructured_cartesian_gradients(
+        inputfile,
+        readstruct_fn=readstruct_fn,
+        field_names=field_names,
+        min_shared_nodes=min_shared_nodes,
+        max_neighbors=max_neighbors,
+        min_neighbors=min_neighbors,
+    )
+    x, y, z = centers.T
+    spherical_gradients = {
+        name: cartesian_gradients_to_spherical(
+            grad,
+            x=x,
+            y=y,
+            z=z,
+        )
+        for name, grad in cart_gradients.items()
+    }
+    return centers, spherical_gradients
+
+
+def compute_binned_spherical_grid_spherical_gradients(
+    r_centers: np.ndarray,
+    theta_centers: np.ndarray,
+    phi_centers: np.ndarray,
+    q_rtp: np.ndarray,
+    *,
+    min_neighbors: int = 4,
+    periodic_phi: bool = True,
+):
+    """Compute spherical-basis gradients from binned spherical grid output."""
+    cart_grad = compute_binned_spherical_grid_cartesian_gradients(
+        r_centers,
+        theta_centers,
+        phi_centers,
+        q_rtp,
+        min_neighbors=min_neighbors,
+        periodic_phi=periodic_phi,
+    )
+    r = r_centers[:, None, None]
+    theta = theta_centers[None, :, None]
+    phi = phi_centers[None, None, :]
+    spherical_grad = cartesian_gradients_to_spherical(
+        cart_grad,
+        r=r,
+        theta=theta,
+        phi=phi,
+    )
+    return spherical_grad
+
+
+def compute_binned_spherical_grid_cartesian_gradients(
+    r_centers: np.ndarray,
+    theta_centers: np.ndarray,
+    phi_centers: np.ndarray,
+    q_rtp: np.ndarray,
+    *,
+    min_neighbors: int = 4,
+    periodic_phi: bool = True,
+):
+    """Compute Cartesian gradients from binned spherical grid output.
+
+    This uses a local least-squares fit over the structured spherical stencil,
+    but returns gradients in global Cartesian coordinates.
+    """
+    q = np.asarray(q_rtp, dtype=float)
+    if q.ndim != 3:
+        raise ValueError("q_rtp must be a 3D array with shape (nr, ntheta, nphi).")
+
+    coords = _spherical_grid_bin_centers_to_cartesian(r_centers, theta_centers, phi_centers)
+    grad = np.full(q.shape + (3,), np.nan)
+    nr, ntheta, nphi = q.shape
+    offsets = [
+        (dr, dt, dphi)
+        for dr in (-1, 0, 1)
+        for dt in (-1, 0, 1)
+        for dphi in (-1, 0, 1)
+        if not (dr == dt == dphi == 0)
+    ]
+
+    for ir in range(nr):
+        for ith in range(ntheta):
+            for iph in range(nphi):
+                if not np.isfinite(q[ir, ith, iph]):
+                    continue
+
+                neighbors = []
+                values = []
+                for dr, dt, dphi in offsets:
+                    jr = ir + dr
+                    jth = ith + dt
+                    jph = iph + dphi
+
+                    if jr < 0 or jr >= nr or jth < 0 or jth >= ntheta:
+                        continue
+                    if periodic_phi:
+                        jph %= nphi
+                    elif jph < 0 or jph >= nphi:
+                        continue
+
+                    if not np.isfinite(q[jr, jth, jph]):
+                        continue
+                    neighbors.append(coords[jr, jth, jph])
+                    values.append(q[jr, jth, jph])
+
+                if len(neighbors) < min_neighbors:
+                    continue
+
+                A = np.asarray(neighbors, dtype=float) - coords[ir, ith, iph]
+                B = np.asarray(values, dtype=float) - q[ir, ith, iph]
+                if B.ndim == 1:
+                    B = B[:, None]
+
+                coef, *_ = np.linalg.lstsq(A, B, rcond=None)
+                grad[ir, ith, iph] = coef[:, 0]
+
+    return grad
 
 ######
 # 2D histo helper
