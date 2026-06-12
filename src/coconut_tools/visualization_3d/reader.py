@@ -748,7 +748,7 @@ def visualize_yplane_disk(
             vectors=V_name,
             integrator_type=45,      # Runge-Kutta 4/5
             initial_step_length=step_size,
-            max_time=max_time,
+            #max_time=max_time,
             max_steps=max_steps,
             compute_vorticity=False,
         )
