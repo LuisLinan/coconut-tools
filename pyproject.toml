@@ -14,6 +14,7 @@ authors = [{ name = "Luis Linan" }]
 dependencies = [
   "astropy",
   "beautifulsoup4",    # bs4
+  "cmap",
   "cmocean",
   "colorlog",
   "h5py",
@@ -52,5 +53,6 @@ docs = [
 ]
 
 test = [
+  "pooch",
   "pytest",
 ]
