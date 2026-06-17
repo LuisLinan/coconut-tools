@@ -563,9 +563,10 @@ def ensure_increasing_longitude(
         return Br
     if is_br_longitude_increasing(file_path):
         return Br
+    if map_type == "HMI_small" or map_type == "HMI_polfil":
+        return Br
     logger.info("Flipping Br columns to obtain increasing longitude.")
     return np.ascontiguousarray(Br[:, ::-1])
-
 
 def rotate_longitude_to_stonyhurst(
     Br: np.ndarray,
@@ -1362,16 +1363,8 @@ if __name__ == "__main__":
             "output_dir": "C:/Users/luisl/Desktop/testmagnetogram/boundary/fix/",
             "output_path_fig": "C:/Users/luisl/Desktop/testmagnetogram/boundary/fix/image/gong_lmax20.png",
             "alpha": 3 * 10 ** (-6),
-            "rotate_to_stonyhurst": True
-        },
-        {
-            "date": '2012-07-13T00:00:00', "map_type": 'WSO',
-            "lmax": 20, "amp": 1, "write_map": True, "show_map": True,
-            "visu_type": "sinlat",
-            "output_dir": "C:/Users/luisl/Desktop/testmagnetogram/boundary/fix/",
-            "output_path_fig": "C:/Users/luisl/Desktop/testmagnetogram/boundary/fix/image/wso_lmax20.png",
-            "alpha": 3 * 10 ** (-6),
-            "rotate_to_stonyhurst": True
+            "rotate_to_stonyhurst": True,
+            "interpolation": False
         },
         {
             "date": '2012-07-13T00:00:00', "map_type": 'ADAPT',
@@ -1380,7 +1373,8 @@ if __name__ == "__main__":
             "output_dir": "C:/Users/luisl/Desktop/testmagnetogram/boundary/fix/",
             "output_path_fig": "C:/Users/luisl/Desktop/testmagnetogram/boundary/fix/image/adapt_lmax20.png",
             "alpha": 3 * 10 ** (-6),
-            "rotate_to_stonyhurst": True
+            "rotate_to_stonyhurst": True,
+            "interpolation": False
         },
         {
             "date": '2012-07-13T00:00:00', "map_type": 'HMI_polfil',
@@ -1389,7 +1383,8 @@ if __name__ == "__main__":
             "output_dir": "C:/Users/luisl/Desktop/testmagnetogram/boundary/fix/",
             "output_path_fig": "C:/Users/luisl/Desktop/testmagnetogram/boundary/fix/image/hmi_polfil_lmax20.png",
             "alpha": 3 * 10 ** (-6),
-            "rotate_to_stonyhurst": True
+            "rotate_to_stonyhurst": True,
+            "interpolation": False
         },
         {
             "date": '2012-07-13T00:00:00', "map_type": 'HMI_small',
@@ -1398,7 +1393,48 @@ if __name__ == "__main__":
             "output_dir": "C:/Users/luisl/Desktop/testmagnetogram/boundary/fix/",
             "output_path_fig": "C:/Users/luisl/Desktop/testmagnetogram/boundary/fix/image/hmi_small_lmax20.png",
             "alpha": 3 * 10 ** (-6),
-            "rotate_to_stonyhurst": True
+            "rotate_to_stonyhurst": True,
+            "interpolation": False
+        },
+                {
+            "date": '2012-07-13T00:00:00', "map_type": 'GONG',
+            "lmax": 20, "amp": 1, "write_map": True, "show_map": True,
+            "visu_type": "sinlat",
+            "output_dir": "C:/Users/luisl/Desktop/testmagnetogram/boundary/",
+            "output_path_fig": "C:/Users/luisl/Desktop/testmagnetogram/boundary/image/gong_lmax20.png",
+            "alpha": 3 * 10 ** (-6),
+            "rotate_to_stonyhurst": False,
+            "interpolation": False
+        },
+        {
+            "date": '2012-07-13T00:00:00', "map_type": 'ADAPT',
+            "lmax": 20, "amp": 1, "write_map": True, "show_map": True,
+            "visu_type": "sinlat",
+            "output_dir": "C:/Users/luisl/Desktop/testmagnetogram/boundary/",
+            "output_path_fig": "C:/Users/luisl/Desktop/testmagnetogram/boundary/image/adapt_lmax20.png",
+            "alpha": 3 * 10 ** (-6),
+            "rotate_to_stonyhurst": False,
+            "interpolation": False
+        },
+        {
+            "date": '2012-07-13T00:00:00', "map_type": 'HMI_polfil',
+            "lmax": 20, "amp": 1, "write_map": True, "show_map": True,
+            "visu_type": "sinlat",
+            "output_dir": "C:/Users/luisl/Desktop/testmagnetogram/boundary/",
+            "output_path_fig": "C:/Users/luisl/Desktop/testmagnetogram/boundary/image/hmi_polfil_lmax20.png",
+            "alpha": 3 * 10 ** (-6),
+            "rotate_to_stonyhurst": False,
+            "interpolation": False
+        },
+        {
+            "date": '2012-07-13T00:00:00', "map_type": 'HMI_small',
+            "lmax": 20, "amp": 1, "write_map": True, "show_map": True,
+            "visu_type": "sinlat",
+            "output_dir": "C:/Users/luisl/Desktop/testmagnetogram/boundary/",
+            "output_path_fig": "C:/Users/luisl/Desktop/testmagnetogram/boundary/image/hmi_small_lmax20.png",
+            "alpha": 3 * 10 ** (-6),
+            "rotate_to_stonyhurst": False,
+            "interpolation": False
         },
     ]
 
@@ -1419,10 +1455,10 @@ if __name__ == "__main__":
         "output_path_fig": "C:/Users/luisl/Desktop/testmagnetogram/boundary/fix/image",
         "download_dir": "C:/Users/luisl/Desktop/testmagnetogram/boundary/fix/",
         "alpha": 3 * 10 ** (-6),
-        "rotate_to_stonyhurst": True
+        "rotate_to_stonyhurst": False
     }
 
-    process_config(config, method_used="sph")
+    #process_config(config, method_used="sph")
 
 
     for config in configs:

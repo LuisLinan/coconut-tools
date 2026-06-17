@@ -72,5 +72,5 @@ def execute_configs(path: str = None, cfmesh: bool = False) -> None:
 
 if __name__ == '__main__':
     # Example execution block
-    execute_configs(path='E:/euhforia/CFmesh/config/', cfmesh=True)
+    execute_configs(path='C:/Users/luisl/Desktop/cfmesh/config/', cfmesh=True)
 

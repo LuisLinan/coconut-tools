@@ -194,23 +194,12 @@ if __name__ == '__main__':
 
 
     createconfig(
-        path_file='E:/euhforia/CFmesh/',
-        path_tdm='E:/euhforia/CFmesh/',
-        path_save='E:/euhforia/CFmesh/config/',
+        path_file='C:/Users/luisl/Desktop/cfmesh/',
+        path_tdm='C:/Users/luisl/Desktop/cfmesh/',
+        path_save='C:/Users/luisl/Desktop/cfmesh/config/',
         name='zeta10',
         theta=1.57, phi=3.14, alpha=0, D=0.15, A=0.10, R=0.3, delta=0.01,
         zeta=10, case_tdm='first', geometry='spherical', solver='COCONUT',
-        flux='Tdm', nb_proc=270, nb_r=200, nb_th=200, nb_phi=200, eps=0.01,
-        nfr=100, xc=0.5, xh=0.5, hh_fr=120, ll_fr=35, F_flx=20
-    )
-
-    createconfig(
-        path_file='E:/euhforia/CFmesh/',
-        path_tdm='E:/euhforia/CFmesh/',
-        path_save='E:/euhforia/CFmesh/config/',
-        name='zeta20',
-        theta=1.57, phi=3.14, alpha=0, D=0.15, A=0.10, R=0.3, delta=0.01,
-        zeta=20, case_tdm='first', geometry='spherical', solver='COCONUT',
         flux='Tdm', nb_proc=270, nb_r=200, nb_th=200, nb_phi=200, eps=0.01,
         nfr=100, xc=0.5, xh=0.5, hh_fr=120, ll_fr=35, F_flx=20
     )
