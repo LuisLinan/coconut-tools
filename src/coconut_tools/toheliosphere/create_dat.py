@@ -245,9 +245,9 @@ if __name__ == "__main__":
     """ Example usage of the module to process a series of CFmesh files and generate boundary .dat files. """
 
 
-    magnetogram_path = r"E:/COCONUT/2017/magnetogram/hmi.Synoptic_Mr_polfil.2194.fits"
-    date_hmi = '2017-09-04T18:00:00'
-    auto_compute_rotation = True
+    magnetogram_path = f'C:/Users/luisl/Desktop/testmagnetogram/boundary/fix/mrzqs120712t2354c2125_017.fits.gz'
+    date_hmi = '2012-07-12T23:54:00'
+    
     manual_rotation_angle = 0.0  # fallback if auto_compute_rotation is False
 
     angle, date_dt = compute_rotation_angle(magnetogram_path, date_hmi)
@@ -264,6 +264,7 @@ if __name__ == "__main__":
     logger.info(f"Computed rotation angle: {angle} degrees")
     logger.info(f"Using date for rotation computation: {date_dt.isoformat()}\n")
 
+    """
     files = glob.glob('E:/COCONUT/2017/cme/CFmesh/corona-iter_*.CFmesh')
     files = sorted(files, key=extract_number)
     for i, file in enumerate(files):
@@ -273,8 +274,8 @@ if __name__ == "__main__":
         #date_i = date_dt + timedelta(seconds=i*145)
         timestamp_i = str(int(date_i.timestamp()))
 
-        output_dat_temp = f'E:/COCONUT/2017/cme/dat/solar_wind_boundary_{timestamp_i}_temps.dat'
-        output_dat = f'E:/COCONUT/2017/cme/dat/solar_wind_boundary_{timestamp_i}.dat'
+        output_dat_temp = f'C:/Users/luisl/Desktop/testmagnetogram/boundary/full_mhd_hmi/dat/solar_wind_boundary_{timestamp_i}_temps.dat'
+        output_dat = f'C:/Users/luisl/Desktop/testmagnetogram/boundary/full_mhd_hmi/dat/solar_wind_boundary_{timestamp_i}.dat'
 
         time = date_i.strftime("%Y-%m-%dT%H:%M:%S")
 
@@ -285,9 +286,23 @@ if __name__ == "__main__":
         create_boundary_fromcfmesh(file, time, rad_out, nb_th, nb_phi, eps, output_dat_temp, full_output=full_output)
         rotation(output_dat_temp, output_dat, angle, full_output=full_output)
         os.remove(output_dat_temp)
+    """
+
+    files = "C:/Users/luisl/Desktop/testmagnetogram/boundary/fix/full_mhd_gong/corona.CFmesh"
     
+    logger.info(f"Processing file : {files}")
+    date_dt = datetime.strptime(first_time, '%Y-%m-%dT%H:%M:%S')
+    
+    timestamp_i = str(int(date_dt.timestamp()))
 
+    output_dat_temp = f'C:/Users/luisl/Desktop/testmagnetogram/boundary/fix/full_mhd_gong/dat/solar_wind_boundary_{timestamp_i}.dat'
+    output_dat = f'C:/Users/luisl/Desktop/testmagnetogram/boundary/fix/full_mhd_gong/dat/solar_wind_boundary_{timestamp_i}.dat'
 
+    time = date_dt.strftime("%Y-%m-%dT%H:%M:%S")
+
+    create_boundary_fromcfmesh(files, time, rad_out, nb_th, nb_phi, eps, output_dat_temp, full_output=full_output)
+    #rotation(output_dat_temp, output_dat, angle, full_output=full_output)
+    #os.remove(output_dat_temp)
 
 
 

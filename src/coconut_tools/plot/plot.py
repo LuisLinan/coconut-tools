@@ -639,8 +639,8 @@ def create_plot_max_quantities_vs_b0(
 
 if __name__ == "__main__":
     
-    input_dir = Path("E:/coconut_spheromak/alpha/result_fullmhd/")
-    output_dir = Path("E:/coconut_spheromak/alpha/result_fullmhd/")
+    input_dir = Path("C:/Users/luisl/Desktop/testmagnetogram/boundary/full_mhd_gong/dat/")
+    output_dir = Path("C:/Users/luisl/Desktop/testmagnetogram/boundary/image/")
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -650,7 +650,7 @@ if __name__ == "__main__":
     #    # extrait le timestamp
     #    timestamp = dat_file.stem.replace("solar_wind_boundary_", "")
 
-        output_file = output_dir / f"surface.png"
+        output_file = output_dir / f"surface_gong.png"
 
         Surface_2D_onetime_file_axes(
             inputfile=str(dat_file),
@@ -660,7 +660,7 @@ if __name__ == "__main__":
             showP=False
         )
 
-        output_file = output_dir / f"surface2.png"
+        output_file = output_dir / f"surface_gong2.png"
         Surface_2D_onetime(
             inputfile=str(dat_file),
             outputfile=str(output_file),
@@ -669,34 +669,6 @@ if __name__ == "__main__":
             showP=False
         )
 
-    input_dir = Path("E:/coconut_spheromak/alpha/result_fullmhd_lown/")
-    output_dir = Path("E:/coconut_spheromak/alpha/result_fullmhd_lown/")
-
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    
-
-    for dat_file in input_dir.glob("solar_wind_boundary_*.dat"):
-    #    # extrait le timestamp
-    #    timestamp = dat_file.stem.replace("solar_wind_boundary_", "")
-
-        output_file = output_dir / f"surface.png"
-        Surface_2D_onetime_file_axes(
-            inputfile=str(dat_file),
-            outputfile=str(output_file),
-            mode="all",
-            extended=True,
-            showP=False
-        )
-
-        output_file = output_dir / f"surface2.png"
-        Surface_2D_onetime(
-            inputfile=str(dat_file),
-            outputfile=str(output_file),
-            mode="all",
-            extended=True,
-            showP=False
-        )
 
     """
 
