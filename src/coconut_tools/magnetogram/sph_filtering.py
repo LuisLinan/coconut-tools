@@ -1,33 +1,32 @@
 """
-Utilities for generating and downloading magnetogram input files for COCONUT simulations.
+Spherical harmonic filtering, saving, and plotting for magnetogram inputs.
 
-This module supports the generation of COCONUT-compatible magnetic boundary files
-based on real solar data from various sources (e.g., WSO, GONG, ADAPT, HMI).
-
-Main capabilities:
-- Construct output filenames and download magnetogram data using Sunpy or custom rules,
-- Build single-date or cadence-based time series configurations,
-- Download four-map stencils and temporally interpolate GONG/ADAPT magnetograms,
-- Handle spherical harmonic resolution (`lmax`),
-- Provide helper functions to parse timestamps and build mesh grids.
-
-Used to prepare magnetic input for running COCONUT coronal MHD simulations.
+Download and remote-candidate selection helpers live in
+``coconut_tools.magnetogram.magnetogram_download``. This module keeps the
+magnetogram reading/preprocessing needed by the spherical harmonic pipeline,
+then projects, reconstructs, writes, and visualizes COCONUT boundary maps.
 """
 import os
-from dataclasses import dataclass
-from datetime import datetime, timedelta
-from functools import lru_cache
+from datetime import datetime
 from typing import Any
 
-import sunpy.coordinates.sun
-import sunpy.util.net
 import numpy as np
-import requests
-from bs4 import BeautifulSoup
 from astropy.io import fits
 from scipy import interpolate
 from scipy import special as scisp
 import matplotlib.pyplot as plt
+from coconut_tools.magnetogram.magnetogram_download import (
+    InterpolationSelection,
+    build_processing_dates,
+    default_figure_path,
+    generate_output_and_interpolation_map_names,
+    generate_output_and_map_names,
+    is_gong_map_type,
+    is_gong_temporal_map_type,
+    magnetogram_display_date,
+    parse_iso_datetime,
+    resolve_figure_path,
+)
 from coconut_tools.tools.logger_config import setup_logger
 from coconut_tools.tools.rotation_angle import (
     compute_carrington_central_meridian,
@@ -37,457 +36,6 @@ from coconut_tools.tools.rotation_angle import (
 )
 
 logger = setup_logger(__name__)
-
-
-@dataclass(frozen=True)
-class MagnetogramCandidate:
-    """Remote magnetogram candidate with an observation timestamp."""
-
-    name: str
-    date: datetime
-    remote_url: str
-
-
-@dataclass(frozen=True)
-class InterpolationSelection:
-    """Four-map temporal interpolation stencil and its time weights."""
-
-    before_previous: MagnetogramCandidate
-    before: MagnetogramCandidate
-    after: MagnetogramCandidate
-    after_next: MagnetogramCandidate
-    coef_before: float
-    coef_after: float
-    interval_seconds: float
-    previous_interval_seconds: float
-    next_interval_seconds: float
-    target_date: datetime
-
-
-def parse_iso_datetime(date: str | datetime) -> datetime:
-    """Parse a date value into a datetime.
-
-    Args:
-        date (str | datetime): ISO datetime string or datetime object.
-
-    Returns:
-        datetime: Parsed datetime.
-    """
-    if isinstance(date, datetime):
-        return date
-    return datetime.fromisoformat(date)
-
-
-def format_timestamp(date: str | datetime) -> str:
-    """Format a datetime as YYYYMMDDHHMMSS for output filenames.
-
-    Args:
-        date (str | datetime): Date to format.
-
-    Returns:
-        str: Compact timestamp.
-    """
-    return parse_iso_datetime(date).strftime("%Y%m%d%H%M%S")
-
-
-def build_output_name(
-    date: str | datetime,
-    map_type: str,
-    output_dir: str,
-    lmax: int | None,
-    method_used: str = "sph",
-) -> str:
-    """Build the COCONUT boundary filename for a target date.
-
-    Args:
-        date (str | datetime): Target date.
-        map_type (str): Map type.
-        output_dir (str): Directory for the boundary file.
-        lmax (int | None): Maximum spherical harmonic degree.
-        method_used (str): Method label included in the output stem.
-
-    Returns:
-        str: Output filename ending with _YYYYMMDDHHMMSS.dat.
-    """
-    prefixes = {
-        "WSO": "map_wso",
-        "GONG": "map_gong",
-        "ADAPT": "map_adapt",
-        "HMI_polfil": "map_hmi_polfil",
-        "HMI_small": "map_hmi_small",
-    }
-    prefix = prefixes.get(map_type)
-    if prefix is None:
-        raise ValueError(f"Unsupported map_type: {map_type}")
-
-    filename = f"{prefix}_lmax{lmax}_{method_used}_{format_timestamp(date)}.dat"
-    return os.path.join(output_dir, filename)
-
-
-def _hrefs_containing(soup: BeautifulSoup, token: str) -> list[str]:
-    """Extract hrefs containing a token from a parsed HTML page."""
-    hrefs = []
-    for node in soup.find_all("a"):
-        href = node.get("href")
-        if href and token in href:
-            hrefs.append(href)
-    return hrefs
-
-
-@lru_cache(maxsize=128)
-def fetch_remote_names(remote_dir: str, file_id: str) -> list[str]:
-    """List remote filenames from a GONG-style directory page.
-
-    Args:
-        remote_dir (str): Remote directory URL.
-        file_id (str): Filename token to keep.
-
-    Returns:
-        list[str]: Matching filenames.
-    """
-    try:
-        response = requests.get(remote_dir)
-        response.raise_for_status()
-    except requests.RequestException as exc:
-        logger.warning(f"Could not list remote directory {remote_dir}: {exc}")
-        return []
-    soup = BeautifulSoup(response.text, "html.parser")
-    return _hrefs_containing(soup, file_id)
-
-
-def build_gong_remote_dir(date: datetime, file_id: str = "mrzqs") -> str:
-    """Build a GONG QR magnetogram directory URL for one day.
-
-    Args:
-        date (datetime): Day to list.
-        file_id (str): GONG file identifier.
-
-    Returns:
-        str: Remote directory URL.
-    """
-    return (
-        f"https://gong.nso.edu/data/magmap/QR/{file_id[2:]}/"
-        f"{date.year}{date.month:02d}/"
-        f"{file_id}{str(date.year)[2:]}{date.month:02d}{date.day:02d}/"
-    )
-
-
-def list_gong_candidates(date: str | datetime) -> list[MagnetogramCandidate]:
-    """List GONG candidates around a target date.
-
-    The previous, current, and next UTC days are queried so a four-map stencil
-    can cross midnight.
-
-    Args:
-        date (str | datetime): Target date.
-
-    Returns:
-        list[MagnetogramCandidate]: Sorted unique candidates.
-    """
-    date_datetime = parse_iso_datetime(date)
-    file_id = "mrzqs"
-    candidates = []
-    for day_offset in (-1, 0, 1):
-        current_day = date_datetime + timedelta(days=day_offset)
-        remote_dir = build_gong_remote_dir(current_day, file_id)
-        for name in fetch_remote_names(remote_dir, file_id):
-            parsed_date = parse_date_from_filename(name, file_id + "%y%m%dt%H%M", "c")
-            if parsed_date is not None:
-                candidates.append(MagnetogramCandidate(name, parsed_date, remote_dir + name))
-    return unique_sorted_candidates(candidates)
-
-
-def list_adapt_candidates(date: str | datetime) -> list[MagnetogramCandidate]:
-    """List ADAPT candidates around a target date.
-
-    Args:
-        date (str | datetime): Target date.
-
-    Returns:
-        list[MagnetogramCandidate]: Sorted unique candidates.
-    """
-    date_datetime = parse_iso_datetime(date)
-    file_id = "adapt40311"
-    years = {
-        (date_datetime - timedelta(days=1)).year,
-        date_datetime.year,
-        (date_datetime + timedelta(days=1)).year,
-    }
-    candidates = []
-    for year in sorted(years):
-        remote_dir = f"https://gong.nso.edu/adapt/maps/gong/{year}/"
-        for name in fetch_remote_names(remote_dir, file_id):
-            try:
-                parsed_date = datetime.strptime(name.split("_")[2], "%Y%m%d%H%M")
-            except Exception as exc:
-                logger.warning(f"Skipping file {name} due to parsing error: {exc}")
-                continue
-            candidates.append(MagnetogramCandidate(name, parsed_date, remote_dir + name))
-    return unique_sorted_candidates(candidates)
-
-
-def unique_sorted_candidates(
-    candidates: list[MagnetogramCandidate],
-) -> list[MagnetogramCandidate]:
-    """Sort candidates and keep one entry per timestamp."""
-    unique_by_date = {}
-    for candidate in sorted(candidates, key=lambda item: item.date):
-        unique_by_date.setdefault(candidate.date, candidate)
-    return list(unique_by_date.values())
-
-
-def list_remote_candidates(
-    date: str | datetime,
-    map_type: str,
-) -> list[MagnetogramCandidate]:
-    """List remote temporal candidates for a map type.
-
-    Args:
-        date (str | datetime): Target date.
-        map_type (str): Map type.
-
-    Returns:
-        list[MagnetogramCandidate]: Sorted candidates.
-    """
-    if map_type == "GONG":
-        return list_gong_candidates(date)
-    if map_type == "ADAPT":
-        return list_adapt_candidates(date)
-    raise ValueError(f"Temporal candidate listing is not supported for {map_type}")
-
-
-def select_nearest_candidate(
-    candidates: list[MagnetogramCandidate],
-    target_date: str | datetime,
-) -> MagnetogramCandidate:
-    """Select the candidate closest to a target date."""
-    date_datetime = parse_iso_datetime(target_date)
-    if not candidates:
-        raise RuntimeError("No valid magnetogram file found on the remote server.")
-    return min(candidates, key=lambda item: abs((item.date - date_datetime).total_seconds()))
-
-
-def select_interpolation_stencil(
-    candidates: list[MagnetogramCandidate],
-    target_date: str | datetime,
-) -> InterpolationSelection:
-    """Select four magnetograms around a target date for Hermite interpolation.
-
-    Args:
-        candidates (list[MagnetogramCandidate]): Sorted remote candidates.
-        target_date (str | datetime): Target interpolation date.
-
-    Returns:
-        InterpolationSelection: Four-map stencil and coefficients.
-    """
-    date_datetime = parse_iso_datetime(target_date)
-    candidates = unique_sorted_candidates(candidates)
-    for index in range(1, len(candidates) - 2):
-        before = candidates[index]
-        after = candidates[index + 1]
-        if before.date <= date_datetime <= after.date:
-            seconds_before = (date_datetime - before.date).total_seconds()
-            seconds_after = (after.date - date_datetime).total_seconds()
-            interval = seconds_before + seconds_after
-            previous_interval = (before.date - candidates[index - 1].date).total_seconds()
-            next_interval = (candidates[index + 2].date - after.date).total_seconds()
-            if interval <= 0 or previous_interval <= 0 or next_interval <= 0:
-                raise RuntimeError("Invalid temporal interpolation stencil.")
-            return InterpolationSelection(
-                before_previous=candidates[index - 1],
-                before=before,
-                after=after,
-                after_next=candidates[index + 2],
-                coef_before=seconds_after / interval,
-                coef_after=seconds_before / interval,
-                interval_seconds=interval,
-                previous_interval_seconds=previous_interval,
-                next_interval_seconds=next_interval,
-                target_date=date_datetime,
-            )
-    raise RuntimeError(
-        f"Could not find four magnetograms around {date_datetime.isoformat()}."
-    )
-
-
-def download_candidate(candidate: MagnetogramCandidate, output_dir: str) -> str:
-    """Download one candidate if it is missing locally.
-
-    Args:
-        candidate (MagnetogramCandidate): Remote candidate.
-        output_dir (str): Local download directory.
-
-    Returns:
-        str: Local file path.
-    """
-    os.makedirs(output_dir, exist_ok=True)
-    local_file = os.path.join(output_dir, candidate.name)
-    if not os.path.exists(local_file):
-        local_file = sunpy.util.net.download_file(
-            candidate.remote_url,
-            directory=output_dir,
-            overwrite=True,
-        )
-        logger.info(f"Downloaded map: {local_file}")
-    else:
-        logger.info(f"Map already exists locally: {local_file}")
-    return local_file
-
-
-def download_interpolation_magnetograms(
-    date: str | datetime,
-    map_type: str,
-    output_dir: str,
-) -> tuple[list[str], InterpolationSelection]:
-    """Download the four magnetograms needed for temporal interpolation.
-
-    Args:
-        date (str | datetime): Target interpolation date.
-        map_type (str): Map type. Supported: GONG, ADAPT.
-        output_dir (str): Local download directory.
-
-    Returns:
-        tuple[list[str], InterpolationSelection]: Local files in stencil order and selection.
-    """
-    candidates = list_remote_candidates(date, map_type)
-    selection = select_interpolation_stencil(candidates, date)
-    stencil = [
-        selection.before_previous,
-        selection.before,
-        selection.after,
-        selection.after_next,
-    ]
-    local_files = [download_candidate(candidate, output_dir) for candidate in stencil]
-    return local_files, selection
-
-
-def parse_date_from_filename(name, fmt, split_token):
-    """Parse date from filename using a given format and delimiter.
-
-    Args:
-        name (str): Filename.
-        fmt (str): Format string to parse the date.
-        split_token (str): Token to split the filename before parsing.
-
-    Returns:
-        datetime: Parsed datetime object.
-    """
-    try:
-        return datetime.strptime(name.split(split_token)[0], fmt)
-    except Exception as e:
-        logger.warning(f"Skipping file {name} due to parsing error: {e}")
-        return None
-
-
-def magnetogram_display_date(
-    file_path: str,
-    map_type: str,
-    target_date: str | datetime,
-    interpolated: bool = False,
-) -> datetime:
-    """Return the date that should be displayed for a processed magnetogram."""
-    target = parse_iso_datetime(target_date)
-    if interpolated or map_type in {"HMI_small", "HMI_polfil"}:
-        return target
-
-    name = os.path.basename(file_path)
-    if map_type == "GONG":
-        try:
-            return datetime.strptime(name[5:16], "%y%m%dt%H%M")
-        except ValueError as exc:
-            logger.warning("Could not parse GONG observation date from %s: %s", name, exc)
-    elif map_type == "ADAPT":
-        try:
-            return datetime.strptime(name.split("_")[2], "%Y%m%d%H%M")
-        except (IndexError, ValueError) as exc:
-            logger.warning("Could not parse ADAPT observation date from %s: %s", name, exc)
-    elif map_type.lower() == "wso":
-        logger.info(
-            "WSO filenames contain a Carrington rotation but no precise observation "
-            "time; using the target date for the figure."
-        )
-        return target
-
-    logger.warning(
-        "Could not determine the observation date from %s; using target date %s.",
-        name,
-        target.isoformat(),
-    )
-    return target
-
-
-def generate_output_and_map_names(
-    date,
-    map_type,
-    output_dir,
-    lmax,
-    method_used="sph",
-):
-    """Generate output filename and download magnetogram file based on map type.
-
-    Args:
-        date (str): Date string in ISO format (e.g., '2020-12-07T15:00:00').
-        map_type (str): Map type ('WSO', 'GONG', 'ADAPT', 'HMI').
-        output_dir (str): Directory to store output file.
-        lmax (int): Spherical harmonic maximum degree.
-        method_used (str) : method used for filtering ( e.g NLD )
-
-    Returns:
-        tuple: (output_name (str), local_file (str))
-    """
-    date_datetime = parse_iso_datetime(date)
-
-    cr_number = int(sunpy.coordinates.sun.carrington_rotation_number(date_datetime))
-    logger.info(f"Carrington rotation number: {cr_number}")
-
-    output_name = build_output_name(
-        date_datetime,
-        map_type,
-        output_dir,
-        lmax,
-        method_used=method_used,
-    )
-
-    if map_type == 'WSO':
-        map_name = f'WSO.{cr_number}.txt'
-        remote_file = f"http://wso.stanford.edu/synoptic/{map_name}"
-
-    elif map_type in ("GONG", "ADAPT"):
-        candidate = select_nearest_candidate(
-            list_remote_candidates(date_datetime, map_type),
-            date_datetime,
-        )
-        map_name = candidate.name
-        remote_file = candidate.remote_url
-
-    elif map_type == 'HMI_small':
-        map_name = f"hmi.Synoptic_Mr_small.{cr_number}.fits"
-        remote_file = f"http://jsoc.stanford.edu/data/hmi/synoptic/{map_name}"
-    elif map_type == 'HMI_polfil':
-        map_name = f'hmi.Synoptic_Mr_polfil.{cr_number}.fits'
-        remote_file = f"http://jsoc.stanford.edu/data/hmi/synoptic/{map_name}"
-
-
-    else:
-        raise ValueError(f"Unsupported map_type: {map_type}")
-
-    local_file = os.path.join(output_dir, map_name)
-
-    if not os.path.exists(local_file):
-        os.makedirs(output_dir, exist_ok=True)
-        local_file = sunpy.util.net.download_file(
-            remote_file,
-            directory=output_dir,
-            overwrite=True,
-        )
-        logger.info(f"Downloaded map: {local_file}")
-    else:
-        logger.info(f"Map already exists locally: {local_file}")
-
-    logger.info(f"Output file: {output_name}")
-    logger.info(f"Downloaded map: {local_file}")
-
-    return output_name, local_file
 
 def build_theta_phi(theta, phi):
     """Build 2D meshgrids from 1D theta and phi arrays.
@@ -561,9 +109,10 @@ def ensure_increasing_longitude(
     """Flip Br columns when the native FITS longitude axis is decreasing."""
     if map_type.lower() == "wso":
         return Br
+    if "hmi" in map_type.lower():
+        logger.info("HMI maps are assumed to have increasing longitude.")
+        return Br   
     if is_br_longitude_increasing(file_path):
-        return Br
-    if map_type == "HMI_small" or map_type == "HMI_polfil":
         return Br
     logger.info("Flipping Br columns to obtain increasing longitude.")
     return np.ascontiguousarray(Br[:, ::-1])
@@ -601,7 +150,7 @@ def processed_longitude_axis(
         return np.linspace(0.0, 360.0, 73)
 
     lon = increasing_longitude_axis(file_path)
-    if temporal and map_type == "GONG":
+    if temporal and is_gong_map_type(map_type):
         lon = np.roll(lon, extract_gong_longitude_shift(file_path))
     return lon
 
@@ -626,7 +175,7 @@ def apply_configured_longitude_rotation(
     if not rotate_to_stonyhurst:
         return Br, Br_linear, None
 
-    if use_interpolation and map_type in {"GONG", "ADAPT"}:
+    if use_interpolation and (is_gong_temporal_map_type(map_type) or map_type == "ADAPT"):
         # Interpolated GONG maps have already been shifted from their
         # filename-encoded origin to Carrington zero before interpolation.
         rotation_angle = compute_carrington_central_meridian(target_date)
@@ -642,9 +191,9 @@ def apply_configured_longitude_rotation(
     longitude = processed_longitude_axis(
         source_file,
         map_type,
-        temporal=use_interpolation and map_type == "GONG",
+        temporal=use_interpolation and is_gong_temporal_map_type(map_type),
     )
-    if map_type == "GONG":
+    if is_gong_map_type(map_type):
         target_longitude = compute_carrington_central_meridian(rotation_date)
     else:
         target_longitude = rotation_angle
@@ -717,7 +266,7 @@ def read_temporal_br_map(file_path: str, map_type: str, adapt_map: int = 0) -> n
     if map_type == "ADAPT":
         Br = np.nan_to_num(input_data[adapt_map, ::-1, :])
         return ensure_increasing_longitude(Br, file_path, map_type)
-    if map_type == "GONG":
+    if is_gong_map_type(map_type):
         Br = np.nan_to_num(input_data[::-1, :])
         Br = ensure_increasing_longitude(Br, file_path, map_type)
         return circular_shift_longitude(Br, extract_gong_longitude_shift(file_path))
@@ -993,8 +542,6 @@ def plot_maps(
         date_label = parse_iso_datetime(date).strftime("%Y-%m-%d %H:%M:%S")
         fig.suptitle(f"{map_type} magnetogram - {date_label} UTC", fontsize=14)
 
-    if map_type == 'ADAPT':
-        visu_type = 'lat'
 
     lat = 90. - 180. * theta / np.pi
     longi = 180. * phi / np.pi
@@ -1003,9 +550,9 @@ def plot_maps(
     Sinlong = Long
 
     vmax1 = np.max(np.abs(Br))
-    vmax1= 100
+    vmax1= 20
     vmax2 = np.max(np.abs(Br_mode))
-    vmax2 = 30
+    #vmax2 = 30
     # Plot original map
     if visu_type == 'lat':
         im1 = ax1.imshow(
@@ -1064,16 +611,121 @@ def _as_bool(value: Any) -> bool:
     return bool(value)
 
 
-def correct_net_flux(Br: np.ndarray, theta: np.ndarray) -> np.ndarray:
-    """Remove the surface-weighted mean Br from a magnetogram.
+def _regular_phi_from_br(Br: np.ndarray) -> np.ndarray:
+    """Return a regular longitude grid for legacy correct_net_flux calls."""
+    return np.linspace(0.0, 2.0 * np.pi, Br.shape[1], endpoint=False)
+
+
+def _cell_widths(values: np.ndarray, fallback: float) -> np.ndarray:
+    """Estimate grid-cell widths from monotonically ordered cell centers."""
+    if values.size < 2:
+        return np.full(values.shape, fallback)
+    return np.concatenate([np.diff(values), [values[-1] - values[-2]]])
+
+
+def _pixel_area(theta: np.ndarray, phi: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
+    """Compute spherical pixel areas on a theta/phi grid."""
+    nb_th, nb_phi = shape
+    if len(theta) != nb_th:
+        raise ValueError("theta length must match the first Br dimension.")
+    if len(phi) != nb_phi:
+        raise ValueError("phi length must match the second Br dimension.")
+    dtheta = np.tile(_cell_widths(theta, np.pi), (nb_phi, 1)).T
+    dphi = np.tile(_cell_widths(phi, 2.0 * np.pi), (nb_th, 1))
+    Theta, _ = build_theta_phi(theta, phi)
+    return np.abs(np.sin(Theta) * dtheta * dphi)
+
+
+def _surface_mean_area(
+    theta: np.ndarray,
+    phi: np.ndarray,
+    shape: tuple[int, int],
+) -> np.ndarray:
+    """Compute pixel areas matching the surface-mean flux correction."""
+    nb_th, nb_phi = shape
+    if len(theta) != nb_th:
+        raise ValueError("theta length must match the first Br dimension.")
+    if len(phi) != nb_phi:
+        raise ValueError("phi length must match the second Br dimension.")
+    theta_edges = np.empty(len(theta) + 1)
+    theta_edges[0] = 0.0
+    theta_edges[-1] = np.pi
+    theta_edges[1:-1] = 0.5 * (theta[:-1] + theta[1:])
+    lat_weights = np.abs(np.cos(theta_edges[:-1]) - np.cos(theta_edges[1:]))
+    dphi = np.abs(_cell_widths(phi, 2.0 * np.pi))
+    return lat_weights[:, None] * dphi[None, :]
+
+
+def _flux_summary(Br: np.ndarray, pixel_area: np.ndarray) -> tuple[float, float, float, float]:
+    """Return positive, negative, net flux, and imbalance percentage."""
+    positive_mask = Br > 0
+    negative_mask = Br < 0
+    flux_positive = float(np.sum(Br[positive_mask] * pixel_area[positive_mask]))
+    flux_negative = float(np.sum(Br[negative_mask] * pixel_area[negative_mask]))
+    net_flux = flux_positive + flux_negative
+    denominator = flux_positive - flux_negative
+    imbalance_percent = net_flux / denominator * 100 if denominator != 0 else np.nan
+    return flux_positive, flux_negative, net_flux, imbalance_percent
+
+
+def _log_flux_summary(
+    label: str,
+    Br: np.ndarray,
+    pixel_area: np.ndarray,
+) -> None:
+    """Log flux-balance diagnostics."""
+    flux_positive, flux_negative, net_flux, imbalance_percent = _flux_summary(
+        Br,
+        pixel_area,
+    )
+    logger.info(f"{label} flux positive: {flux_positive:.6e}")
+    logger.info(f"{label} flux negative: {flux_negative:.6e}")
+    logger.info(f"{label} net flux: {net_flux:.6e}")
+    logger.info(f"{label} flux imbalance: {imbalance_percent:.6e} %")
+
+
+def correct_net_flux(
+    Br: np.ndarray,
+    theta: np.ndarray,
+    phi: np.ndarray | None = None,
+    method: str = "surface_mean",
+) -> np.ndarray:
+    """Correct net magnetic flux in a magnetogram.
 
     Args:
         Br (np.ndarray): Radial magnetic field map.
         theta (np.ndarray): 1D colatitude grid in radians.
+        phi (np.ndarray | None): 1D longitude grid in radians. Required for
+            exact pixel areas with polarity balancing. If omitted, a regular
+            endpoint-free longitude grid is assumed.
+        method (str): Flux correction method. ``surface_mean`` subtracts the
+            surface-weighted mean Br. ``polarity_scaling`` rescales positive
+            and negative polarities by opposite multiplicative factors.
 
     Returns:
         np.ndarray: Flux-balanced Br map.
     """
+    method = method.lower()
+    phi = _regular_phi_from_br(Br) if phi is None else phi
+    if method in {"surface_mean", "mean", "subtract_mean"}:
+        pixel_area = _surface_mean_area(theta, phi, Br.shape)
+        _log_flux_summary("Before surface_mean correction", Br, pixel_area)
+        Br_corrected = _correct_net_flux_surface_mean(Br, theta)
+        _log_flux_summary("After surface_mean correction", Br_corrected, pixel_area)
+        return Br_corrected
+    if method in {"polarity_scaling", "polarity", "multiplicative"}:
+        pixel_area = _pixel_area(theta, phi, Br.shape)
+        _log_flux_summary("Before polarity_scaling correction", Br, pixel_area)
+        Br_corrected = _correct_net_flux_polarity_scaling(Br, pixel_area)
+        _log_flux_summary("After polarity_scaling correction", Br_corrected, pixel_area)
+        return Br_corrected
+    raise ValueError(
+        "flux correction method must be 'surface_mean' or 'polarity_scaling'."
+    )
+
+
+def _correct_net_flux_surface_mean(Br: np.ndarray, theta: np.ndarray) -> np.ndarray:
+    """Remove the surface-weighted mean Br from a magnetogram."""
     theta_edges = np.empty(len(theta) + 1)
     theta_edges[0] = 0.0
     theta_edges[-1] = np.pi
@@ -1084,109 +736,19 @@ def correct_net_flux(Br: np.ndarray, theta: np.ndarray) -> np.ndarray:
     return Br - mean_br
 
 
-def build_processing_dates(
-    start_date: str | datetime,
-    cadence_hours: float | None = None,
-    total_hours: float | None = None,
-) -> list[datetime]:
-    """Build target dates from a start date, cadence, and total duration.
+def _correct_net_flux_polarity_scaling(
+    Br: np.ndarray,
+    pixel_area: np.ndarray,
+) -> np.ndarray:
+    """Balance flux by rescaling the two magnetic polarities."""
+    flux_positive, flux_negative, _, _ = _flux_summary(Br, pixel_area)
+    if flux_negative == 0 or flux_positive == 0:
+        logger.warning("Flux balancing skipped because one polarity is missing.")
+        return Br
 
-    Args:
-        start_date (str | datetime): First target date.
-        cadence_hours (float | None): Cadence in hours.
-        total_hours (float | None): Total duration in hours. If None, one date is returned.
-
-    Returns:
-        list[datetime]: Target dates to process.
-    """
-    start = parse_iso_datetime(start_date)
-    if total_hours is None or total_hours <= 0:
-        return [start]
-    if cadence_hours is None or cadence_hours <= 0:
-        raise ValueError("cadence_hours must be positive when total_hours is set.")
-
-    dates = []
-    current = start
-    end = start + timedelta(hours=float(total_hours))
-    while current < end:
-        dates.append(current)
-        current += timedelta(hours=float(cadence_hours))
-    return dates
-
-
-def append_timestamp_to_path(path: str, date: str | datetime) -> str:
-    """Append a compact timestamp before a path extension."""
-    root, ext = os.path.splitext(path)
-    return f"{root}_{format_timestamp(date)}{ext or '.png'}"
-
-
-def default_figure_path(output_dir: str, map_type: str, date: str | datetime) -> str:
-    """Build a default diagnostic figure path for one target date."""
-    return os.path.join(output_dir, f"{map_type.lower()}_{format_timestamp(date)}.png")
-
-
-def resolve_figure_path(
-    output_path_fig: str | None,
-    output_dir: str,
-    map_type: str,
-    date: str | datetime,
-    use_unique_name: bool = False,
-) -> str:
-    """Build a figure filename from an optional file or directory path."""
-    if not output_path_fig:
-        return default_figure_path(output_dir, map_type, date)
-
-    filename = os.path.basename(output_path_fig)
-    if filename.lower() == ".png":
-        return default_figure_path(os.path.dirname(output_path_fig), map_type, date)
-
-    if (
-        output_path_fig.endswith(("/", "\\"))
-        or os.path.isdir(output_path_fig)
-        or not os.path.splitext(output_path_fig)[1]
-    ):
-        return default_figure_path(output_path_fig, map_type, date)
-
-    if use_unique_name:
-        return append_timestamp_to_path(output_path_fig, date)
-    return output_path_fig
-
-
-def generate_output_and_interpolation_map_names(
-    date,
-    map_type,
-    output_dir,
-    lmax,
-    method_used="sph",
-    download_dir=None,
-):
-    """Generate output name and download four maps for temporal interpolation.
-
-    Args:
-        date (str | datetime): Target date.
-        map_type (str): Map type. Supported: GONG, ADAPT.
-        output_dir (str): Directory for the boundary file.
-        lmax (int | None): Maximum spherical harmonic degree.
-        method_used (str): Method label kept for compatibility.
-        download_dir (str | None): Directory for downloaded FITS files.
-
-    Returns:
-        tuple[str, list[str], InterpolationSelection]: Output name, files, selection.
-    """
-    output_name = build_output_name(
-        date,
-        map_type,
-        output_dir,
-        lmax,
-        method_used=method_used,
-    )
-    local_files, selection = download_interpolation_magnetograms(
-        date,
-        map_type,
-        download_dir or output_dir,
-    )
-    logger.info(f"Output file: {output_name}")
-    return output_name, local_files, selection
+    balancing_factor = np.sqrt(flux_positive / abs(flux_negative))
+    logger.info(f"Flux balancing factor: {balancing_factor:.6e}")
+    return np.where(Br > 0, Br / balancing_factor, Br * balancing_factor)
 
 
 def process_magnetogram_date(
@@ -1212,16 +774,20 @@ def process_magnetogram_date(
     lmax = config.get("lmax", 20)
     amp = config.get("amp", 1)
     r_st = config.get("r_st", 1.0)
-    adapt_map = config.get("adapt_map", 6)
+    adapt_map = config.get("adapt_map", 6) #between 1 and 11
     write_map = _as_bool(config.get("write_map", True))
     show_map = _as_bool(config.get("show_map", True))
     visu_type = config.get("visu_type", "sinlat")
     alpha = config.get("alpha", 0)
     interpolation_order = config.get("interpolation_order", config.get("Interp_order", 2))
-    use_interpolation = _as_bool(config.get("interpolation", map_type in {"GONG", "ADAPT"}))
+    use_interpolation = _as_bool(
+        config.get("interpolation", is_gong_temporal_map_type(map_type) or map_type == "ADAPT")
+    )
     rotate_to_stonyhurst = _as_bool(config.get("rotate_to_stonyhurst", True))
+    flux_correction_method = config.get("flux_correction_method", "surface_mean")
+    drms_email = config.get("drms_email", config.get("jsoc_email"))
 
-    if use_interpolation and map_type in {"GONG", "ADAPT"}:
+    if use_interpolation and (is_gong_temporal_map_type(map_type) or map_type == "ADAPT"):
         output_name, local_files, selection = generate_output_and_interpolation_map_names(
             target_date,
             map_type,
@@ -1243,8 +809,8 @@ def process_magnetogram_date(
             target_date,
             map_type,
             output_dir,
-            lmax,
             method_used,
+            drms_email=drms_email,
         )
         Br, Theta, Phi = read_magnetogram(local_file, map_type, adapt_map)
         Br_linear = None
@@ -1254,7 +820,7 @@ def process_magnetogram_date(
         local_file[0] if isinstance(local_file, list) else local_file,
         map_type,
         target_date,
-        interpolated=use_interpolation and map_type in {"GONG", "ADAPT"},
+        interpolated=use_interpolation and (is_gong_temporal_map_type(map_type) or map_type == "ADAPT"),
     )
 
     Br, Br_linear, rotation_angle = apply_configured_longitude_rotation(
@@ -1268,7 +834,12 @@ def process_magnetogram_date(
     )
 
     if _as_bool(config.get("flux_correct", False)):
-        Br = correct_net_flux(Br, Theta[:, 0])
+        Br = correct_net_flux(
+            Br,
+            Theta[:, 0],
+            Phi[0, :],
+            method=flux_correction_method,
+        )
 
     Br_mode, coefbr = project_and_reconstruct(Br, Theta, Phi, lmax, amp, alpha)
 
@@ -1289,6 +860,21 @@ def process_magnetogram_date(
         )
     else:
         figure_path = None
+
+    br_mode_area = _surface_mean_area(Theta[:, 0], Phi[0, :], Br_mode.shape)
+    (
+        flux_positive,
+        flux_negative,
+        net_flux,
+        imbalance_percent,
+    ) = _flux_summary(Br_mode, br_mode_area)
+    logger.info(f"Br_mode flux positive: {flux_positive:.6e}")
+    logger.info(f"Br_mode flux negative: {flux_negative:.6e}")
+    logger.info(f"Br_mode net flux: {net_flux:.6e}")
+    logger.info(f"Br_mode flux imbalance: {imbalance_percent:.6e} %")
+    logger.info(f"Br_mode max: {np.max(Br_mode):.6e}")
+    logger.info(f"Br_mode mean: {np.mean(Br_mode):.6e}")
+    logger.info(f"Br_mode min: {np.min(Br_mode):.6e}")
 
     return {
         "date": parse_iso_datetime(target_date),
@@ -1316,6 +902,7 @@ def process_config(config: dict[str, Any], method_used: str = "sph") -> list[dic
         interpolation: Use four-map interpolation for GONG/ADAPT.
         rotate_to_stonyhurst: Rotate longitude to the Stonyhurst frame. Defaults to True.
         flux_correct: Remove net magnetic flux if True.
+        flux_correction_method: ``surface_mean`` or ``polarity_scaling``.
 
     Args:
         config (dict[str, Any]): Processing configuration.
@@ -1353,112 +940,55 @@ def process_config(config: dict[str, Any], method_used: str = "sph") -> list[dic
 
 
 if __name__ == "__main__":
-
-
-    configs = [
-        {
-            "date": '2012-07-13T00:00:00', "map_type": 'GONG',
-            "lmax": 20, "amp": 1, "write_map": True, "show_map": True,
-            "visu_type": "sinlat",
-            "output_dir": "C:/Users/luisl/Desktop/testmagnetogram/boundary/fix/",
-            "output_path_fig": "C:/Users/luisl/Desktop/testmagnetogram/boundary/fix/image/gong_lmax20.png",
-            "alpha": 3 * 10 ** (-6),
-            "rotate_to_stonyhurst": True,
-            "interpolation": False
-        },
-        {
-            "date": '2012-07-13T00:00:00', "map_type": 'ADAPT',
-            "lmax": 20, "amp": 1, "write_map": True, "show_map": True,
-            "visu_type": "sinlat",
-            "output_dir": "C:/Users/luisl/Desktop/testmagnetogram/boundary/fix/",
-            "output_path_fig": "C:/Users/luisl/Desktop/testmagnetogram/boundary/fix/image/adapt_lmax20.png",
-            "alpha": 3 * 10 ** (-6),
-            "rotate_to_stonyhurst": True,
-            "interpolation": False
-        },
-        {
-            "date": '2012-07-13T00:00:00', "map_type": 'HMI_polfil',
-            "lmax": 20, "amp": 1, "write_map": True, "show_map": True,
-            "visu_type": "sinlat",
-            "output_dir": "C:/Users/luisl/Desktop/testmagnetogram/boundary/fix/",
-            "output_path_fig": "C:/Users/luisl/Desktop/testmagnetogram/boundary/fix/image/hmi_polfil_lmax20.png",
-            "alpha": 3 * 10 ** (-6),
-            "rotate_to_stonyhurst": True,
-            "interpolation": False
-        },
-        {
-            "date": '2012-07-13T00:00:00', "map_type": 'HMI_small',
-            "lmax": 20, "amp": 1, "write_map": True, "show_map": True,
-            "visu_type": "sinlat",
-            "output_dir": "C:/Users/luisl/Desktop/testmagnetogram/boundary/fix/",
-            "output_path_fig": "C:/Users/luisl/Desktop/testmagnetogram/boundary/fix/image/hmi_small_lmax20.png",
-            "alpha": 3 * 10 ** (-6),
-            "rotate_to_stonyhurst": True,
-            "interpolation": False
-        },
-                {
-            "date": '2012-07-13T00:00:00', "map_type": 'GONG',
-            "lmax": 20, "amp": 1, "write_map": True, "show_map": True,
-            "visu_type": "sinlat",
-            "output_dir": "C:/Users/luisl/Desktop/testmagnetogram/boundary/",
-            "output_path_fig": "C:/Users/luisl/Desktop/testmagnetogram/boundary/image/gong_lmax20.png",
-            "alpha": 3 * 10 ** (-6),
-            "rotate_to_stonyhurst": False,
-            "interpolation": False
-        },
-        {
-            "date": '2012-07-13T00:00:00', "map_type": 'ADAPT',
-            "lmax": 20, "amp": 1, "write_map": True, "show_map": True,
-            "visu_type": "sinlat",
-            "output_dir": "C:/Users/luisl/Desktop/testmagnetogram/boundary/",
-            "output_path_fig": "C:/Users/luisl/Desktop/testmagnetogram/boundary/image/adapt_lmax20.png",
-            "alpha": 3 * 10 ** (-6),
-            "rotate_to_stonyhurst": False,
-            "interpolation": False
-        },
-        {
-            "date": '2012-07-13T00:00:00', "map_type": 'HMI_polfil',
-            "lmax": 20, "amp": 1, "write_map": True, "show_map": True,
-            "visu_type": "sinlat",
-            "output_dir": "C:/Users/luisl/Desktop/testmagnetogram/boundary/",
-            "output_path_fig": "C:/Users/luisl/Desktop/testmagnetogram/boundary/image/hmi_polfil_lmax20.png",
-            "alpha": 3 * 10 ** (-6),
-            "rotate_to_stonyhurst": False,
-            "interpolation": False
-        },
-        {
-            "date": '2012-07-13T00:00:00', "map_type": 'HMI_small',
-            "lmax": 20, "amp": 1, "write_map": True, "show_map": True,
-            "visu_type": "sinlat",
-            "output_dir": "C:/Users/luisl/Desktop/testmagnetogram/boundary/",
-            "output_path_fig": "C:/Users/luisl/Desktop/testmagnetogram/boundary/image/hmi_small_lmax20.png",
-            "alpha": 3 * 10 ** (-6),
-            "rotate_to_stonyhurst": False,
-            "interpolation": False
-        },
-    ]
-
-    config = {
-        "date": "2012-07-13T00:00:00",
-        "map_type": "GONG",
-        "cadence_hours": 3,
-        "total_hours": 3,
-        "interpolation": True,
-        "interpolation_order": 2,
-        "flux_correct": False,
-        "lmax": 20,
+    
+    base_output_dir = r"C:\Users\luisl\Desktop\testmagnetogram\test_all"
+    figure_output_dir = os.path.join(base_output_dir, "images")
+    common_config = {
+        "date": "2020-01-20T01:17:00",
+        "lmax": 10,
         "amp": 1,
         "write_map": True,
         "show_map": True,
         "visu_type": "sinlat",
-        "output_dir": "C:/Users/luisl/Desktop/testmagnetogram/boundary/fix/",
-        "output_path_fig": "C:/Users/luisl/Desktop/testmagnetogram/boundary/fix/image",
-        "download_dir": "C:/Users/luisl/Desktop/testmagnetogram/boundary/fix/",
         "alpha": 3 * 10 ** (-6),
-        "rotate_to_stonyhurst": False
+        "rotate_to_stonyhurst": True,
+        "interpolation": False,
+        "flux_correct": False,
     }
 
-    #process_config(config, method_used="sph")
+    def test_config(label: str, map_type: str, **extra: Any) -> dict[str, Any]:
+        output_dir = os.path.join(base_output_dir, label)
+        return {
+            **common_config,
+            "map_type": map_type,
+            "output_dir": output_dir,
+            "download_dir": output_dir,
+            "output_path_fig": os.path.join(figure_output_dir, f"{label}.png"),
+            **extra,
+        }
+
+    configs = [
+        test_config("GONG_mrzqs", "GONG_mrzqs"),
+        test_config("GONG_mrbqs", "GONG_mrbqs"),
+        test_config("GONG_mrbqj", "GONG_mrbqj"),
+        test_config("GONG_mrmqs", "GONG_mrmqs"),
+        test_config("GONG_mrnqs", "GONG_mrnqs"),
+    ]
+    configs.extend(
+        test_config(f"ADAPT_{adapt_map:02d}", "ADAPT", adapt_map=adapt_map)
+        for adapt_map in range(1, 12)
+    )
+    configs.extend(
+        [
+            test_config("HMI_polfil", "HMI_polfil"),
+            test_config(
+                "HMI_SYNC",
+                "HMI_SYNC",
+                drms_email="luis.linan@kuleuven.be",
+            ),
+            test_config("HMI_small", "HMI_small"),
+        ]
+    )
 
 
     for config in configs:

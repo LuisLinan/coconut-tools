@@ -17,6 +17,7 @@ dependencies = [
   "cmap",
   "cmocean",
   "colorlog",
+  "drms",
   "h5py",
   "imageio[ffmpeg]",
   "matplotlib",

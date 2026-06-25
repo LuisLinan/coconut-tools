@@ -83,9 +83,11 @@ Temporal interpolation is controlled by a single boolean option:
 
    "interpolation": True
 
-When enabled for ``GONG`` or ``ADAPT``, the code downloads four magnetograms
-around each target date and interpolates ``Br`` at the requested time. The
-interpolation order is selected with:
+When enabled for ``GONG_mrzqs``, ``GONG_mrbqs``, ``GONG_mrbqj``, or ``ADAPT``,
+the code downloads four magnetograms around each target date and interpolates
+``Br`` at the requested time. ``GONG_mrmqs`` and ``GONG_mrnqs`` are diachronic
+CAR-frame maps and are selected as single nearest maps. The interpolation order
+is selected with:
 
 .. code-block:: python
 
@@ -94,9 +96,10 @@ interpolation order is selected with:
 Use ``1`` for linear interpolation and ``2`` for cubic Hermite interpolation.
 The default is cubic Hermite.
 
-Temporal interpolation is currently implemented only for ``GONG`` and
-``ADAPT``. For ``HMI_small``, ``HMI_polfil``, and ``WSO``, the pipeline uses the
-single magnetogram selected for the target Carrington rotation.
+Temporal interpolation is currently implemented only for the synchronic GONG
+variants and ``ADAPT``. For ``GONG_mrmqs``, ``GONG_mrnqs``, ``HMI_small``,
+``HMI_polfil``, and ``WSO``, the pipeline uses the single magnetogram selected
+for the target date or Carrington rotation.
 
 For ``ADAPT``, ``adapt_map`` selects the realization stored in the FITS file.
 This is a Python zero-based index, so ``adapt_map=6`` selects the seventh ADAPT
@@ -119,14 +122,17 @@ Common Configuration Keys
 The following keys are shared by the three filters:
 
 - ``date``: initial ISO timestamp, for example ``"2025-10-09T18:00:00"``.
-- ``map_type``: one of ``"GONG"``, ``"ADAPT"``, ``"HMI_small"``,
-  ``"HMI_polfil"``, or ``"WSO"``.
+- ``map_type``: one of ``"GONG_mrzqs"``, ``"GONG_mrbqs"``,
+  ``"GONG_mrbqj"``, ``"GONG_mrmqs"``, ``"GONG_mrnqs"``, ``"ADAPT"``,
+  ``"HMI_small"``, ``"HMI_polfil"``, ``"HMI_SYNC"``, or ``"WSO"``.
 - ``output_dir``: directory where COCONUT ``.dat`` files are written.
 - ``download_dir``: optional directory for downloaded FITS files. If omitted,
   ``output_dir`` is used.
+- ``drms_email``: email address used for JSOC DRMS requests when
+  ``map_type`` is ``"HMI_SYNC"``. ``jsoc_email`` is also accepted.
 - ``cadence_hours`` and ``total_hours``: optional time-series controls.
-- ``interpolation``: enable or disable four-magnetogram interpolation for GONG
-  and ADAPT.
+- ``interpolation``: enable or disable four-magnetogram interpolation for
+  synchronic GONG variants and ADAPT.
 - ``interpolation_order``: ``1`` for linear, ``2`` for cubic Hermite.
 - ``flux_correct``: enable or disable net-flux correction.
 - ``adapt_map``: ADAPT realization index, default ``6``.

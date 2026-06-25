@@ -62,7 +62,7 @@ four neighboring GONG maps.
 
    config = {
        "date": "2025-10-09T18:00:00",
-       "map_type": "GONG",
+       "map_type": "GONG_mrzqs",
        "cadence_hours": 3,
        "total_hours": 72,
        "interpolation": True,
@@ -121,7 +121,7 @@ The low-level filter is still available for custom workflows:
        Br_filtered,
        Theta[:, 0],
        Phi[0, :],
-       "GONG",
+       "GONG_mrzqs",
        output_path="./figures/gong_yaroslavsky.png",
        date="2025-10-09T18:00:00",
    )

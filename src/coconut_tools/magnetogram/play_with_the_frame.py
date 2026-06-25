@@ -37,9 +37,23 @@ Basic usage:
 
 """
 
+import csv
+import re
+from pathlib import Path
+
 from astropy.io import fits
 import numpy as np
 import matplotlib.pyplot as plt
+
+
+GONG_FILE_IDS = {"mrzqs", "mrbqs", "mrbqj", "mrmqs", "mrnqs"}
+
+
+def gong_file_id_from_name(fname):
+    """Return the GONG file id encoded in a filename, if supported."""
+    name = Path(str(fname)).name.lower()
+    prefix = name[:5]
+    return prefix if prefix in GONG_FILE_IDS else None
 
 
 def is_carrington_longitude(header, fname=""):
@@ -90,7 +104,26 @@ def is_carrington_longitude(header, fname=""):
             "CTYPE1": ctype1, "CTYPE2": ctype2, "present_keys": present_keys, "CUNIT1": cunit1
         }
 
-    # 4) Filename hint (weak)
+    # 4) Product-specific filename hints for known synoptic/Carrington maps.
+    if gong_file_id_from_name(fname) is not None and re.search(r"c\d{4}", name, flags=re.IGNORECASE):
+        return True, {
+            "reason": "Filename matches supported GONG synoptic/CAR product.",
+            "CTYPE1": ctype1, "CTYPE2": ctype2, "present_keys": present_keys, "CUNIT1": cunit1
+        }
+
+    if "ADAPT" in name:
+        return True, {
+            "reason": "Filename suggests ADAPT Carrington synoptic product.",
+            "CTYPE1": ctype1, "CTYPE2": ctype2, "present_keys": present_keys, "CUNIT1": cunit1
+        }
+
+    if "HMI.SYNOPTIC" in name or "MRDAILYSYNFRAME" in name:
+        return True, {
+            "reason": "Filename suggests HMI synoptic Carrington product.",
+            "CTYPE1": ctype1, "CTYPE2": ctype2, "present_keys": present_keys, "CUNIT1": cunit1
+        }
+
+    # 5) Filename hint (weak)
     # Some synoptic Carrington products include 'carr' / 'synoptic' in filename.
     if any(tag in name for tag in ("CARR", "SYNOPTIC", "CRLN")):
         return True, {
@@ -267,10 +300,13 @@ def start_lon_from_filename(fname):
     Returns:
         int | None: Parsed degree value if found, otherwise ``None``.
     """
-    name = fname.split('/')[-1]
+    name = Path(str(fname)).name
+    match = re.search(r"_([0-9]{1,3})(?:\.fits|\.fts|\.fit)", name, flags=re.IGNORECASE)
+    if match is None:
+        return None
     try:
         # e.g., mrzqs170404t1814c2189_268.fits.gz → 268
-        return int(name[22:25])
+        return int(match.group(1))
     except Exception:
         return None
 
@@ -770,38 +806,197 @@ def plot_synoptic_aligned(
     return fig, ax, info
 
 
+def read_synoptic_header(fits_path):
+    """Read the first FITS header with longitude/latitude image axes."""
+    with fits.open(fits_path) as hdul:
+        for i, hdu in enumerate(hdul):
+            header = hdu.header
+            if "NAXIS1" in header and "NAXIS2" in header:
+                return header, i
+    raise RuntimeError("No FITS HDU with NAXIS1/NAXIS2 found.")
+
+
+def diagnose_magnetogram_frame(fits_path, label=None):
+    """Return longitude-frame diagnostics for one magnetogram FITS file."""
+    fits_path = Path(fits_path)
+    header, hdu_index = read_synoptic_header(fits_path)
+    inst = detect_instrument(header, fname=str(fits_path))
+    is_carrington, proof = is_carrington_longitude(header, fname=str(fits_path))
+    lon0_file = start_lon_from_filename(fits_path)
+
+    info = {
+        "label": label or fits_path.parent.name,
+        "path": str(fits_path),
+        "file": fits_path.name,
+        "hdu_index": hdu_index,
+        "instrument": inst,
+        "is_carrington_longitude": is_carrington,
+        "carrington_reason": proof.get("reason", ""),
+        "ctype1": str(header.get("CTYPE1", "")).strip(),
+        "ctype2": str(header.get("CTYPE2", "")).strip(),
+        "cunit1": str(header.get("CUNIT1", "")).strip(),
+        "cunit2": str(header.get("CUNIT2", "")).strip(),
+        "car_rot": header.get("CAR_ROT", header.get("CARROT", "")),
+        "crln_obs": header.get("CRLN_OBS", header.get("L0", "")),
+        "lon0_filename": lon0_file,
+        "longitude_axis_available": False,
+        "longitude_axis_error": "",
+    }
+
+    try:
+        lon_native, lon_meta = fits_longitude_deg(header)
+        dlon = np.diff(lon_native)
+        info.update(
+            {
+                "longitude_axis_available": True,
+                "lon0_header": float(lon_native[0]),
+                "lon_min": float(np.nanmin(lon_native)),
+                "lon_max": float(np.nanmax(lon_native)),
+                "lon_step_median": float(np.nanmedian(dlon)) if dlon.size else np.nan,
+                "lon_is_increasing": bool(float(np.nanmedian(dlon)) > 0.0) if dlon.size else "",
+                "lon_detected_scale": lon_meta.get("detected_scale", ""),
+                "lon_cdelt1_deg": lon_meta.get("cdelt1_deg", ""),
+                "lon_crval1_deg": lon_meta.get("crval1_deg", ""),
+            }
+        )
+    except Exception as exc:
+        info["longitude_axis_error"] = str(exc)
+
+    return info
+
+
+def is_magnetogram_fits(path):
+    """Return True for FITS-like magnetogram filenames, including .gz files."""
+    name = Path(path).name.lower()
+    return name.endswith((".fits", ".fit", ".fts", ".fits.gz", ".fit.gz", ".fts.gz"))
+
+
+def find_first_magnetogram_file(directory):
+    """Find the first FITS-like file under a directory."""
+    directory = Path(directory)
+    if not directory.exists():
+        return None
+    files = sorted(path for path in directory.rglob("*") if path.is_file() and is_magnetogram_fits(path))
+    return files[0] if files else None
+
+
+def write_frame_diagnostics_csv(rows, output_path):
+    """Write frame diagnostics rows to a CSV file."""
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fieldnames = [
+        "label",
+        "file",
+        "path",
+        "hdu_index",
+        "instrument",
+        "is_carrington_longitude",
+        "carrington_reason",
+        "ctype1",
+        "ctype2",
+        "cunit1",
+        "cunit2",
+        "car_rot",
+        "crln_obs",
+        "lon0_filename",
+        "longitude_axis_available",
+        "longitude_axis_error",
+        "lon0_header",
+        "lon_min",
+        "lon_max",
+        "lon_step_median",
+        "lon_is_increasing",
+        "lon_detected_scale",
+        "lon_cdelt1_deg",
+        "lon_crval1_deg",
+        "figure_path",
+        "figure_error",
+    ]
+    with output_path.open("w", newline="", encoding="utf-8") as stream:
+        writer = csv.DictWriter(stream, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def save_frame_diagnostic_figure(fits_path, output_path):
+    """Save a diagnostic longitude-frame figure when the FITS image is 2D."""
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig, ax, info = plot_synoptic_aligned(
+        fits_path,
+        vmin=-100,
+        vmax=100,
+        force_sine=True,
+        prefer_filename_for_gong=True,
+    )
+    fig.savefig(output_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    return info
+
+
 # -------------------------------------------------------------
 # Demo / CLI
 # ------------------------------------------------------------
 
 if __name__ == "__main__":
-    hmi_file = r"C:/Users/luisl/Documents/Travail/coconut-tools\src/coconut_tools/test/hmi.Synoptic_Mr_polfil.2219.fits"
-    gong_file = r"C:/Users/luisl/Documents/Travail/COCONUT/AI_magnetogram/mrzqs190702t1204c2219_260.fits.gz"
+    base_output_dir = Path(r"C:\Users\luisl\Desktop\testmagnetogram\test_all")
+    figure_output_dir = base_output_dir / "frame_diagnostics_images"
+    labels = [
+        "GONG_mrzqs",
+        "GONG_mrbqs",
+        "GONG_mrbqj",
+        "GONG_mrmqs",
+        "GONG_mrnqs",
+        *(f"ADAPT_{adapt_map:02d}" for adapt_map in range(1, 12)),
+        "HMI_polfil",
+        "HMI_SYNC",
+        "HMI_small",
+    ]
 
-    # --- HMI ---
-    fig, ax, info = plot_synoptic_aligned(
-        hmi_file,
-        vmin=-20,
-        vmax=20,
-        force_sine=True,
-        prefer_filename_for_gong=False,  # inutile pour HMI
-    )
+    rows = []
+    for label in labels:
+        fits_path = find_first_magnetogram_file(base_output_dir / label)
+        if fits_path is None:
+            rows.append(
+                {
+                    "label": label,
+                    "path": str(base_output_dir / label),
+                    "file": "",
+                    "is_carrington_longitude": "",
+                    "carrington_reason": "No FITS-like magnetogram file found.",
+                }
+            )
+            print(f"{label}: missing FITS file")
+            continue
 
-    plt.show()
-    print("HMI diagnostics:")
-    for k, v in info.items():
-        print(f"  {k}: {v}")
+        try:
+            info = diagnose_magnetogram_frame(fits_path, label=label)
+        except Exception as exc:
+            info = {
+                "label": label,
+                "path": str(fits_path),
+                "file": fits_path.name,
+                "is_carrington_longitude": "",
+                "carrington_reason": f"Diagnostic failed: {exc}",
+            }
 
-    # --- GONG ---
-    fig, ax, info = plot_synoptic_aligned(
-        gong_file,
-        vmin=-20,
-        vmax=20,
-        force_sine=True,
-        prefer_filename_for_gong=True,
-    )
-    print("\nGONG diagnostics:")
-    for k, v in info.items():
-        print(f"  {k}: {v}")
+        figure_path = figure_output_dir / f"{label}.png"
+        try:
+            save_frame_diagnostic_figure(fits_path, figure_path)
+            info["figure_path"] = str(figure_path)
+            info["figure_error"] = ""
+        except Exception as exc:
+            info["figure_path"] = str(figure_path)
+            info["figure_error"] = str(exc)
 
-    plt.show()
+        rows.append(info)
+        print(
+            f"{label}: Carrington={info.get('is_carrington_longitude')} "
+            f"| instrument={info.get('instrument', '')} "
+            f"| reason={info.get('carrington_reason', '')} "
+            f"| figure_error={info.get('figure_error', '')}"
+        )
+
+    csv_path = base_output_dir / "frame_diagnostics.csv"
+    write_frame_diagnostics_csv(rows, csv_path)
+    print(f"\nFrame diagnostics written to: {csv_path}")

@@ -1,7 +1,7 @@
 """Small playground for experiments with downloaded magnetograms."""
 
 from coconut_tools.tools.logger_config import setup_logger
-from coconut_tools.magnetogram.sph_filtering import generate_output_and_map_names
+from coconut_tools.magnetogram.magnetogram_download import generate_output_and_map_names
 
 
 logger = setup_logger(__name__)
@@ -12,7 +12,11 @@ if __name__ == "__main__":
     output_dir = r"C:\Users\luisl\Desktop\testmagnetogram"
     map_types = [
         "WSO",
-        "GONG",
+        "GONG_mrzqs",
+        "GONG_mrbqs",
+        "GONG_mrbqj",
+        "GONG_mrmqs",
+        "GONG_mrnqs",
         "ADAPT",
         "HMI_small",
         "HMI_polfil",

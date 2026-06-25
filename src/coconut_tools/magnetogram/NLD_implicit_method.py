@@ -7,24 +7,26 @@ Encapsulates preprocessing for Perona-Malik filtering of magnetogram data.
 Author: Jose Murteira
 Cleaned and modularized by: Luis
 """
-import logging
 from typing import Any
 
 import numpy as np
 import scipy.ndimage
+from coconut_tools.magnetogram.magnetogram_download import (
+    build_processing_dates,
+    generate_output_and_interpolation_map_names,
+    generate_output_and_map_names,
+    is_gong_temporal_map_type,
+    magnetogram_display_date,
+    parse_iso_datetime,
+    resolve_figure_path,
+)
 from coconut_tools.magnetogram.nonlinear_diffusion_filter import nonlinearDiffusionFilter
 from coconut_tools.magnetogram.sph_filtering import (
     apply_configured_longitude_rotation,
-    build_processing_dates,
     correct_net_flux,
-    generate_output_and_interpolation_map_names,
-    generate_output_and_map_names,
-    magnetogram_display_date,
-    parse_iso_datetime,
     plot_maps,
     read_magnetogram,
     read_interpolated_magnetogram,
-    resolve_figure_path,
     write_bc_file,
 )
 from coconut_tools.tools.logger_config import setup_logger
@@ -112,8 +114,12 @@ def process_magnetogram_date(
     show_map = _as_bool(config.get("show_map", True))
     visu_type = config.get("visu_type", "sinlat")
     interpolation_order = config.get("interpolation_order", config.get("Interp_order", 2))
-    use_interpolation = _as_bool(config.get("interpolation", map_type in {"GONG", "ADAPT"}))
+    use_interpolation = _as_bool(
+        config.get("interpolation", is_gong_temporal_map_type(map_type) or map_type == "ADAPT")
+    )
     rotate_to_stonyhurst = _as_bool(config.get("rotate_to_stonyhurst", True))
+    flux_correction_method = config.get("flux_correction_method", "surface_mean")
+    drms_email = config.get("drms_email", config.get("jsoc_email"))
 
     tau = config.get("tau", 5)
     iterations = config.get("iterations", 7)
@@ -122,7 +128,7 @@ def process_magnetogram_date(
     dx_override = config.get("dx_override", 1.0)
     dy_override = config.get("dy_override", 1.0)
 
-    if use_interpolation and map_type in {"GONG", "ADAPT"}:
+    if use_interpolation and (is_gong_temporal_map_type(map_type) or map_type == "ADAPT"):
         output_name, local_files, selection = generate_output_and_interpolation_map_names(
             target_date,
             map_type,
@@ -146,6 +152,7 @@ def process_magnetogram_date(
             output_dir,
             lmax,
             method_used=method_used,
+            drms_email=drms_email,
         )
         Br, Theta, Phi = read_magnetogram(local_file, map_type, adapt_map)
         Br_linear = None
@@ -155,7 +162,7 @@ def process_magnetogram_date(
         local_file[0] if isinstance(local_file, list) else local_file,
         map_type,
         target_date,
-        interpolated=use_interpolation and map_type in {"GONG", "ADAPT"},
+        interpolated=use_interpolation and (is_gong_temporal_map_type(map_type) or map_type == "ADAPT"),
     )
     Br, Br_linear, rotation_angle = apply_configured_longitude_rotation(
         Br,
@@ -168,7 +175,12 @@ def process_magnetogram_date(
     )
 
     if _as_bool(config.get("flux_correct", False)):
-        Br = correct_net_flux(Br, Theta[:, 0])
+        Br = correct_net_flux(
+            Br,
+            Theta[:, 0],
+            Phi[0, :],
+            method=flux_correction_method,
+        )
 
     Br_filtered, timestep = filter_radial_field(
         Br,
@@ -260,7 +272,7 @@ if __name__ == "__main__":
     # Multi-date example:
     # config = {
     #     "date": "2025-10-09T18:00:00",
-    #     "map_type": "GONG",
+    #     "map_type": "GONG_mrzqs",
     #     "cadence_hours": 3,
     #     "total_hours": 72,
     #     "interpolation": True,
@@ -281,7 +293,7 @@ if __name__ == "__main__":
 
     configs = [
         {
-            "date": '2017-09-04T18:00:00', "map_type": 'GONG',
+            "date": '2017-09-04T18:00:00', "map_type": 'GONG_mrzqs',
             "write_map": True, "show_map": True,
             "visu_type": "sinlat",
             "output_dir": "E:/euhforia/magnetogram/2017/nld/",
@@ -301,7 +313,7 @@ if __name__ == "__main__":
     configs = [
         {
         "date": "2012-07-13T00:00:00",
-        "map_type": "GONG",
+        "map_type": "GONG_mrzqs",
         "cadence_hours": 3,
         "total_hours": 240,
         "interpolation": True,

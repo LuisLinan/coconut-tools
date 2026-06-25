@@ -26,6 +26,10 @@ import numpy as np
 
 logger = setup_logger(__name__)
 
+GONG_SYNCHRONIC_FILE_IDS = {"mrbqj", "mrbqs", "mrzqs"}
+GONG_DIACHRONIC_FILE_IDS = {"mrmqs", "mrnqs"}
+GONG_FILE_IDS = GONG_SYNCHRONIC_FILE_IDS | GONG_DIACHRONIC_FILE_IDS
+
 
 def compute_carrington_central_meridian(date: str | datetime) -> float:
     """Return the Carrington longitude of Earth's central meridian."""
@@ -130,6 +134,12 @@ def is_br_longitude_increasing(path: str) -> bool:
     return is_increasing
 
 
+def _gong_file_id_from_name(mag_name: str) -> str | None:
+    """Return the supported GONG file id from a magnetogram filename."""
+    prefix = mag_name[:5].lower()
+    return prefix if prefix in GONG_FILE_IDS else None
+
+
 def compute_rotation_angle(mag_name_path: str, date_hmi: str = None) -> Tuple[float, datetime]:
     """Compute the rotation angle from magnetogram filename.
 
@@ -147,18 +157,27 @@ def compute_rotation_angle(mag_name_path: str, date_hmi: str = None) -> Tuple[fl
     logger.info(f"The magnetogram name is: {mag_name}")
 
     prefix = mag_name[:5].lower()
+    gong_file_id = _gong_file_id_from_name(mag_name)
     is_wso = mag_name.lower().startswith("wso.")
     logger.info(f"Prefix is: {prefix}")
     if not is_wso:
         is_br_longitude_increasing(mag_name_path)
 
     # GONG
-    if prefix in ['mrbqs', 'mrzqs']:
-        logger.info("The magnetogram is GONG (synoptic)")
-        date = datetime.strptime(mag_name[5:16], '%y%m%dt%H%M')
-        start_lon = int(mag_name[22:25])
+    if gong_file_id is not None:
+        logger.info("The magnetogram is GONG")
+        date_start = len(gong_file_id)
+        date = datetime.strptime(
+            mag_name[date_start:date_start + 11],
+            '%y%m%dt%H%M',
+        )
 
         CM_CAR_value = compute_carrington_central_meridian(date)
+        if gong_file_id in GONG_DIACHRONIC_FILE_IDS:
+            logger.info("The magnetogram is GONG diachronic in CAR frame")
+            return CM_CAR_value % 360, date
+
+        start_lon = int(mag_name[22:25])
         angle = CM_CAR_value - start_lon
         return angle % 360 , date
 

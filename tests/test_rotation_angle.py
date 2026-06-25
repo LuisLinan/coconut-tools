@@ -64,3 +64,37 @@ def test_compute_rotation_angle_supports_wso_without_fits_header(monkeypatch, tm
 
     assert angle == 241.25
     assert date == datetime(2020, 12, 7, 15, 0)
+
+
+@pytest.mark.parametrize("file_id", ["mrbqs", "mrbqj"])
+def test_compute_rotation_angle_supports_gong_variants(monkeypatch, tmp_path, file_id):
+    magnetogram = tmp_path / f"{file_id}201207t1504c2238_181.fits"
+    _write_magnetogram(magnetogram, CDELT1=1.0)
+    monkeypatch.setattr(
+        "coconut_tools.tools.rotation_angle.compute_carrington_central_meridian",
+        lambda date: 241.25,
+    )
+
+    angle, date = compute_rotation_angle(str(magnetogram))
+
+    assert angle == pytest.approx(60.25)
+    assert date == datetime(2020, 12, 7, 15, 4)
+
+
+@pytest.mark.parametrize("file_id", ["mrmqs", "mrnqs"])
+def test_compute_rotation_angle_supports_gong_diachronic_car_maps(
+    monkeypatch,
+    tmp_path,
+    file_id,
+):
+    magnetogram = tmp_path / f"{file_id}201207t1504c2238.fits"
+    _write_magnetogram(magnetogram, CDELT1=1.0)
+    monkeypatch.setattr(
+        "coconut_tools.tools.rotation_angle.compute_carrington_central_meridian",
+        lambda date: 241.25,
+    )
+
+    angle, date = compute_rotation_angle(str(magnetogram))
+
+    assert angle == pytest.approx(241.25)
+    assert date == datetime(2020, 12, 7, 15, 4)

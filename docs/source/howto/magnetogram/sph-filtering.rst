@@ -49,6 +49,25 @@ To process one magnetogram, provide ``date`` and omit ``total_hours``:
 
    results = process_config(config)
 
+HMI_SYNC Example
+----------------
+``HMI_SYNC`` downloads ``hmi.Mrdailysynframe_720s`` maps through JSOC DRMS.
+Provide the JSOC email address in the configuration:
+
+.. code-block:: python
+
+   config = {
+       "date": "2020-12-07T15:00:00",
+       "map_type": "HMI_SYNC",
+       "drms_email": "name@example.com",
+       "lmax": 30,
+       "write_map": True,
+       "show_map": True,
+       "output_dir": "./boundary/",
+   }
+
+   results = process_config(config)
+
 Multi-Date GONG Example
 -----------------------
 To process three days with a 3-hour cadence, set ``cadence_hours=3`` and
@@ -60,7 +79,7 @@ To process three days with a 3-hour cadence, set ``cadence_hours=3`` and
 
    config = {
        "date": "2025-10-09T18:00:00",
-       "map_type": "GONG",
+       "map_type": "GONG_mrzqs",
        "cadence_hours": 3,
        "total_hours": 72,
        "interpolation": True,
