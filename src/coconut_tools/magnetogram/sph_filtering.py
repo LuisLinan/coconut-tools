@@ -1,10 +1,19 @@
 """
-Spherical harmonic filtering, saving, and plotting for magnetogram inputs.
+Read, preprocess, filter, write, and plot magnetogram boundary maps.
 
-Download and remote-candidate selection helpers live in
-``coconut_tools.magnetogram.magnetogram_download``. This module keeps the
-magnetogram reading/preprocessing needed by the spherical harmonic pipeline,
-then projects, reconstructs, writes, and visualizes COCONUT boundary maps.
+This module implements the spherical-harmonic preprocessing pipeline used to
+turn photospheric magnetograms into COCONUT boundary-condition files. Download
+and remote-candidate selection are delegated to
+``coconut_tools.magnetogram.magnetogram_download``; this file handles local map
+reading, latitude/longitude normalization, optional temporal interpolation,
+optional Carrington-to-Stonyhurst rotation, optional flux balancing, spherical
+harmonic projection/reconstruction, diagnostics, and figure generation.
+
+Date handling follows the common magnetogram "effective time" convention:
+interpolated GONG/ADAPT maps represent the requested target time, HMI small,
+HMI polar-filled, and WSO use the target time by convention, HMI_SYNC uses the
+daily noon JSOC product time, and non-interpolated GONG/ADAPT maps use the
+timestamp encoded in the selected filename.
 """
 import os
 from datetime import datetime
@@ -23,6 +32,7 @@ from coconut_tools.magnetogram.magnetogram_download import (
     generate_output_and_map_names,
     is_gong_map_type,
     is_gong_temporal_map_type,
+    magnetogram_effective_date,
     magnetogram_display_date,
     parse_iso_datetime,
     resolve_figure_path,
@@ -106,12 +116,18 @@ def ensure_increasing_longitude(
     file_path: str,
     map_type: str,
 ) -> np.ndarray:
-    """Flip Br columns when the native FITS longitude axis is decreasing."""
+    """Return Br with columns ordered by increasing native longitude.
+
+    FITS WCS keywords are used for products whose longitude direction can be
+    read from the header. WSO text maps are left unchanged. HMI maps are kept as
+    read because the current pipeline treats their FITS products as already
+    increasing in longitude.
+    """
     if map_type.lower() == "wso":
         return Br
     if "hmi" in map_type.lower():
         logger.info("HMI maps are assumed to have increasing longitude.")
-        return Br   
+        return Br
     if is_br_longitude_increasing(file_path):
         return Br
     logger.info("Flipping Br columns to obtain increasing longitude.")
@@ -123,7 +139,20 @@ def rotate_longitude_to_stonyhurst(
     has_duplicate_endpoint: bool = False,
     zero_column: int | None = None,
 ) -> np.ndarray:
-    """Rotate an increasing-longitude Br map so Stonyhurst longitude starts at zero."""
+    """Roll an increasing-longitude map into the requested Stonyhurst frame.
+
+    Args:
+        Br (np.ndarray): Map whose longitude columns are already increasing.
+        angle_degrees (float): Carrington longitude of the Stonyhurst zero
+            meridian, used only to infer ``zero_column`` when it is omitted.
+        has_duplicate_endpoint (bool): True when the last longitude column
+            duplicates the first one, as in WSO maps with both 0 and 360 deg.
+        zero_column (int | None): Column that should become the first column in
+            the rotated map. If omitted, it is derived from ``angle_degrees``.
+
+    Returns:
+        np.ndarray: Longitude-rolled map, preserving any duplicate endpoint.
+    """
     unique_longitudes = Br.shape[1] - 1 if has_duplicate_endpoint else Br.shape[1]
     if zero_column is None:
         zero_column = round((angle_degrees % 360.0) / 360.0 * unique_longitudes)
@@ -145,7 +174,13 @@ def processed_longitude_axis(
     map_type: str,
     temporal: bool = False,
 ) -> np.ndarray:
-    """Return physical longitudes ordered like Br after reading and preprocessing."""
+    """Return longitude cell centers matching the processed Br column order.
+
+    The returned array follows the same longitude ordering as maps produced by
+    ``read_magnetogram`` or ``read_temporal_br_map``. For interpolated temporal
+    GONG maps, the filename-encoded circular shift is applied so the longitude
+    axis matches the map that was shifted before interpolation.
+    """
     if map_type.lower() == "wso":
         return np.linspace(0.0, 360.0, 73)
 
@@ -156,7 +191,16 @@ def processed_longitude_axis(
 
 
 def closest_longitude_column(longitude: np.ndarray, target_degrees: float) -> tuple[int, float]:
-    """Return the column closest to a target periodic longitude and its residual."""
+    """Find the longitude column closest to a periodic target angle.
+
+    Args:
+        longitude (np.ndarray): Longitude cell centers in degrees.
+        target_degrees (float): Target longitude in degrees.
+
+    Returns:
+        tuple[int, float]: Index of the closest column and signed residual in
+        degrees, wrapped into [-180, 180).
+    """
     residuals = (np.asarray(longitude) - target_degrees + 180.0) % 360.0 - 180.0
     index = int(np.nanargmin(np.abs(residuals)))
     return index, float(residuals[index])
@@ -170,28 +214,68 @@ def apply_configured_longitude_rotation(
     target_date: str | datetime,
     use_interpolation: bool,
     rotate_to_stonyhurst: bool,
+    effective_date: str | datetime | None = None,
 ) -> tuple[np.ndarray, np.ndarray | None, float | None]:
-    """Apply the configured Carrington-to-Stonyhurst longitude rotation."""
+    """Apply the configured Carrington-to-Stonyhurst longitude rotation.
+
+    The rotation date is the magnetogram effective time. For interpolated
+    GONG/ADAPT products this is the requested target time because the final map
+    is synthesized at that time. For non-interpolated products it is either the
+    timestamp encoded in the selected filename or the product convention
+    returned by ``magnetogram_effective_date``.
+
+    Args:
+        Br (np.ndarray): Processed radial field map.
+        Br_linear (np.ndarray | None): Linear interpolation reference map, when
+            available. It is rotated with the same shift as ``Br``.
+        local_file (str | list[str]): Source magnetogram path, or the
+            interpolation stencil paths.
+        map_type (str): Magnetogram product type.
+        target_date (str | datetime): Requested processing time.
+        use_interpolation (bool): Whether temporal interpolation was requested.
+        rotate_to_stonyhurst (bool): If false, maps are returned unchanged.
+        effective_date (str | datetime | None): Precomputed effective time. If
+            omitted, it is derived from the source file and map type.
+
+    Returns:
+        tuple[np.ndarray, np.ndarray | None, float | None]: Rotated ``Br``,
+        rotated ``Br_linear`` if present, and rotation angle in degrees. The
+        angle is ``None`` when rotation is disabled.
+    """
     if not rotate_to_stonyhurst:
         return Br, Br_linear, None
 
-    if use_interpolation and (is_gong_temporal_map_type(map_type) or map_type == "ADAPT"):
+    source_file = local_file[0] if isinstance(local_file, list) else local_file
+    interpolated = use_interpolation and (
+        is_gong_temporal_map_type(map_type) or map_type == "ADAPT"
+    )
+    rotation_date = (
+        parse_iso_datetime(effective_date)
+        if effective_date is not None
+        else magnetogram_effective_date(
+            source_file,
+            map_type,
+            target_date,
+            interpolated=interpolated,
+        )
+    )
+
+    if interpolated:
         # Interpolated GONG maps have already been shifted from their
         # filename-encoded origin to Carrington zero before interpolation.
-        rotation_angle = compute_carrington_central_meridian(target_date)
-        rotation_date = parse_iso_datetime(target_date)
+        rotation_angle = compute_carrington_central_meridian(rotation_date)
     else:
-        source_file = local_file[0] if isinstance(local_file, list) else local_file
         rotation_angle, rotation_date = compute_rotation_angle(
             source_file,
             date_hmi=parse_iso_datetime(target_date).isoformat(),
+            map_type=map_type,
+            interpolated=False,
         )
 
-    source_file = local_file[0] if isinstance(local_file, list) else local_file
     longitude = processed_longitude_axis(
         source_file,
         map_type,
-        temporal=use_interpolation and is_gong_temporal_map_type(map_type),
+        temporal=interpolated and is_gong_temporal_map_type(map_type),
     )
     if is_gong_map_type(map_type):
         target_longitude = compute_carrington_central_meridian(rotation_date)
@@ -222,7 +306,7 @@ def apply_configured_longitude_rotation(
 
 
 def read_first_fits_image(file_path: str) -> np.ndarray:
-    """Read the first FITS HDU containing image data."""
+    """Read the first FITS HDU that contains at least a 2D image array."""
     with fits.open(file_path) as hdul:
         for hdu in hdul:
             if hdu.data is not None and hdu.data.ndim >= 2:
@@ -231,14 +315,19 @@ def read_first_fits_image(file_path: str) -> np.ndarray:
 
 
 def build_regular_theta_phi(Br: np.ndarray, map_type: str) -> tuple[np.ndarray, np.ndarray]:
-    """Build the 1D theta/phi grids used by sph_filtering.
+    """Build regular colatitude and longitude grids for a processed Br map.
+
+    ADAPT maps are represented on a regular colatitude grid. Other supported
+    FITS maps are represented on a regular sine-latitude grid converted to
+    colatitude. Longitudes are endpoint-free in [0, 2*pi).
 
     Args:
         Br (np.ndarray): Magnetic field map.
         map_type (str): Map type.
 
     Returns:
-        tuple[np.ndarray, np.ndarray]: Theta and phi vectors.
+        tuple[np.ndarray, np.ndarray]: One-dimensional colatitude ``theta`` and
+        longitude ``phi`` vectors in radians.
     """
     nb_th, nb_phi = Br.shape
     if map_type == "ADAPT":
@@ -252,15 +341,20 @@ def build_regular_theta_phi(Br: np.ndarray, map_type: str) -> tuple[np.ndarray, 
 
 
 def read_temporal_br_map(file_path: str, map_type: str, adapt_map: int = 0) -> np.ndarray:
-    """Read one FITS magnetogram for temporal interpolation.
+    """Read and normalize one FITS magnetogram used in interpolation.
+
+    The output contains only Br, not the meshgrid. Latitude is flipped into the
+    pipeline convention, longitude is normalized to increasing order, and
+    temporal GONG maps are circularly shifted so column zero corresponds to the
+    Carrington-zero convention before interpolation.
 
     Args:
         file_path (str): Local FITS file.
-        map_type (str): Map type. Supported: GONG, ADAPT.
+        map_type (str): Map type. Supported: temporal GONG variants and ADAPT.
         adapt_map (int): ADAPT realization index.
 
     Returns:
-        np.ndarray: Radial magnetic field map.
+        np.ndarray: Normalized radial magnetic field map.
     """
     input_data = read_first_fits_image(file_path)
     if map_type == "ADAPT":
@@ -278,7 +372,13 @@ def interpolate_br_maps(
     selection: InterpolationSelection,
     interpolation_order: int = 2,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Interpolate four Br maps in time.
+    """Interpolate a four-map temporal stencil onto the target time.
+
+    ``interpolation_order=1`` returns the linear interpolation between the two
+    bracketing maps. ``interpolation_order=2`` uses a cubic Hermite estimate
+    based on the before-previous, before, after, and after-next maps. In both
+    cases the second returned array is the linear reference map used for
+    diagnostics.
 
     Args:
         Br_maps (list[np.ndarray]): Maps ordered as before-previous, before, after, after-next.
@@ -286,7 +386,7 @@ def interpolate_br_maps(
         interpolation_order (int): 1 for linear, 2 for cubic Hermite.
 
     Returns:
-        tuple[np.ndarray, np.ndarray]: Interpolated Br and linear interpolation.
+        tuple[np.ndarray, np.ndarray]: Interpolated Br and linear Br reference.
     """
     Br_datam, Br_data, Br_data1, Br_datap = Br_maps
     Br_linear = selection.coef_before * Br_data + selection.coef_after * Br_data1
@@ -325,11 +425,16 @@ def read_interpolated_magnetogram(
     adapt_map: int = 0,
     interpolation_order: int = 2,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Read and temporally interpolate a four-map magnetogram stencil.
+    """Read, normalize, and temporally interpolate a four-map stencil.
+
+    The source maps are converted into the same latitude/longitude convention
+    before interpolation. The returned ``Theta`` and ``Phi`` grids describe the
+    interpolated map, while ``Br_linear`` is kept as a diagnostic reference for
+    comparing cubic Hermite interpolation against the simpler linear result.
 
     Args:
         local_files (list[str]): Local files in stencil order.
-        map_type (str): Map type. Supported: GONG, ADAPT.
+        map_type (str): Map type. Supported: temporal GONG variants and ADAPT.
         selection (InterpolationSelection): Time interpolation metadata.
         adapt_map (int): ADAPT realization index.
         interpolation_order (int): 1 for linear, 2 for cubic Hermite.
@@ -351,15 +456,24 @@ def read_interpolated_magnetogram(
 
 
 def read_magnetogram(file_path, map_type, adapt_map=0):
-    """Read magnetic field map file and extract Br, Theta, Phi grids.
+    """Read one non-interpolated magnetogram and build its spherical grid.
+
+    The map is converted into the pipeline convention: latitude index ordered
+    from north to south after the final Br assignment, longitude columns ordered
+    according to ``ensure_increasing_longitude``, ``theta`` as colatitude in
+    radians, and ``phi`` as longitude in radians. WSO text maps are parsed from
+    their native format and converted to Gauss.
 
     Args:
         file_path (str): Path to the magnetogram file.
-        map_type (str): Type of the map ('WSO', 'GONG', 'ADAPT', 'HMI_small', 'HMI_pofil').
+        map_type (str): Map product type, for example ``WSO``, ``ADAPT``,
+            ``GONG_mrzqs``, ``GONG_mrbqs``, ``GONG_mrbqj``, ``GONG_mrmqs``,
+            ``GONG_mrnqs``, ``HMI_small``, ``HMI_polfil``, or ``HMI_SYNC``.
         adapt_map (int, optional): Index for ADAPT map. Defaults to 0.
 
     Returns:
-        tuple: (Br_map, Theta, Phi) arrays.
+        tuple[np.ndarray, np.ndarray, np.ndarray]: Br map and 2D ``Theta`` and
+        ``Phi`` grids in radians.
     """
     logger.info('Reading file')
 
@@ -435,18 +549,24 @@ def read_magnetogram(file_path, map_type, adapt_map=0):
     return Br_map, Theta, Phi
 
 def project_and_reconstruct(Br, Theta, Phi, lmax, amp=1, alpha=0):
-    """Project Br on spherical harmonics and reconstruct Br_mode.
+    """Project Br onto spherical harmonics and reconstruct the filtered map.
+
+    Coefficients are computed for all degrees ``1..lmax`` and orders
+    ``0..l``. The optional ``alpha`` damps high-degree modes during projection,
+    and ``amp`` rescales the reconstructed field after the historical COCONUT
+    normalization by 2.2.
 
     Args:
         Br (ndarray): Original radial field.
-        Theta (ndarray): Colatitude grid.
-        Phi (ndarray): Longitude grid.
+        Theta (ndarray): 2D colatitude grid in radians.
+        Phi (ndarray): 2D longitude grid in radians.
         lmax (int): Maximum spherical harmonic degree.
         amp (float): Amplitude factor for reconstruction.
-        alpha (float): Enhances the filtering for higher frequencies.
+        alpha (float): High-degree damping factor.
 
     Returns:
-        tuple: (Br_mode, coefbr)
+        tuple[np.ndarray, np.ndarray]: Reconstructed map ``Br_mode`` and complex
+        spherical harmonic coefficients ``coefbr``.
     """
     logger.info('Beginning of projection')
     nb_th, nb_phi = Br.shape
@@ -482,13 +602,17 @@ def project_and_reconstruct(Br, Theta, Phi, lmax, amp=1, alpha=0):
     return Br_mode, coefbr
 
 def write_bc_file(output_name, Br_mode, theta, phi, r_st):
-    """Write boundary condition file.
+    """Write a COCONUT photospheric boundary-condition file.
+
+    The file contains one spherical surface at radius ``r_st``. Grid points at
+    the two poles are written once, while non-polar cells are written for every
+    longitude column.
 
     Args:
         output_name (str): Path to output file.
         Br_mode (ndarray): Reconstructed radial field.
-        theta (ndarray): 1D theta grid.
-        phi (ndarray): 1D phi grid.
+        theta (ndarray): 1D colatitude grid in radians.
+        phi (ndarray): 1D longitude grid in radians.
         r_st (float): Spherical radius.
     """
     logger.info("Writing BC file")
@@ -519,16 +643,20 @@ def plot_maps(
     output_path='output_map.png',
     date=None,
 ):
-    """Plot original and reconstructed Br maps.
+    """Save a two-panel diagnostic figure for input and processed Br maps.
+
+    The upper panel shows the pre-filtered/pre-projection Br map after all
+    configured preprocessing. The lower panel shows the processed map that is
+    written to the boundary file. The displayed date should be the magnetogram
+    effective time.
 
     Args:
         Br (ndarray): Original radial magnetic field.
         Br_mode (ndarray): Reconstructed radial magnetic field.
-        theta (ndarray): 1D theta grid.
-        phi (ndarray): 1D phi grid.
+        theta (ndarray): 1D colatitude grid in radians.
+        phi (ndarray): 1D longitude grid in radians.
         map_type (str): Type of the input map ('WSO', 'GONG', etc.).
         visu_type (str): Visualization style ('lat' or 'sinlat').
-        lat_type (str, optional): Latitude type for WSO ('lat' or 'sinlat').
         output_path (str): Path where the figure will be saved.
         date (str | datetime, optional): Processed date to display on the figure.
     """
@@ -603,7 +731,7 @@ def plot_maps(
 
 
 def _as_bool(value: Any) -> bool:
-    """Convert common config values to bool."""
+    """Convert common boolean-like configuration values to ``bool``."""
     if isinstance(value, bool):
         return value
     if isinstance(value, str):
@@ -612,19 +740,19 @@ def _as_bool(value: Any) -> bool:
 
 
 def _regular_phi_from_br(Br: np.ndarray) -> np.ndarray:
-    """Return a regular longitude grid for legacy correct_net_flux calls."""
+    """Return an endpoint-free regular longitude grid matching Br columns."""
     return np.linspace(0.0, 2.0 * np.pi, Br.shape[1], endpoint=False)
 
 
 def _cell_widths(values: np.ndarray, fallback: float) -> np.ndarray:
-    """Estimate grid-cell widths from monotonically ordered cell centers."""
+    """Estimate cell widths from ordered cell centers."""
     if values.size < 2:
         return np.full(values.shape, fallback)
     return np.concatenate([np.diff(values), [values[-1] - values[-2]]])
 
 
 def _pixel_area(theta: np.ndarray, phi: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
-    """Compute spherical pixel areas on a theta/phi grid."""
+    """Compute spherical pixel areas from colatitude and longitude centers."""
     nb_th, nb_phi = shape
     if len(theta) != nb_th:
         raise ValueError("theta length must match the first Br dimension.")
@@ -641,7 +769,7 @@ def _surface_mean_area(
     phi: np.ndarray,
     shape: tuple[int, int],
 ) -> np.ndarray:
-    """Compute pixel areas matching the surface-mean flux correction."""
+    """Compute spherical areas used by the surface-mean flux correction."""
     nb_th, nb_phi = shape
     if len(theta) != nb_th:
         raise ValueError("theta length must match the first Br dimension.")
@@ -657,7 +785,7 @@ def _surface_mean_area(
 
 
 def _flux_summary(Br: np.ndarray, pixel_area: np.ndarray) -> tuple[float, float, float, float]:
-    """Return positive, negative, net flux, and imbalance percentage."""
+    """Return positive flux, negative flux, net flux, and imbalance percentage."""
     positive_mask = Br > 0
     negative_mask = Br < 0
     flux_positive = float(np.sum(Br[positive_mask] * pixel_area[positive_mask]))
@@ -673,7 +801,7 @@ def _log_flux_summary(
     Br: np.ndarray,
     pixel_area: np.ndarray,
 ) -> None:
-    """Log flux-balance diagnostics."""
+    """Log flux-balance diagnostics for a Br map and pixel-area grid."""
     flux_positive, flux_negative, net_flux, imbalance_percent = _flux_summary(
         Br,
         pixel_area,
@@ -690,7 +818,12 @@ def correct_net_flux(
     phi: np.ndarray | None = None,
     method: str = "surface_mean",
 ) -> np.ndarray:
-    """Correct net magnetic flux in a magnetogram.
+    """Reduce or remove net magnetic flux from a magnetogram.
+
+    ``surface_mean`` subtracts the surface-weighted mean Br. This is simple and
+    preserves local contrast, but it shifts every pixel by the same offset.
+    ``polarity_scaling`` rescales positive and negative polarities by opposite
+    factors so the integrated positive and negative fluxes balance.
 
     Args:
         Br (np.ndarray): Radial magnetic field map.
@@ -725,7 +858,7 @@ def correct_net_flux(
 
 
 def _correct_net_flux_surface_mean(Br: np.ndarray, theta: np.ndarray) -> np.ndarray:
-    """Remove the surface-weighted mean Br from a magnetogram."""
+    """Subtract the surface-weighted mean Br from all pixels."""
     theta_edges = np.empty(len(theta) + 1)
     theta_edges[0] = 0.0
     theta_edges[-1] = np.pi
@@ -740,7 +873,7 @@ def _correct_net_flux_polarity_scaling(
     Br: np.ndarray,
     pixel_area: np.ndarray,
 ) -> np.ndarray:
-    """Balance flux by rescaling the two magnetic polarities."""
+    """Balance integrated flux by rescaling positive and negative polarities."""
     flux_positive, flux_negative, _, _ = _flux_summary(Br, pixel_area)
     if flux_negative == 0 or flux_positive == 0:
         logger.warning("Flux balancing skipped because one polarity is missing.")
@@ -757,16 +890,32 @@ def process_magnetogram_date(
     method_used: str = "sph",
     output_path_fig: str | None = None,
 ) -> dict[str, Any]:
-    """Process one target date from a sph_filtering configuration.
+    """Process one target time through the spherical-harmonic pipeline.
+
+    The function downloads or reuses the requested magnetogram, optionally
+    builds a temporal interpolation, computes the product effective time, logs
+    the target/effective timing, optionally rotates the map to Stonyhurst,
+    optionally balances net flux, projects/reconstructs the map with spherical
+    harmonics, writes the COCONUT boundary file, and optionally saves a
+    diagnostic figure.
 
     Args:
-        config (dict[str, Any]): Processing configuration.
-        target_date (str | datetime): Date to process.
-        method_used (str): Method label kept for compatibility.
-        output_path_fig (str | None): Diagnostic figure path.
+        config (dict[str, Any]): Processing configuration. Common keys are
+            ``map_type``, ``output_dir``, ``download_dir``, ``lmax``, ``amp``,
+            ``r_st``, ``adapt_map``, ``write_map``, ``show_map``,
+            ``visu_type``, ``alpha``, ``interpolation_order``,
+            ``interpolation``, ``rotate_to_stonyhurst``, ``flux_correct``,
+            ``flux_correction_method``, and ``drms_email`` or ``jsoc_email``.
+        target_date (str | datetime): Requested processing time.
+        method_used (str): Method label used in output filenames.
+        output_path_fig (str | None): Explicit diagnostic figure path. If
+            omitted, the figure name is built from the effective time.
 
     Returns:
-        dict[str, Any]: Paths and processing metadata.
+        dict[str, Any]: Processing metadata, including target ``date``,
+        ``effective_date``, ``magnetogram_date``, output paths, selected local
+        file or interpolation stencil, optional ``Br_linear``, spherical
+        harmonic coefficients, and rotation angle.
     """
     map_type = config["map_type"]
     output_dir = config.get("output_dir", "../")
@@ -787,12 +936,15 @@ def process_magnetogram_date(
     flux_correction_method = config.get("flux_correction_method", "surface_mean")
     drms_email = config.get("drms_email", config.get("jsoc_email"))
 
-    if use_interpolation and (is_gong_temporal_map_type(map_type) or map_type == "ADAPT"):
+    interpolated = use_interpolation and (
+        is_gong_temporal_map_type(map_type) or map_type == "ADAPT"
+    )
+
+    if interpolated:
         output_name, local_files, selection = generate_output_and_interpolation_map_names(
             target_date,
             map_type,
             output_dir,
-            lmax,
             method_used=method_used,
             download_dir=download_dir,
         )
@@ -809,18 +961,30 @@ def process_magnetogram_date(
             target_date,
             map_type,
             output_dir,
-            method_used,
+            method_used=method_used,
             drms_email=drms_email,
         )
         Br, Theta, Phi = read_magnetogram(local_file, map_type, adapt_map)
         Br_linear = None
         selection = None
 
-    figure_date = magnetogram_display_date(
-        local_file[0] if isinstance(local_file, list) else local_file,
+    source_file = local_file[0] if isinstance(local_file, list) else local_file
+    effective_date = magnetogram_effective_date(
+        source_file,
         map_type,
         target_date,
-        interpolated=use_interpolation and (is_gong_temporal_map_type(map_type) or map_type == "ADAPT"),
+        interpolated=interpolated,
+    )
+    logger.info(
+        "Magnetogram timing: target_time: %s, effective_time: %s",
+        parse_iso_datetime(target_date).isoformat(),
+        effective_date.isoformat(),
+    )
+    figure_date = magnetogram_display_date(
+        source_file,
+        map_type,
+        target_date,
+        interpolated=interpolated,
     )
 
     Br, Br_linear, rotation_angle = apply_configured_longitude_rotation(
@@ -831,6 +995,7 @@ def process_magnetogram_date(
         target_date,
         use_interpolation,
         rotate_to_stonyhurst,
+        effective_date=effective_date,
     )
 
     if _as_bool(config.get("flux_correct", False)):
@@ -847,7 +1012,7 @@ def process_magnetogram_date(
         write_bc_file(output_name, Br_mode, Theta[:, 0], Phi[0, :], r_st)
 
     if show_map:
-        figure_path = output_path_fig or default_figure_path(output_dir, map_type, target_date)
+        figure_path = output_path_fig or default_figure_path(output_dir, map_type, effective_date)
         plot_maps(
             Br,
             Br_mode,
@@ -878,6 +1043,7 @@ def process_magnetogram_date(
 
     return {
         "date": parse_iso_datetime(target_date),
+        "effective_date": effective_date,
         "magnetogram_date": figure_date,
         "output_name": output_name,
         "local_file": local_file,
@@ -890,23 +1056,28 @@ def process_magnetogram_date(
 
 
 def process_config(config: dict[str, Any], method_used: str = "sph") -> list[dict[str, Any]]:
-    """Process one sph_filtering configuration.
+    """Process all target times described by one sph_filtering configuration.
 
-    The configuration keeps the existing keys and adds optional multi-date
-    processing.
+    With only ``date`` set, a single target time is processed. With
+    ``cadence_hours`` and ``total_hours``, the function builds a sequence of
+    target times starting at ``date`` and processes each one independently.
+    When no explicit ``output_path_fig`` is provided, each figure is named from
+    the effective magnetogram time.
 
     Config keys:
         date: Initial ISO datetime.
         cadence_hours: Cadence in hours.
         total_hours: Total duration in hours.
-        interpolation: Use four-map interpolation for GONG/ADAPT.
+        interpolation: Use four-map interpolation for temporal GONG variants
+            and ADAPT.
         rotate_to_stonyhurst: Rotate longitude to the Stonyhurst frame. Defaults to True.
         flux_correct: Remove net magnetic flux if True.
         flux_correction_method: ``surface_mean`` or ``polarity_scaling``.
+        output_path_fig: Optional figure file or directory.
 
     Args:
         config (dict[str, Any]): Processing configuration.
-        method_used (str): Method label kept for compatibility.
+        method_used (str): Method label used in output filenames.
 
     Returns:
         list[dict[str, Any]]: Per-date processing results.
@@ -920,12 +1091,16 @@ def process_config(config: dict[str, Any], method_used: str = "sph") -> list[dic
     use_unique_figures = len(target_dates) > 1
     results = []
     for target_date in target_dates:
-        figure_path = resolve_figure_path(
-            output_path_fig,
-            config.get("output_dir", "../"),
-            config["map_type"],
-            target_date,
-            use_unique_name=use_unique_figures,
+        figure_path = (
+            resolve_figure_path(
+                output_path_fig,
+                config.get("output_dir", "../"),
+                config["map_type"],
+                target_date,
+                use_unique_name=use_unique_figures,
+            )
+            if output_path_fig
+            else None
         )
         results.append(
             process_magnetogram_date(
@@ -940,8 +1115,42 @@ def process_config(config: dict[str, Any], method_used: str = "sph") -> list[dic
 
 
 if __name__ == "__main__":
-    
-    base_output_dir = r"C:\Users\luisl\Desktop\testmagnetogram\test_all"
+
+    #to run a steady test
+
+    base_output_dir = r"C:\Users\luisl\Desktop\testmagnetogram"
+    label = "test"
+    output_dir = os.path.join(base_output_dir, label)
+    figure_output_dir = os.path.join(base_output_dir, "images")
+
+    config = {"date": "2020-01-20T01:17:00",
+        "lmax": 10,
+        "amp": 1,
+        "write_map": True,
+        "show_map": True,
+        "visu_type": "sinlat",
+        "alpha": 3 * 10 ** (-6),
+        "rotate_to_stonyhurst": False,
+        "interpolation": False,
+        "interpolation_order": 2,
+        "flux_correct": False,
+        "flux_correction_method": "surface_mean", #surface_mean' or 'polarity_scaling'
+        "map_type": "GONG_mrzqs",
+        "adapt_map": 6,
+        "output_dir": output_dir,
+        "download_dir": output_dir,
+        "output_path_fig": os.path.join(figure_output_dir, f"{label}.png"),
+        "drms_email": "luis.linan@kuleuven.be"
+        }
+
+    process_config(config, method_used="sph")
+
+    # for time-evolving , you can use "mrzqs", "mrbqs", "mrbqj" magnetogram and you need to add  : "cadence_hours": 3, "total_hours": 72, in the config.
+
+
+    #Below an example that test every map type and ADAPT realization. The output is written to the test folder and figures are saved in the images subfolder.
+    r"""
+    base_output_dir = r"C:\Users\luisl\Desktop\testmagnetogram\test"
     figure_output_dir = os.path.join(base_output_dir, "images")
     common_config = {
         "date": "2020-01-20T01:17:00",
@@ -951,7 +1160,7 @@ if __name__ == "__main__":
         "show_map": True,
         "visu_type": "sinlat",
         "alpha": 3 * 10 ** (-6),
-        "rotate_to_stonyhurst": True,
+        "rotate_to_stonyhurst": False,
         "interpolation": False,
         "flux_correct": False,
     }
@@ -998,3 +1207,4 @@ if __name__ == "__main__":
             logger.warning(
                 f'Failed to process {config["date"]} and {config["map_type"]}: {exc}'
             )
+    """

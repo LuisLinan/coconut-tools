@@ -28,7 +28,6 @@ if __name__ == "__main__":
                 date=date,
                 map_type=map_type,
                 output_dir=output_dir,
-                lmax=None,
             )
             logger.info(
                 "Downloaded %s magnetogram to %s; boundary output would be %s",

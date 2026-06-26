@@ -208,7 +208,6 @@ def list_gong_diachronic_candidates(
         if node.get("href") is not None and file_id in node.get("href")
     ]
     candidates = []
-    print(file_names)
     for file_name in file_names:
         file_date = _parse_gong_file_date(file_name, file_id)
         if file_date is not None:
@@ -361,10 +360,34 @@ def magnetogram_display_date(
     interpolated: bool = False,
 ) -> datetime:
     """Return the date that should be displayed for a processed magnetogram."""
+    return magnetogram_effective_date(
+        file_path,
+        map_type,
+        target_date,
+        interpolated=interpolated,
+    )
+
+
+def magnetogram_effective_date(
+    file_path: str,
+    map_type: str,
+    target_date: str | datetime,
+    interpolated: bool = False,
+) -> datetime:
+    """Return the timestamp represented by a processed magnetogram.
+
+    Interpolated maps represent the requested target time. Non-interpolated
+    GONG and ADAPT maps represent the observation time encoded in their
+    filenames. HMI small/polar-filled and WSO products use the requested target
+    time by convention. HMI_SYNC uses the daily noon timestamp used for JSOC
+    downloads.
+    """
     target = parse_iso_datetime(target_date)
+    if interpolated:
+        return target
     if map_type == "HMI_SYNC":
         return target.replace(hour=12, minute=0, second=0, microsecond=0)
-    if interpolated or map_type in {"HMI_small", "HMI_polfil"}:
+    if map_type in {"HMI_small", "HMI_polfil"}:
         return target
 
     name = os.path.basename(file_path)
@@ -425,14 +448,10 @@ def generate_output_and_map_names(
     date,
     map_type,
     output_dir,
-    lmax=None,
     method_used="sph",
     drms_email: str | None = None,
 ):
     """Generate output filename and download magnetogram file based on map type."""
-    if isinstance(lmax, str) and method_used == "sph":
-        method_used = lmax
-        lmax = None
 
     date_datetime = parse_iso_datetime(date)
 
@@ -555,14 +574,10 @@ def generate_output_and_interpolation_map_names(
     date,
     map_type,
     output_dir,
-    lmax=None,
     method_used="sph",
     download_dir=None,
 ):
     """Generate output name and download four maps for temporal interpolation."""
-    if isinstance(lmax, str) and method_used == "sph":
-        method_used = lmax
-        lmax = None
 
     output_name = build_output_name(
         map_type,

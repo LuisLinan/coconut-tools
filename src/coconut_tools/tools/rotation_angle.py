@@ -140,14 +140,22 @@ def _gong_file_id_from_name(mag_name: str) -> str | None:
     return prefix if prefix in GONG_FILE_IDS else None
 
 
-def compute_rotation_angle(mag_name_path: str, date_hmi: str = None) -> Tuple[float, datetime]:
+def compute_rotation_angle(
+    mag_name_path: str,
+    date_hmi: str = None,
+    map_type: str | None = None,
+    interpolated: bool = False,
+) -> Tuple[float, datetime]:
     """Compute the rotation angle from magnetogram filename.
 
     Supports GONG, ADAPT (CM and CAR), and HMI.
 
     Args:
         mag_name_path (str): Path to the magnetogram file.
-        date_hmi (str, optional): ISO datetime string used for HMI (e.g. '2024-07-01T00:00:00')
+        date_hmi (str, optional): ISO datetime string used for target-date products.
+        map_type (str, optional): Magnetogram product type. When supplied with
+            date_hmi, the common magnetogram effective-date convention is used.
+        interpolated (bool): Whether the map is a temporal interpolation result.
 
     Returns:
         float: Angle alpha in degrees such that lon_heeq = lon_mag - alpha (mod 360)
@@ -155,6 +163,19 @@ def compute_rotation_angle(mag_name_path: str, date_hmi: str = None) -> Tuple[fl
     """
     mag_name = os.path.basename(mag_name_path)
     logger.info(f"The magnetogram name is: {mag_name}")
+
+    effective_date = None
+    if date_hmi is not None and map_type is not None:
+        from coconut_tools.magnetogram.magnetogram_download import (
+            magnetogram_effective_date,
+        )
+
+        effective_date = magnetogram_effective_date(
+            mag_name_path,
+            map_type,
+            date_hmi,
+            interpolated=interpolated,
+        )
 
     prefix = mag_name[:5].lower()
     gong_file_id = _gong_file_id_from_name(mag_name)
@@ -167,7 +188,7 @@ def compute_rotation_angle(mag_name_path: str, date_hmi: str = None) -> Tuple[fl
     if gong_file_id is not None:
         logger.info("The magnetogram is GONG")
         date_start = len(gong_file_id)
-        date = datetime.strptime(
+        date = effective_date or datetime.strptime(
             mag_name[date_start:date_start + 11],
             '%y%m%dt%H%M',
         )
@@ -184,7 +205,7 @@ def compute_rotation_angle(mag_name_path: str, date_hmi: str = None) -> Tuple[fl
     # ADAPT
     elif prefix == 'adapt':
         mode = mag_name[5:8]
-        date = datetime.strptime(mag_name[18:30], '%Y%m%d%H%M')
+        date = effective_date or datetime.strptime(mag_name[18:30], '%Y%m%d%H%M')
 
         if mode == '403':
             logger.info("The magnetogram is GONG ADAPT in CAR frame")
@@ -214,7 +235,7 @@ def compute_rotation_angle(mag_name_path: str, date_hmi: str = None) -> Tuple[fl
         logger.info("The magnetogram is HMI in CAR frame")
         if not date_hmi:
             raise ValueError("You must provide 'date_hmi' for HMI magnetograms.")
-        date = datetime.strptime(date_hmi, '%Y-%m-%dT%H:%M:%S')
+        date = effective_date or datetime.strptime(date_hmi, '%Y-%m-%dT%H:%M:%S')
 
         CM_CAR_value = compute_carrington_central_meridian(date)
         return (CM_CAR_value + 0) % 360, date
@@ -222,7 +243,7 @@ def compute_rotation_angle(mag_name_path: str, date_hmi: str = None) -> Tuple[fl
         logger.info("The magnetogram is WSO in CAR frame")
         if not date_hmi:
             raise ValueError("You must provide a date for WSO magnetograms.")
-        date = datetime.fromisoformat(date_hmi)
+        date = effective_date or datetime.fromisoformat(date_hmi)
         return compute_carrington_central_meridian(date), date
     else:
         logger.error("Magnetogram filename format not recognized: %s", mag_name)
