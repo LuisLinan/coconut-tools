@@ -12,8 +12,8 @@ Author:
 import numpy as np
 import os
 import math
-import logging
 
+from coconut_tools.tools.logger_config import setup_logger
 from coconut_tools.pyTDM.core_td import formula_TDm
 from coconut_tools.pyTDM.core_td.COCONUT import coconut
 from coconut_tools.pyTDM.core_td.COCONUT import RBSL_util
@@ -22,9 +22,7 @@ from coconut_tools.pyTDM.core_td import myconfig as mc
 from pyevtk.hl import gridToVTK
 from scipy.interpolate import griddata
 
-# Set up logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
 
 class TDm:
 

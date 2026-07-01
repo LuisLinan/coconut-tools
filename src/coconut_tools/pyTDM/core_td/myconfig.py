@@ -14,12 +14,11 @@ Typical usage example:
 
 import configparser
 import os
-import logging
 from typing import Tuple
 
-# Set up logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from coconut_tools.tools.logger_config import setup_logger
+
+logger = setup_logger(__name__)
 
 
 def createconfig(path_file: str, path_tdm: str, path_save: str, name: str, theta: float, phi: float, alpha: float,
@@ -203,5 +202,4 @@ if __name__ == '__main__':
         flux='Tdm', nb_proc=270, nb_r=200, nb_th=200, nb_phi=200, eps=0.01,
         nfr=100, xc=0.5, xh=0.5, hh_fr=120, ll_fr=35, F_flx=20
     )
-
 

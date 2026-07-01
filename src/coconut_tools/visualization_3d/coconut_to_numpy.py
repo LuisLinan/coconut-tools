@@ -40,7 +40,6 @@ Example:
 from __future__ import annotations
 
 import errno
-import logging
 import os
 from collections import defaultdict
 
@@ -49,8 +48,9 @@ import pyvista as pv
 from scipy.stats import binned_statistic_dd
 import matplotlib.pyplot as plt
 from coconut_tools.toheliosphere.create_dat import readstruct
+from coconut_tools.tools.logger_config import setup_logger
 
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
 
 ###########################################
 # From .vtu !!! Should filter invalid cells if needed -> see reader.py

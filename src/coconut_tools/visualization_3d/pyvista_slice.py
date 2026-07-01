@@ -17,13 +17,13 @@ Author: Luis, Quentin
 
 import numpy as np
 import pyvista as pv
-import logging
 import os
 
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
+from coconut_tools.tools.logger_config import setup_logger
 
-logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+logger = setup_logger(__name__)
 
 def _to_int(x, name: str):
     try:
@@ -74,16 +74,16 @@ def read_mesh(filename,verbose=True):
     Returns:
         pv.DataSet: PyVista mesh object.
     """
-    if verbose: logging.info('Reading file...')
+    if verbose: logger.info('Reading file...')
     mesh = pv.read(filename)
 
 
-    if verbose: logging.info("Arrays in point_data: %s", list(mesh.point_data.keys()))
-    if verbose: logging.info("Arrays in cell_data: %s", list(mesh.cell_data.keys()))
-    if verbose: logging.info("Arrays in field_data: %s", list(mesh.field_data.keys()))
+    if verbose: logger.info("Arrays in point_data: %s", list(mesh.point_data.keys()))
+    if verbose: logger.info("Arrays in cell_data: %s", list(mesh.cell_data.keys()))
+    if verbose: logger.info("Arrays in field_data: %s", list(mesh.field_data.keys()))
 
 
-    if verbose: logging.info('Done!')
+    if verbose: logger.info('Done!')
     return mesh
 
 def convert_units(mesh, verbose=True ):
@@ -95,7 +95,7 @@ def convert_units(mesh, verbose=True ):
     Returns:
         pv.DataSet: Updated mesh with new fields.
     """
-    if verbose: logging.info('Converting to physical units...')
+    if verbose: logger.info('Converting to physical units...')
     pts = mesh.points * 6.955e8  # Convert to meters
     mesh['x'], mesh['y'], mesh['z'] = pts[:,0], pts[:,1], pts[:,2] # m
     mesh['rho_dim'] = mesh['rho'] * 1.67e-16 # g/cm3
@@ -121,7 +121,7 @@ def convert_to_spherical(mesh, verbose=True):
     Returns:
         pv.DataSet: Updated mesh with spherical quantities.
     """
-    if verbose: logging.info('Converting to spherical coordinates...')
+    if verbose: logger.info('Converting to spherical coordinates...')
 
     x, y, z = mesh['x'], mesh['y'], mesh['z']
     vx, vy, vz = mesh['vx_dim'], mesh['vy_dim'], mesh['vz_dim']
@@ -195,7 +195,7 @@ def visualize(
         None
     """
 
-    if verbose: logging.info("Creating plotter...")
+    if verbose: logger.info("Creating plotter...")
     off = not show
     if off:
         os.environ.setdefault("PYVISTA_OFF_SCREEN", "1")
@@ -215,7 +215,7 @@ def visualize(
 
     # --------------------------------------------------------------------------
     # Slice plot: radial velocity vr
-    if verbose: logging.info("Adding slice plot ("+slice_plane_scalar+")…")
+    if verbose: logger.info("Adding slice plot ("+slice_plane_scalar+")…")
     slice_plane = mesh.slice(normal=slice_normal, origin=(0, 0, 0))
     if slice_plane_scalar=="vr":
         slice_plane_tit="Radial Velocity [km/s]"
@@ -259,7 +259,7 @@ def visualize(
     # --------------------------------------------------------------------------
     # Alfven surface
     if AlfvSurf:
-        if verbose: logging.info("Adding Alfven surface…")
+        if verbose: logger.info("Adding Alfven surface…")
         va = np.sqrt(mesh['br']**2+mesh['btheta']**2+mesh['bphi']**2)/np.sqrt(4.*np.pi*mesh['rho_dim'])
         Ma = np.sqrt(mesh['vr']**2+mesh['vtheta']**2+mesh['vphi']**2)*1.e5/va
         #print(mesh.n_points, mesh.n_cells, Ma.shape, Ma.size)
@@ -272,12 +272,12 @@ def visualize(
         VrSurf=mesh.contour(scalars=scalar,isosurfaces=[volumic_vr])
         VradialSurf=p.add_mesh(VrSurf,opacity=0.4,color='red')
         #opacity='geom'
-        #logging.info("Adding volumic rendering ("+scalar+")…")
+        #logger.info("Adding volumic rendering ("+scalar+")…")
         #p.add_volume(mesh,scalars=scalar,cmap=['r','r','r'],opacity=opacity,clim=vlim)
 
     # --------------------------------------------------------------------------
     # Clipped inner sphere: br
-    if verbose: logging.info("Adding clipped sphere (br)…")
+    if verbose: logger.info("Adding clipped sphere (br)…")
     sphere = pv.Sphere(center=(0, 0, 0), radius=1.01)
     clipped = mesh.clip_surface(sphere)
 
@@ -302,7 +302,7 @@ def visualize(
 
     # --------------------------------------------------------------------------
     # Magnetic-field streamlines
-    if verbose: logging.info("Adding magnetic field streamlines…")
+    if verbose: logger.info("Adding magnetic field streamlines…")
     mesh["B"] = np.column_stack([mesh["bx_dim"], mesh["by_dim"], mesh["bz_dim"]])
 
     stream = make_streamlines(
@@ -333,12 +333,12 @@ def visualize(
     # --------------------------------------------------------------------------
     # Density isosurface
     if rho_iso != 0.0:
-        if verbose: logging.info("Adding density isosurface...")
+        if verbose: logger.info("Adding density isosurface...")
 
         rmin, rmax = mesh.get_data_range("rho_dim")
 
         if not (rmin <= rho_iso <= rmax):
-            logging.warning(
+            logger.warning(
                 f"rho_iso={rho_iso:.2e} outside rho_dim range "
                 f"[{rmin:.2e}, {rmax:.2e}]. Using mid range instead."
             )
@@ -347,7 +347,7 @@ def visualize(
         iso = mesh.contour([rho_iso], scalars="rho_dim")
 
         if iso.n_points == 0:
-            logging.warning("Density isosurface is empty even after adjustment. Skipping.")
+            logger.warning("Density isosurface is empty even after adjustment. Skipping.")
         else:
             p.add_mesh(
                 iso,
@@ -356,14 +356,14 @@ def visualize(
                 opacity=0.4,
                 show_scalar_bar=False,
             )
-            if verbose: logging.info(f"Density isosurface at rho = {rho_iso:.2e} g/cm^3")
+            if verbose: logger.info(f"Density isosurface at rho = {rho_iso:.2e} g/cm^3")
 
     # --------------------------------------------------------------------------
     # Render + save
     p.show(interactive=False, auto_close=False, window_size=[1800, 900])
 
     if save_path:
-        if verbose: logging.info(f"Saving figure to {save_path}…")
+        if verbose: logger.info(f"Saving figure to {save_path}…")
         p.screenshot(save_path)
 
     if show:

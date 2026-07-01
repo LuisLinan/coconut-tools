@@ -14,6 +14,13 @@ import logging
 from colorlog import ColoredFormatter
 
 def setup_logger(name=__name__):
+    logger = logging.getLogger(name)
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+
+    if logger.handlers:
+        return logger
+
     handler = logging.StreamHandler()
     formatter = ColoredFormatter(
         "%(log_color)s%(asctime)s - %(levelname)s - %(message)s",
@@ -28,7 +35,5 @@ def setup_logger(name=__name__):
         },
     )
     handler.setFormatter(formatter)
-    logger = logging.getLogger(name)
     logger.addHandler(handler)
-    logger.setLevel(logging.INFO)
     return logger

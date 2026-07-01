@@ -26,14 +26,13 @@ import errno
 import os.path
 from typing import List, Tuple
 import re
-import logging
 from datetime import datetime
 from scipy.interpolate import griddata, RBFInterpolator, RegularGridInterpolator, LinearNDInterpolator
 import os
 
+from coconut_tools.tools.logger_config import setup_logger
 
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+logger = setup_logger(__name__)
 
 
 def readstruct(lines: List[str]) -> Tuple[int, int, int, int, int, int, list]:

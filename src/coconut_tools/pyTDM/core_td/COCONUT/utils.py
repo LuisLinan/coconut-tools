@@ -17,10 +17,9 @@ Functions:
 
 import numpy as np
 from scipy.sparse import coo_matrix
-import logging
+from coconut_tools.tools.logger_config import setup_logger
 
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+logger = setup_logger(__name__)
 
 def nufd1(x):
     """

@@ -13,10 +13,10 @@ Cleaned and modularized by: Luis
 
 import numpy as np
 import scipy.ndimage
-import logging
 from typing import Any
 import os
 
+from coconut_tools.tools.logger_config import setup_logger
 from coconut_tools.magnetogram.local_weigh_filter import filter3
 from coconut_tools.magnetogram.magnetogram_download import (
     build_processing_dates,
@@ -39,8 +39,7 @@ from coconut_tools.magnetogram.sph_filtering import (
     write_bc_file,
 )
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
 
 def filter_radial_field_weighted(
     Br: np.ndarray,
@@ -302,17 +301,17 @@ def process_config(config: dict[str, Any], method_used: str = "Yaroslavsky") -> 
 
 if __name__ == "__main__":
 
-    base_output_dir = r"C:\Users\luisl\Desktop\testmagnetogram\hmi_sync"
+    base_output_dir = r"C:\Users\luisl\Desktop\testmagnetogram\hmi_sync2"
     label = "test"
     output_dir = os.path.join(base_output_dir, label)
     figure_output_dir = os.path.join(base_output_dir, "images")
 
     configs = [{
-            "date": "2026-07-01T06:00:00",
+            "date": "2025-11-22T08:00:00",
             "write_map": True,
             "show_map": True,
             "visu_type": "sinlat",
-            "rotate_to_stonyhurst": False,
+            "rotate_to_stonyhurst": True,
             "interpolation": False,
             "interpolation_order": 2,
             "flux_correct": False,

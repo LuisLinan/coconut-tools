@@ -20,14 +20,12 @@ Attributes:
 import glob
 import os
 import shutil
-import logging
 
+from coconut_tools.tools.logger_config import setup_logger
 from coconut_tools.pyTDM.core_td import myconfig as myc
 from coconut_tools.pyTDM.core_td import core as pytdm
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
 
 
 def execute_configs(path: str = None, cfmesh: bool = False) -> None:
@@ -73,4 +71,3 @@ def execute_configs(path: str = None, cfmesh: bool = False) -> None:
 if __name__ == '__main__':
     # Example execution block
     execute_configs(path='C:/Users/luisl/Desktop/cfmesh/config/', cfmesh=True)
-

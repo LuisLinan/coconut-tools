@@ -532,12 +532,106 @@ def find_nearest_hmi_sync_record(
 
     return nearest_t_rec, nearest_datetime
 
+def parse_jsoc_trec(t_rec: str) -> datetime:
+    """Parse a JSOC T_REC string like 2025.11.22_08:24:00_TAI."""
+    value = str(t_rec).replace("_TAI", "")
+
+    for fmt in ("%Y.%m.%d_%H:%M:%S.%f", "%Y.%m.%d_%H:%M:%S"):
+        try:
+            return datetime.strptime(value, fmt)
+        except ValueError:
+            continue
+
+    raise ValueError(f"Cannot parse JSOC T_REC: {t_rec}")
+
+
+def find_hmi_sync_candidates(
+    client,
+    date_datetime: datetime,
+    half_window_hours: int = 12,
+) -> list[tuple[str, datetime]]:
+    """Return available HMI_SYNC metadata records sorted by distance to the target date."""
+    start_datetime = date_datetime - timedelta(hours=half_window_hours)
+    duration_hours = 2 * half_window_hours
+
+    start_jsoc = start_datetime.strftime("%Y.%m.%d_%H:%M:%S_TAI")
+    recordset = f"{HMI_SYNC_SERIES}[{start_jsoc}/{duration_hours}h]"
+
+    logger.info(f"Searching available HMI_SYNC records: {recordset}")
+
+    records = client.query(recordset, key="T_REC")
+
+    if records.empty:
+        return []
+
+    candidates = []
+
+    for _, row in records.iterrows():
+        t_rec = str(row["T_REC"])
+        candidate_datetime = parse_jsoc_trec(t_rec)
+        candidates.append((t_rec, candidate_datetime))
+
+    candidates.sort(key=lambda item: abs(item[1] - date_datetime))
+
+    return candidates
+
+
+def is_jsoc_unavailable_error(exc: Exception) -> bool:
+    """Return True if JSOC found the record but the data file is unavailable."""
+    msg = str(exc).lower()
+
+    unavailable_patterns = [
+        "status=25",
+        "offline",
+        "no fits files were exported",
+        "requested fits files no longer exist",
+        "nodatafile",
+    ]
+
+    return any(pattern in msg for pattern in unavailable_patterns)
+
+
+def try_download_hmi_sync_record(
+    client,
+    t_rec: str,
+    output_dir: str,
+) -> tuple[str, str] | None:
+    """Try to download one HMI_SYNC record. Return None if the data file is unavailable."""
+    series = f"{HMI_SYNC_SERIES}[{t_rec}]"
+
+    logger.info(f"Requesting JSOC series: {series}")
+
+    try:
+        export = client.export(series, protocol="fits")
+        downloaded_files = export.download(output_dir)
+
+        downloads = downloaded_files.download
+        local_file = downloads.iloc[0] if hasattr(downloads, "iloc") else downloads[0]
+        local_file = str(local_file)
+
+        if not local_file.lower().endswith((".fits", ".fits.gz")):
+            raise RuntimeError(f"JSOC did not return a FITS file: {local_file}")
+
+        map_name = Path(local_file).name
+
+        logger.info(f"Downloaded map: {local_file}")
+
+        return local_file, map_name
+
+    except Exception as exc:
+        if is_jsoc_unavailable_error(exc):
+            logger.warning(f"HMI_SYNC record found but data file unavailable: {t_rec}")
+            return None
+
+        raise
+
+
 def download_hmi_sync_magnetogram(
     date_datetime: datetime,
     output_dir: str,
     drms_email: str | None,
 ) -> tuple[str, str]:
-    """Download the nearest available HMI_SYNC magnetogram through JSOC DRMS."""
+    """Download the nearest downloadable HMI_SYNC magnetogram through JSOC DRMS."""
     if not drms_email:
         raise ValueError("HMI_SYNC requires a DRMS email in config['drms_email'].")
 
@@ -547,28 +641,55 @@ def download_hmi_sync_magnetogram(
 
     client = drms.Client(email=drms_email)
 
-    nearest_t_rec, nearest_datetime = find_nearest_hmi_sync_record(
-        client=client,
-        date_datetime=date_datetime,
-        half_window_hours=12,
+    tried_records = set()
+
+    for half_window_hours in (12, 24, 48, 72):
+        candidates = find_hmi_sync_candidates(
+            client=client,
+            date_datetime=date_datetime,
+            half_window_hours=half_window_hours,
+        )
+
+        if not candidates:
+            logger.warning(
+                f"No HMI_SYNC metadata records found within +/- {half_window_hours} h "
+                f"around {date_datetime}."
+            )
+            continue
+
+        logger.info(f"Requested date: {date_datetime}")
+        logger.info(
+            f"Nearest HMI_SYNC metadata record: {candidates[0][0]} "
+            f"at {candidates[0][1]}"
+        )
+
+        for t_rec, candidate_datetime in candidates:
+            if t_rec in tried_records:
+                continue
+
+            tried_records.add(t_rec)
+
+            delta_minutes = abs(candidate_datetime - date_datetime).total_seconds() / 60.0
+
+            logger.info(
+                f"Trying HMI_SYNC record {t_rec} "
+                f"with time difference {delta_minutes:.1f} min"
+            )
+
+            result = try_download_hmi_sync_record(
+                client=client,
+                t_rec=t_rec,
+                output_dir=output_dir,
+            )
+
+            if result is not None:
+                return result
+
+    raise RuntimeError(
+        f"No downloadable HMI_SYNC magnetogram found around {date_datetime}. "
+        f"Metadata records exist, but the nearest data files may be offline on JSOC. "
+        f"JSOC suggests contacting jsoc@sun.stanford.edu for offline files."
     )
-
-    series = f"{HMI_SYNC_SERIES}[{nearest_t_rec}]"
-
-    logger.info(f"Requesting JSOC series: {series}")
-
-    export = client.export(series, protocol="fits")
-    downloaded_files = export.download(output_dir)
-
-    downloads = downloaded_files.download
-    local_file = downloads.iloc[0] if hasattr(downloads, "iloc") else downloads[0]
-    local_file = str(local_file)
-
-    map_name = Path(local_file).name
-
-    logger.info(f"Downloaded map: {local_file}")
-
-    return local_file, map_name
 
 
 def generate_output_and_map_names(
