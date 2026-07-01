@@ -1131,7 +1131,7 @@ if __name__ == "__main__":
     output_dir = os.path.join(base_output_dir, label)
     figure_output_dir = os.path.join(base_output_dir, "images")
 
-    config = {"date": "2020-01-20T01:17:00",
+    config = {"date": "2026-07-01T06:17:00",
         "lmax": 10,
         "amp": 1,
         "write_map": True,
@@ -1143,7 +1143,7 @@ if __name__ == "__main__":
         "interpolation_order": 2,
         "flux_correct": False,
         "flux_correction_method": "surface_mean", #surface_mean' or 'polarity_scaling'
-        "map_type": "GONG_mrzqs",
+        "map_type": "HMI_sync",
         "adapt_map": 6,
         "output_dir": output_dir,
         "download_dir": output_dir,

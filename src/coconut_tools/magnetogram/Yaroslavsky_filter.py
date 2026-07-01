@@ -301,13 +301,13 @@ def process_config(config: dict[str, Any], method_used: str = "Yaroslavsky") -> 
 
 if __name__ == "__main__":
 
-    base_output_dir = r"C:\Users\luisl\Desktop\testmagnetogram\hmi_sync2"
+    base_output_dir = r"C:\Users\luisl\Desktop\testmagnetogram\yaroslavsky_filter"
     label = "test"
     output_dir = os.path.join(base_output_dir, label)
     figure_output_dir = os.path.join(base_output_dir, "images")
 
     configs = [{
-            "date": "2025-11-22T08:00:00",
+            "date": "2022-11-22T01:30:00",
             "write_map": True,
             "show_map": True,
             "visu_type": "sinlat",
@@ -316,7 +316,7 @@ if __name__ == "__main__":
             "interpolation_order": 2,
             "flux_correct": False,
             "flux_correction_method": "surface_mean", #surface_mean' or 'polarity_scaling'
-            "map_type": "HMI_sync",
+            "map_type": "HMI_small",
             "adapt_map": 6,
             "output_dir": output_dir,
             "download_dir": output_dir,

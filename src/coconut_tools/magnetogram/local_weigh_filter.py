@@ -33,7 +33,7 @@ def Th(u, i, j, Rn, h, dx, dy):
 
     for ii in range(u_mask.shape[0]):
         for jj in range(u_mask.shape[1]):
-            r_sq = ((start_i + ii - i)**2 * dx + (start_j + jj - j)**2 * dy)
+            r_sq = ((start_i + ii - i)**2 * dx**2 + (start_j + jj - j)**2 * dy**2)
             if r_sq <= Rn**2:
                 diff = (u_mask[ii, jj] - u[i, j]) / h
                 T_norm[ii, jj] = math.exp(-diff**2)
