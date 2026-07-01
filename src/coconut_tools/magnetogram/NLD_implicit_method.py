@@ -23,6 +23,7 @@ from coconut_tools.magnetogram.magnetogram_download import (
     is_gong_temporal_map_type,
     magnetogram_effective_date,
     magnetogram_display_date,
+    normalize_map_type,
     parse_iso_datetime,
     resolve_figure_path,
 )
@@ -122,7 +123,7 @@ def process_magnetogram_date(
         stencil, optional ``Br_linear``, final diffusion timestep, and rotation
         angle.
     """
-    map_type = config["map_type"]
+    map_type = normalize_map_type(config["map_type"])
     output_dir = config.get("output_dir", "../")
     download_dir = config.get("download_dir", output_dir)
     r_st = config.get("r_st", 1.0)

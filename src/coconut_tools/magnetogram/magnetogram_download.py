@@ -1,5 +1,6 @@
 """Magnetogram discovery, selection, and download helpers."""
 import os
+import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from functools import lru_cache
@@ -18,6 +19,43 @@ GONG_DEFAULT_FILE_ID = "mrzqs"
 GONG_SYNCHRONIC_FILE_IDS = {"mrzqs", "mrbqs", "mrbqj"}
 GONG_DIACHRONIC_FILE_IDS = {"mrmqs", "mrnqs"}
 GONG_FILE_IDS = GONG_SYNCHRONIC_FILE_IDS | GONG_DIACHRONIC_FILE_IDS
+HMI_SYNC_SERIES = "hmi.Mrdailysynframe_720s_nrt"
+
+
+MAP_TYPE_ALIASES = {
+    "wso": "WSO",
+    "adapt": "ADAPT",
+    "hmi_polfil": "HMI_polfil",
+    "hmi_small": "HMI_small",
+    "hmi_sync": "HMI_SYNC",
+}
+
+
+def normalize_map_type(map_type: str) -> str:
+    """Return the canonical map type, accepting case-insensitive input."""
+    if not isinstance(map_type, str):
+        raise TypeError("map_type must be a string.")
+
+    normalized_key = map_type.strip().casefold()
+    if normalized_key == "gong":
+        return "GONG"
+    if normalized_key.startswith("gong_"):
+        file_id = normalized_key.split("_", 1)[1]
+        if file_id in GONG_FILE_IDS:
+            return f"GONG_{file_id}"
+        supported = ", ".join(f"GONG_{item}" for item in sorted(GONG_FILE_IDS))
+        raise ValueError(f"Unsupported GONG map_type: {map_type}. Use one of {supported}.")
+
+    canonical = MAP_TYPE_ALIASES.get(normalized_key)
+    if canonical is not None:
+        return canonical
+
+    supported = ", ".join(
+        ["WSO", "ADAPT", "HMI_polfil", "HMI_small", "HMI_SYNC"]
+        + ["GONG"]
+        + [f"GONG_{item}" for item in sorted(GONG_FILE_IDS)]
+    )
+    raise ValueError(f"Unsupported map_type: {map_type}. Use one of {supported}.")
 
 
 @dataclass(frozen=True)
@@ -63,6 +101,7 @@ def build_output_name(
     method_used: str = "sph",
 ) -> str:
     """Build the COCONUT boundary filename for a target date."""
+    map_type = normalize_map_type(map_type)
     if is_gong_map_type(map_type):
         file_id = gong_file_id_from_map_type(map_type)
         prefix = "map_gong" if map_type == "GONG" else f"map_gong_{file_id}"
@@ -86,7 +125,10 @@ def build_output_name(
 
 def is_gong_map_type(map_type: str) -> bool:
     """Return True for legacy and file-id-specific GONG map types."""
-    return map_type == "GONG" or map_type.startswith("GONG_")
+    if not isinstance(map_type, str):
+        return False
+    normalized_key = map_type.strip().casefold()
+    return normalized_key == "gong" or normalized_key.startswith("gong_")
 
 
 def is_gong_diachronic_map_type(map_type: str) -> bool:
@@ -103,6 +145,7 @@ def is_gong_temporal_map_type(map_type: str) -> bool:
 
 def gong_file_id_from_map_type(map_type: str) -> str:
     """Resolve the GONG file identifier encoded by a map type."""
+    map_type = normalize_map_type(map_type)
     if map_type == "GONG":
         return GONG_DEFAULT_FILE_ID
     if not map_type.startswith("GONG_"):
@@ -252,6 +295,7 @@ def list_remote_candidates(
     map_type: str,
 ) -> list[MagnetogramCandidate]:
     """List remote temporal candidates for a map type."""
+    map_type = normalize_map_type(map_type)
     if is_gong_map_type(map_type):
         file_id = gong_file_id_from_map_type(map_type)
         if file_id in GONG_DIACHRONIC_FILE_IDS:
@@ -330,6 +374,7 @@ def download_interpolation_magnetograms(
     output_dir: str,
 ) -> tuple[list[str], InterpolationSelection]:
     """Download the four magnetograms needed for temporal interpolation."""
+    map_type = normalize_map_type(map_type)
     if is_gong_diachronic_map_type(map_type):
         raise ValueError("Temporal interpolation is not supported for GONG diachronic maps.")
     candidates = list_remote_candidates(date, map_type)
@@ -350,6 +395,23 @@ def parse_date_from_filename(name, fmt, split_token):
         return datetime.strptime(name.split(split_token)[0], fmt)
     except Exception as exc:
         logger.warning(f"Skipping file {name} due to parsing error: {exc}")
+        return None
+
+
+def parse_hmi_sync_filename_date(name: str) -> datetime | None:
+    """Parse the timestamp from an HMI_SYNC JSOC FITS filename."""
+    basename = os.path.basename(name)
+    match = re.search(r"(?P<date>\d{8})_(?P<time>\d{6})(?:_TAI)?", basename)
+    if match is None:
+        return None
+
+    try:
+        return datetime.strptime(
+            match.group("date") + match.group("time"),
+            "%Y%m%d%H%M%S",
+        )
+    except ValueError as exc:
+        logger.warning("Could not parse HMI_SYNC observation date from %s: %s", basename, exc)
         return None
 
 
@@ -377,16 +439,18 @@ def magnetogram_effective_date(
     """Return the timestamp represented by a processed magnetogram.
 
     Interpolated maps represent the requested target time. Non-interpolated
-    GONG and ADAPT maps represent the observation time encoded in their
-    filenames. HMI small/polar-filled and WSO products use the requested target
-    time by convention. HMI_SYNC uses the daily noon timestamp used for JSOC
-    downloads.
+    GONG, ADAPT, and HMI_SYNC maps represent the observation time encoded in
+    their filenames. HMI small/polar-filled and WSO products use the requested
+    target time by convention.
     """
+    map_type = normalize_map_type(map_type)
     target = parse_iso_datetime(target_date)
     if interpolated:
         return target
     if map_type == "HMI_SYNC":
-        return target.replace(hour=12, minute=0, second=0, microsecond=0)
+        parsed_date = parse_hmi_sync_filename_date(file_path)
+        if parsed_date is not None:
+            return parsed_date
     if map_type in {"HMI_small", "HMI_polfil"}:
         return target
 
@@ -416,31 +480,94 @@ def magnetogram_effective_date(
     )
     return target
 
+def parse_jsoc_trec(t_rec: str) -> datetime:
+    """Parse a JSOC T_REC string like 2026.07.01_00:24:00_TAI."""
+    value = str(t_rec).replace("_TAI", "")
+
+    for fmt in ("%Y.%m.%d_%H:%M:%S.%f", "%Y.%m.%d_%H:%M:%S"):
+        try:
+            return datetime.strptime(value, fmt)
+        except ValueError:
+            pass
+
+    raise ValueError(f"Cannot parse JSOC T_REC: {t_rec}")
+
+def find_nearest_hmi_sync_record(
+    client,
+    date_datetime: datetime,
+    half_window_hours: int = 12,
+) -> tuple[str, datetime]:
+    """Find the nearest available HMI_SYNC record around a target datetime."""
+    start_datetime = date_datetime - timedelta(hours=half_window_hours)
+    duration_hours = 2 * half_window_hours
+
+    start_jsoc = start_datetime.strftime("%Y.%m.%d_%H:%M:%S_TAI")
+
+    recordset = f"{HMI_SYNC_SERIES}[{start_jsoc}/{duration_hours}h]"
+
+    logger.info(f"Searching available HMI_SYNC records: {recordset}")
+
+    records = client.query(recordset, key="T_REC")
+
+    if records.empty:
+        raise RuntimeError(
+            f"No HMI_SYNC records found around {date_datetime} "
+            f"within +/- {half_window_hours} hours."
+        )
+
+    candidates = []
+
+    for _, row in records.iterrows():
+        t_rec = str(row["T_REC"])
+        candidate_datetime = parse_jsoc_trec(t_rec)
+        candidates.append((t_rec, candidate_datetime))
+
+    nearest_t_rec, nearest_datetime = min(
+        candidates,
+        key=lambda item: abs(item[1] - date_datetime),
+    )
+
+    logger.info(f"Requested date: {date_datetime}")
+    logger.info(f"Nearest available HMI_SYNC record: {nearest_t_rec}")
+
+    return nearest_t_rec, nearest_datetime
 
 def download_hmi_sync_magnetogram(
     date_datetime: datetime,
     output_dir: str,
     drms_email: str | None,
 ) -> tuple[str, str]:
-    """Download one HMI_SYNC magnetogram through JSOC DRMS."""
+    """Download the nearest available HMI_SYNC magnetogram through JSOC DRMS."""
     if not drms_email:
         raise ValueError("HMI_SYNC requires a DRMS email in config['drms_email'].")
 
     import drms
 
     os.makedirs(output_dir, exist_ok=True)
+
     client = drms.Client(email=drms_email)
-    jsoc_time = date_datetime.strftime("%Y.%m.%d") + "_12:00:00_TAI"
-    series = f"hmi.Mrdailysynframe_720s[{jsoc_time}]"
+
+    nearest_t_rec, nearest_datetime = find_nearest_hmi_sync_record(
+        client=client,
+        date_datetime=date_datetime,
+        half_window_hours=12,
+    )
+
+    series = f"{HMI_SYNC_SERIES}[{nearest_t_rec}]"
+
     logger.info(f"Requesting JSOC series: {series}")
 
     export = client.export(series, protocol="fits")
     downloaded_files = export.download(output_dir)
+
     downloads = downloaded_files.download
     local_file = downloads.iloc[0] if hasattr(downloads, "iloc") else downloads[0]
     local_file = str(local_file)
+
     map_name = Path(local_file).name
+
     logger.info(f"Downloaded map: {local_file}")
+
     return local_file, map_name
 
 
@@ -453,6 +580,7 @@ def generate_output_and_map_names(
 ):
     """Generate output filename and download magnetogram file based on map type."""
 
+    map_type = normalize_map_type(map_type)
     date_datetime = parse_iso_datetime(date)
 
     cr_number = int(sunpy.coordinates.sun.carrington_rotation_number(date_datetime))
@@ -540,6 +668,7 @@ def append_timestamp_to_path(path: str, date: str | datetime) -> str:
 
 def default_figure_path(output_dir: str, map_type: str, date: str | datetime) -> str:
     """Build a default diagnostic figure path for one target date."""
+    map_type = normalize_map_type(map_type)
     return os.path.join(output_dir, f"{map_type.lower()}_{format_timestamp(date)}.png")
 
 
@@ -579,6 +708,7 @@ def generate_output_and_interpolation_map_names(
 ):
     """Generate output name and download four maps for temporal interpolation."""
 
+    map_type = normalize_map_type(map_type)
     output_name = build_output_name(
         map_type,
         output_dir,

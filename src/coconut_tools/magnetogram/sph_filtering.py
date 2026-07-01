@@ -11,9 +11,9 @@ harmonic projection/reconstruction, diagnostics, and figure generation.
 
 Date handling follows the common magnetogram "effective time" convention:
 interpolated GONG/ADAPT maps represent the requested target time, HMI small,
-HMI polar-filled, and WSO use the target time by convention, HMI_SYNC uses the
-daily noon JSOC product time, and non-interpolated GONG/ADAPT maps use the
-timestamp encoded in the selected filename.
+HMI polar-filled, and WSO use the target time by convention, and
+non-interpolated GONG/ADAPT/HMI_SYNC maps use the timestamp encoded in the
+selected filename.
 """
 import os
 from datetime import datetime
@@ -34,6 +34,7 @@ from coconut_tools.magnetogram.magnetogram_download import (
     is_gong_temporal_map_type,
     magnetogram_effective_date,
     magnetogram_display_date,
+    normalize_map_type,
     parse_iso_datetime,
     resolve_figure_path,
 )
@@ -123,6 +124,7 @@ def ensure_increasing_longitude(
     read because the current pipeline treats their FITS products as already
     increasing in longitude.
     """
+    map_type = normalize_map_type(map_type)
     if map_type.lower() == "wso":
         return Br
     if "hmi" in map_type.lower():
@@ -181,6 +183,7 @@ def processed_longitude_axis(
     GONG maps, the filename-encoded circular shift is applied so the longitude
     axis matches the map that was shifted before interpolation.
     """
+    map_type = normalize_map_type(map_type)
     if map_type.lower() == "wso":
         return np.linspace(0.0, 360.0, 73)
 
@@ -242,6 +245,7 @@ def apply_configured_longitude_rotation(
         rotated ``Br_linear`` if present, and rotation angle in degrees. The
         angle is ``None`` when rotation is disabled.
     """
+    map_type = normalize_map_type(map_type)
     if not rotate_to_stonyhurst:
         return Br, Br_linear, None
 
@@ -329,6 +333,7 @@ def build_regular_theta_phi(Br: np.ndarray, map_type: str) -> tuple[np.ndarray, 
         tuple[np.ndarray, np.ndarray]: One-dimensional colatitude ``theta`` and
         longitude ``phi`` vectors in radians.
     """
+    map_type = normalize_map_type(map_type)
     nb_th, nb_phi = Br.shape
     if map_type == "ADAPT":
         theta = np.linspace(0.0, np.pi, nb_th)
@@ -356,6 +361,7 @@ def read_temporal_br_map(file_path: str, map_type: str, adapt_map: int = 0) -> n
     Returns:
         np.ndarray: Normalized radial magnetic field map.
     """
+    map_type = normalize_map_type(map_type)
     input_data = read_first_fits_image(file_path)
     if map_type == "ADAPT":
         Br = np.nan_to_num(input_data[adapt_map, ::-1, :])
@@ -443,6 +449,7 @@ def read_interpolated_magnetogram(
         tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
             Br, Theta, Phi, Br_linear.
     """
+    map_type = normalize_map_type(map_type)
     logger.info("Reading interpolation stencil")
     Br_maps = [read_temporal_br_map(path, map_type, adapt_map) for path in local_files]
     shapes = {Br.shape for Br in Br_maps}
@@ -475,6 +482,7 @@ def read_magnetogram(file_path, map_type, adapt_map=0):
         tuple[np.ndarray, np.ndarray, np.ndarray]: Br map and 2D ``Theta`` and
         ``Phi`` grids in radians.
     """
+    map_type = normalize_map_type(map_type)
     logger.info('Reading file')
 
     if map_type == 'ADAPT':
@@ -917,7 +925,7 @@ def process_magnetogram_date(
         file or interpolation stencil, optional ``Br_linear``, spherical
         harmonic coefficients, and rotation angle.
     """
-    map_type = config["map_type"]
+    map_type = normalize_map_type(config["map_type"])
     output_dir = config.get("output_dir", "../")
     download_dir = config.get("download_dir", output_dir)
     lmax = config.get("lmax", 20)

@@ -25,6 +25,7 @@ from coconut_tools.magnetogram.magnetogram_download import (
     is_gong_temporal_map_type,
     magnetogram_effective_date,
     magnetogram_display_date,
+    normalize_map_type,
     parse_iso_datetime,
     resolve_figure_path,
 )
@@ -119,7 +120,7 @@ def process_magnetogram_date(
         ``effective_date``, output paths, selected local file or interpolation
         stencil, optional ``Br_linear``, and rotation angle.
     """
-    map_type = config["map_type"]
+    map_type = normalize_map_type(config["map_type"])
     output_dir = config.get("output_dir", "../")
     download_dir = config.get("download_dir", output_dir)
     r_st = config.get("r_st", 1.0)
@@ -301,13 +302,13 @@ def process_config(config: dict[str, Any], method_used: str = "Yaroslavsky") -> 
 
 if __name__ == "__main__":
 
-    base_output_dir = r"C:\Users\luisl\Desktop\testmagnetogram"
+    base_output_dir = r"C:\Users\luisl\Desktop\testmagnetogram\hmi_sync"
     label = "test"
     output_dir = os.path.join(base_output_dir, label)
     figure_output_dir = os.path.join(base_output_dir, "images")
 
     configs = [{
-            "date": "2020-01-20T01:17:00",
+            "date": "2026-07-01T06:00:00",
             "write_map": True,
             "show_map": True,
             "visu_type": "sinlat",
@@ -316,7 +317,7 @@ if __name__ == "__main__":
             "interpolation_order": 2,
             "flux_correct": False,
             "flux_correction_method": "surface_mean", #surface_mean' or 'polarity_scaling'
-            "map_type": "GONG_mrzqs",
+            "map_type": "HMI_sync",
             "adapt_map": 6,
             "output_dir": output_dir,
             "download_dir": output_dir,

@@ -10,6 +10,7 @@ from coconut_tools.magnetogram.magnetogram_download import (
     default_figure_path,
     magnetogram_display_date,
     magnetogram_effective_date,
+    normalize_map_type,
     resolve_figure_path,
 )
 from coconut_tools.magnetogram.sph_filtering import (
@@ -37,10 +38,10 @@ def test_magnetogram_dates_and_paths_are_resolved_consistently():
         2020, 12, 7, 14, 0
     )
     assert magnetogram_effective_date(
-        "hmi_sync.fits",
+        "hmi.mrdailysynframe_720s_nrt.20260701_062400_TAI.data.fits",
         "HMI_SYNC",
         datetime(2020, 12, 7, 15, 30, 45),
-    ) == datetime(2020, 12, 7, 12, 0)
+    ) == datetime(2026, 7, 1, 6, 24)
     assert magnetogram_effective_date(
         "magnetogram.fits",
         "GONG_mrbqs",
@@ -66,6 +67,28 @@ def test_magnetogram_dates_and_paths_are_resolved_consistently():
     ) == str(outdir / "gong_20201207150000.png")
 
 
+def test_map_type_normalization_accepts_case_variants():
+    outdir = Path(__file__).parent / "_outputs"
+
+    assert normalize_map_type("hmi_sync") == "HMI_SYNC"
+    assert normalize_map_type("HMI_SYNC") == "HMI_SYNC"
+    assert normalize_map_type("Hmi_Small") == "HMI_small"
+    assert normalize_map_type("gong_MRBQS") == "GONG_mrbqs"
+    assert normalize_map_type(" adapt ") == "ADAPT"
+
+    assert magnetogram_effective_date(
+        "hmi.mrdailysynframe_720s_nrt.20260701_062400_TAI.data.fits",
+        "hmi_sync",
+        datetime(2020, 12, 7, 15, 30, 45),
+    ) == datetime(2026, 7, 1, 6, 24)
+    assert build_output_name("hmi_sync", str(outdir), "sph") == str(
+        outdir / "map_hmi_sync_sph.dat"
+    )
+    assert build_output_name("gong_MRBQS", str(outdir), "sph") == str(
+        outdir / "map_gong_mrbqs_sph.dat"
+    )
+
+
 def test_local_rotation_helpers_use_the_expected_longitude_convention():
     outdir = Path(__file__).parent / "_outputs" / "magnetogram_helpers"
     outdir.mkdir(parents=True, exist_ok=True)
@@ -82,6 +105,9 @@ def test_local_rotation_helpers_use_the_expected_longitude_convention():
 
     Br, _, _ = read_magnetogram(str(file_path), "GONG")
     np.testing.assert_array_equal(Br, data[::-1, ::-1])
+
+    Br_lowercase, _, _ = read_magnetogram(str(file_path), "gong")
+    np.testing.assert_array_equal(Br_lowercase, data[::-1, ::-1])
 
     rotated = rotate_longitude_to_stonyhurst(np.arange(8).reshape(1, 8), 90.0)
     np.testing.assert_array_equal(rotated, np.array([[2, 3, 4, 5, 6, 7, 0, 1]]))
