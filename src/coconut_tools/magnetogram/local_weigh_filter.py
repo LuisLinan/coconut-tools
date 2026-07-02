@@ -69,9 +69,10 @@ def filter3(image: np.ndarray, dx: float, dy: float, alpha: float, Rn: float, im
     if image_seq is not None:
         image_seq.append(u.copy())
 
-    Rn *= max(dx, dy)
     h = Rn ** alpha
-    u_new = np.zeros_like(u)
+    Rn *= max(dx, dy)
+    u_new = np.zeros_like(u)    
+
     
 
     logger.info(f"Starting local filter with shape {u.shape}, Rn={Rn:.3f}, h={h:.3f}")
