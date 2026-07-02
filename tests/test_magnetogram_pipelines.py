@@ -21,6 +21,38 @@ def _assert_artifact(path: Path):
     assert path.stat().st_size > 0, f"Empty output: {path}"
 
 
+def test_yaroslavsky_spacing_uses_radian_arc_length(monkeypatch):
+    from coconut_tools.magnetogram import Yaroslavsky_filter
+
+    captured = {}
+
+    def fake_filter3(image, dx, dy, alpha, Rn):
+        captured.update({"dx": dx, "dy": dy, "alpha": alpha, "Rn": Rn})
+        return image.copy()
+
+    monkeypatch.setattr(Yaroslavsky_filter, "filter3", fake_filter3)
+
+    Br = np.ones((4, 5))
+    theta = np.array([0.0, 0.2, 0.5, 0.9])
+    phi = np.linspace(0.0, 2.0 * np.pi, Br.shape[1], endpoint=False)
+
+    result = Yaroslavsky_filter.filter_radial_field_weighted(
+        Br,
+        phi,
+        theta,
+        alpha_factor=1.4,
+        Rn=2,
+        sig=0.0,
+    )
+
+    expected_delta = 696.34e6 * max(np.median(np.diff(theta)), np.median(np.diff(phi)))
+    assert np.array_equal(result, Br)
+    assert captured["dx"] == pytest.approx(expected_delta)
+    assert captured["dy"] == pytest.approx(expected_delta)
+    assert captured["alpha"] == 1.4
+    assert captured["Rn"] == 2
+
+
 def _write_dat_and_png(outdir, name, Br_input, Br_output, Theta, Phi):
     from coconut_tools.magnetogram.sph_filtering import plot_maps, write_bc_file
 

@@ -559,54 +559,89 @@ def read_magnetogram(file_path, map_type, adapt_map=0):
 def project_and_reconstruct(Br, Theta, Phi, lmax, amp=1, alpha=0):
     """Project Br onto spherical harmonics and reconstruct the filtered map.
 
-    Coefficients are computed for all degrees ``1..lmax`` and orders
-    ``0..l``. The optional ``alpha`` damps high-degree modes during projection,
-    and ``amp`` rescales the reconstructed field after the historical COCONUT
-    normalization by 2.2.
-
-    Args:
-        Br (ndarray): Original radial field.
-        Theta (ndarray): 2D colatitude grid in radians.
-        Phi (ndarray): 2D longitude grid in radians.
-        lmax (int): Maximum spherical harmonic degree.
-        amp (float): Amplitude factor for reconstruction.
-        alpha (float): High-degree damping factor.
-
-    Returns:
-        tuple[np.ndarray, np.ndarray]: Reconstructed map ``Br_mode`` and complex
-        spherical harmonic coefficients ``coefbr``.
+    Uses complex spherical harmonics with coefficients stored only for m >= 0.
+    For a real field, the missing negative-m modes are recovered during
+    reconstruction by adding 2 * real(a_lm * Y_lm) for m > 0.
     """
-    logger.info('Beginning of projection')
+    logger.info("Beginning of projection")
+
+    Br = np.asarray(Br)
+    Theta = np.asarray(Theta)
+    Phi = np.asarray(Phi)
+
+    if Br.shape != Theta.shape or Br.shape != Phi.shape:
+        raise ValueError("Br, Theta, and Phi must have the same 2D shape.")
+    if Br.ndim != 2:
+        raise ValueError("Br, Theta, and Phi must be 2D arrays.")
+    if lmax < 1:
+        raise ValueError("lmax must be >= 1.")
+    if alpha < 0:
+        raise ValueError("alpha must be non-negative.")
+
     nb_th, nb_phi = Br.shape
     nb_modes_tot = int((lmax + 1) * (lmax + 2) / 2 - 1)
 
-    dtheta = np.tile(np.gradient(Theta[:, 0]), (nb_phi, 1)).T
-    dphi = np.tile(np.gradient(Phi[0, :]), (nb_th, 1))
+    theta = Theta[:, 0]
+    phi = Phi[0, :]
+
+    # Cell-width integration: more faithful than np.gradient for cell-centered grids.
+    theta_edges = np.empty(theta.size + 1)
+    theta_edges[0] = 0.0
+    theta_edges[-1] = np.pi
+    theta_edges[1:-1] = 0.5 * (theta[:-1] + theta[1:])
+    dtheta_1d = np.diff(theta_edges)
+
+    phi_unwrapped = np.unwrap(phi)
+    dphi_default = 2.0 * np.pi / nb_phi
+    phi_edges = np.empty(phi.size + 1)
+    phi_edges[1:-1] = 0.5 * (phi_unwrapped[:-1] + phi_unwrapped[1:])
+    phi_edges[0] = phi_unwrapped[0] - 0.5 * dphi_default
+    phi_edges[-1] = phi_edges[0] + 2.0 * np.pi
+    dphi_1d = np.diff(phi_edges)
+
+    dtheta = np.tile(dtheta_1d, (nb_phi, 1)).T
+    dphi = np.tile(dphi_1d, (nb_th, 1))
+
+    surface_weight = np.sin(Theta) * dtheta * dphi
 
     coefbr = np.zeros(nb_modes_tot, dtype=complex)
-    mod = 0
-    for l in range(1, lmax + 1):
-        logger.info(f"l = {l}")
-        for m in range(0, l + 1):
-            ylm = spherical_harmonic(m, l, Phi, Theta) / (1+alpha*l**2*(l+1)**2)
-            integrand = Br * np.conj(ylm) * np.sin(Theta) * dtheta * dphi
-            coefbr[mod] = np.sum(integrand)
-            mod += 1
-    logger.info('End of projection')
 
-    logger.info('Reconstructing Br')
-    Br_mode = np.zeros_like(Br)
     mod = 0
     for l in range(1, lmax + 1):
         logger.info(f"l = {l}")
+        damping = 1.0 / (1.0 + alpha * l**2 * (l + 1) ** 2)
+
         for m in range(0, l + 1):
             ylm = spherical_harmonic(m, l, Phi, Theta)
-            Br_mode += np.real(coefbr[mod] * ylm)
+
+            coef = np.sum(Br * np.conj(ylm) * surface_weight)
+            coefbr[mod] = damping * coef
+
+            mod += 1
+
+    logger.info("End of projection")
+
+    logger.info("Reconstructing Br")
+    Br_mode = np.zeros_like(Br, dtype=float)
+
+    mod = 0
+    for l in range(1, lmax + 1):
+        logger.info(f"l = {l}")
+
+        for m in range(0, l + 1):
+            ylm = spherical_harmonic(m, l, Phi, Theta)
+            contribution = np.real(coefbr[mod] * ylm)
+
+            if m > 0:
+                contribution *= 2.0
+
+            Br_mode += contribution
             mod += 1
 
     Br_mode /= 2.2
     Br_mode *= amp
-    logger.info('End of reconstructing Br')
+
+    logger.info("End of reconstructing Br")
     return Br_mode, coefbr
 
 def write_bc_file(output_name, Br_mode, theta, phi, r_st):
@@ -686,9 +721,24 @@ def plot_maps(
     Sinlong = Long
 
     vmax1 = np.max(np.abs(Br))
-    vmax1= 20
+    #vmax1 
     vmax2 = np.max(np.abs(Br_mode))
-    #vmax2 = 30
+    vmax2 = vmax1 / 2.2 
+
+    def stats(name, B):
+        print(
+            name,
+            "min", np.nanmin(B),
+            "max", np.nanmax(B),
+            "absmax", np.nanmax(np.abs(B)),
+            "p99 abs", np.nanpercentile(np.abs(B), 99),
+            "mean abs", np.nanmean(np.abs(B)),
+        )
+
+    stats("original", Br)
+    stats("processed", Br_mode)
+
+
     # Plot original map
     if visu_type == 'lat':
         im1 = ax1.imshow(
@@ -1127,23 +1177,23 @@ if __name__ == "__main__":
     #to run a steady test
 
     base_output_dir = r"C:\Users\luisl\Desktop\testmagnetogram"
-    label = "test"
+    label = "sph"
     output_dir = os.path.join(base_output_dir, label)
     figure_output_dir = os.path.join(base_output_dir, "images")
 
     config = {"date": "2026-07-01T06:17:00",
-        "lmax": 10,
+        "lmax": 20,
         "amp": 1,
         "write_map": True,
         "show_map": True,
         "visu_type": "sinlat",
         "alpha": 3 * 10 ** (-6),
-        "rotate_to_stonyhurst": False,
+        "rotate_to_stonyhurst": True,
         "interpolation": False,
         "interpolation_order": 2,
         "flux_correct": False,
         "flux_correction_method": "surface_mean", #surface_mean' or 'polarity_scaling'
-        "map_type": "HMI_sync",
+        "map_type": "GONG_mrbqs",
         "adapt_map": 6,
         "output_dir": output_dir,
         "download_dir": output_dir,

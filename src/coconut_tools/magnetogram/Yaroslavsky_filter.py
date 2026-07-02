@@ -52,36 +52,77 @@ def filter_radial_field_weighted(
 ):
     """Apply optional Gaussian smoothing and local weighted filtering to Br.
 
-    Grid spacing is estimated from the supplied longitude and colatitude
-    vectors, converted to meters using the solar radius, then passed to
-    ``filter3`` through a single neighborhood scale.
+    Grid spacing is estimated from the supplied longitude and colatitude vectors
+    in radians. Following the article implementation, a single isotropic
+    physical spacing ``R_sun * max(delta_theta, delta_phi)`` is passed to the
+    local weighted filter.
 
     Args:
         Br (np.ndarray): Input magnetic field map.
         phi (np.ndarray): 1D array of longitudes in radians.
         theta (np.ndarray): 1D array of colatitudes in radians.
         alpha_factor (float): Alpha controlling kernel sharpness.
-        Rn (float): Radius of neighborhood in physical units.
+        Rn (float): Neighborhood radius in grid-spacing units.
         sig (float): Sigma of optional Gaussian smoothing.
         write_gaussian_prepass (bool): Whether to export Gaussian-smoothed version.
 
     Returns:
         np.ndarray: Filtered Br field.
     """
-    dlong = phi[1] / (2 * np.pi)
-    dlat = theta[1] / np.pi
-    R_sun = 696.34e6
+    Br = np.asarray(Br)
+    phi = np.asarray(phi, dtype=float)
+    theta = np.asarray(theta, dtype=float)
 
-    dx = dlong * R_sun
-    dy = dlat * R_sun
-    delta_var = max(dx, dy)
+    if Br.ndim != 2:
+        raise ValueError("Br must be a 2D array.")
+    if phi.ndim != 1 or theta.ndim != 1:
+        raise ValueError("phi and theta must be 1D arrays.")
+    if Br.shape != (theta.size, phi.size):
+        raise ValueError(
+            f"Br shape {Br.shape} does not match theta/phi sizes "
+            f"({theta.size}, {phi.size})."
+        )
+    if theta.size < 2 or phi.size < 2:
+        raise ValueError("theta and phi must contain at least two points.")
+    if not (
+        np.all(np.isfinite(Br))
+        and np.all(np.isfinite(theta))
+        and np.all(np.isfinite(phi))
+    ):
+        raise ValueError("Br, theta, and phi must contain only finite values.")
+    if Rn <= 0:
+        raise ValueError("Rn must be positive.")
+    if alpha_factor < 0:
+        raise ValueError("alpha_factor must be non-negative.")
+    if sig < 0:
+        raise ValueError("sig must be non-negative.")
+
+    theta_steps = np.abs(np.diff(theta))
+    phi_steps = np.abs(np.diff(np.unwrap(phi)))
+    theta_steps = theta_steps[theta_steps > 0]
+    phi_steps = phi_steps[phi_steps > 0]
+    if theta_steps.size == 0 or phi_steps.size == 0:
+        raise ValueError("theta and phi coordinates must contain at least two distinct values.")
+
+    dtheta = float(np.median(theta_steps))
+    dphi = float(np.median(phi_steps))
+
+    R_sun = 696.34e6
+    delta_var = R_sun * max(dtheta, dphi)
 
     Br_smoothed = scipy.ndimage.gaussian_filter(Br, sig) if sig > 0 else Br.copy()
 
     if write_gaussian_prepass:
         np.save("Br_gaussian_prepass.npy", Br_smoothed)
 
-    logger.info("Running local filter with alpha=%.2f, Rn=%.2f, dx=%.2f, dy=%.2f", alpha_factor, Rn, dx, dy)
+    logger.info(
+        "Running local filter with alpha=%.2f, Rn=%.2f, dtheta=%.6g rad, dphi=%.6g rad, delta=%.2f m",
+        alpha_factor,
+        Rn,
+        dtheta,
+        dphi,
+        delta_var,
+    )
     Br_filtered = filter3(Br_smoothed, delta_var, delta_var, alpha_factor, Rn)
 
     return Br_filtered
@@ -217,6 +258,8 @@ def process_magnetogram_date(
         write_gaussian_prepass=_as_bool(config.get("write_gaussian_prepass", False)),
     )
 
+    Br_filtered = Br_filtered / 2.2
+
     if write_map:
         write_bc_file(output_name, Br_filtered, Theta[:, 0], Phi[0, :], r_st)
 
@@ -301,13 +344,13 @@ def process_config(config: dict[str, Any], method_used: str = "Yaroslavsky") -> 
 
 if __name__ == "__main__":
 
-    base_output_dir = r"C:\Users\luisl\Desktop\testmagnetogram\yaroslavsky_filter"
-    label = "test"
+    base_output_dir = r"C:\Users\luisl\Desktop\testmagnetogram"
+    label = "yaroslavsky"
     output_dir = os.path.join(base_output_dir, label)
     figure_output_dir = os.path.join(base_output_dir, "images")
 
     configs = [{
-            "date": "2022-11-22T01:30:00",
+            "date": "2026-07-01T06:17:00",
             "write_map": True,
             "show_map": True,
             "visu_type": "sinlat",
@@ -316,7 +359,7 @@ if __name__ == "__main__":
             "interpolation_order": 2,
             "flux_correct": False,
             "flux_correction_method": "surface_mean", #surface_mean' or 'polarity_scaling'
-            "map_type": "HMI_small",
+            "map_type": "GONG_mrbqs",
             "adapt_map": 6,
             "output_dir": output_dir,
             "download_dir": output_dir,
@@ -324,7 +367,7 @@ if __name__ == "__main__":
             "drms_email": "luis.linan@kuleuven.be",
             "alpha": 1.4,
             "Rn" : 2,
-            "sig": 1.5
+            "sig": 1.0
         }]
 
     # for time evolving add : cadence_hours and total_hours to the config dictionary, e.g.:

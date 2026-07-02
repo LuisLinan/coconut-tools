@@ -35,8 +35,8 @@ def nonlinearDiffusionFilter(image: np.ndarray, dx: float, dy: float, iterations
     def gradU(u):
         gradkernelx = 0.5 / dx * np.array([[0, 0, 0], [-1, 0, 1], [0, 0, 0]])
         gradkernely = 0.5 / dy * np.array([[0, -1, 0], [0, 0, 0], [0, 1, 0]])
-        gradx = scipy.signal.convolve2d(u, gradkernelx, boundary='symm')
-        grady = scipy.signal.convolve2d(u, gradkernely, boundary='symm')
+        gradx = scipy.signal.convolve2d(u, gradkernelx, mode="same", boundary="symm")
+        grady = scipy.signal.convolve2d(u, gradkernely, mode="same", boundary="symm")
         return gradx, grady
 
     def computeDiffusivity(u, lamb):
@@ -45,43 +45,42 @@ def nonlinearDiffusionFilter(image: np.ndarray, dx: float, dy: float, iterations
         return 1.0 / np.sqrt(1.0 + gradm2 / (lamb * lamb))
 
     def computef_matrix(u, g, shape):
-        g = np.pad(g, pad_width=1, mode='constant')
         f_matrix = scipy.sparse.lil_matrix((u.shape[0], u.shape[0]))
 
         rows, cols = shape
-        for i in range(cols):
-            for j in range(rows):
+        inv_dx2 = 1.0 / (dx ** 2)
+        inv_dy2 = 1.0 / (dy ** 2)
+
+        for j in range(rows):
+            for i in range(cols):
                 k = j * cols + i
 
-                g_ip = math.sqrt(g[j + 1, i] * g[j, i])
-                g_in = math.sqrt(g[j - 1, 1] * g[j, i])
+                i_plus = (i + 1) % cols
+                i_minus = (i - 1) % cols
 
-                if i == cols - 1:
-                    g_pj = math.sqrt(g[j, 0] * g[j, i])
-                    f_matrix[k, k - cols - 1] = g_pj * 1 / (dx ** 2)
-                else:
-                    g_pj = math.sqrt(g[j, i + 1] * g[j, i])
-                    f_matrix[k, k + 1] = g_pj * 1 / (dx ** 2)
+                g_right = math.sqrt(g[j, i] * g[j, i_plus])
+                g_left = math.sqrt(g[j, i] * g[j, i_minus])
 
-                if i == 0:
-                    g_nj = math.sqrt(g[j, cols - 1] * g[j, i])
-                    f_matrix[k, k + cols - 1] = g_nj * 1 / (dx ** 2)
-                else:
-                    g_nj = math.sqrt(g[j, i - 1] * g[j, i])
-                    f_matrix[k, k - 1] = g_nj * 1 / (dx ** 2)
+                k_right = j * cols + i_plus
+                k_left = j * cols + i_minus
 
-                f_matrix[k, k] = (-g_pj - g_nj) * 1 / (dx ** 2)
+                f_matrix[k, k_right] = g_right * inv_dx2
+                f_matrix[k, k_left] = g_left * inv_dx2
 
-                if j != 0:
-                    f_matrix[k, k - cols] = g_in * 1 / (dy ** 2)  # from above
-                if j != rows - 1:
-                    f_matrix[k, k + cols] = g_ip * 1 / (dy ** 2)  # from bellow
-                if j != rows - 1 and j != 0:
-                    f_matrix[k, k] = f_matrix[k, k] + (-g_ip - g_in) * 1 / (dy ** 2)
-                elif j != rows - 1:  # it's in the top boundary
-                    f_matrix[k, k] = f_matrix[k, k] + (-g_ip) * 1 / (dy ** 2)
-                else:  # it's in the bottom boundary
-                    f_matrix[k, k] = f_matrix[k, k] + (-g_in) * 1 / (dy ** 2)
+                diagonal = -(g_right + g_left) * inv_dx2
+
+                if j > 0:
+                    g_up = math.sqrt(g[j, i] * g[j - 1, i])
+                    f_matrix[k, k - cols] = g_up * inv_dy2
+                    diagonal -= g_up * inv_dy2
+
+                if j < rows - 1:
+                    g_down = math.sqrt(g[j, i] * g[j + 1, i])
+                    f_matrix[k, k + cols] = g_down * inv_dy2
+                    diagonal -= g_down * inv_dy2
+
+                f_matrix[k, k] = diagonal
+
         return f_matrix.tocsr()
 
     def compute_matrix_system(u, u_0, tau, lamb, f_0, shape):
@@ -99,7 +98,10 @@ def nonlinearDiffusionFilter(image: np.ndarray, dx: float, dy: float, iterations
 
     shape = u.shape
     gradx, grady = gradU(u)
-    lamb = 1.4826 * abs(np.median([gradx, grady]) - np.median(np.sqrt(gradx ** 2 + grady ** 2)))
+    gradm = np.sqrt(gradx ** 2 + grady ** 2)
+    lamb = 1.4826 * np.median(np.abs(gradm - np.median(gradm)))
+    if lamb == 0.0:
+        lamb = np.finfo(float).eps    
     logger.info(f"Lambda estimate: {lamb:.3e}")
 
     u = u.reshape(-1)

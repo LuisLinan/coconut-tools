@@ -45,6 +45,7 @@ def main_loop_integration(u, i, j, Rn, h, dx, dy):
     Ix_2 = scipy.integrate.simpson(T_norm, dx=dx)
     N = scipy.integrate.simpson(Ix_2, dx=dy)
     Ix = scipy.integrate.simpson(T_array, dx=dx)
+
     return scipy.integrate.simpson(Ix, dx=dy) / N if N != 0 else u[i, j]
 
 def filter3(image: np.ndarray, dx: float, dy: float, alpha: float, Rn: float, image_seq=None):
@@ -71,6 +72,7 @@ def filter3(image: np.ndarray, dx: float, dy: float, alpha: float, Rn: float, im
     Rn *= max(dx, dy)
     h = Rn ** alpha
     u_new = np.zeros_like(u)
+    
 
     logger.info(f"Starting local filter with shape {u.shape}, Rn={Rn:.3f}, h={h:.3f}")
     time_start = time.time()

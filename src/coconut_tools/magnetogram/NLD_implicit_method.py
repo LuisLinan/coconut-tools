@@ -227,6 +227,8 @@ def process_magnetogram_date(
         tau=tau,
     )
 
+    Br_filtered = Br_filtered / 2.2
+
     if write_map:
         write_bc_file(output_name, Br_filtered, Theta[:, 0], Phi[0, :], r_st)
 
@@ -313,23 +315,23 @@ def process_config(config: dict[str, Any], method_used: str = "NLD") -> list[dic
 if __name__ == "__main__":
 
     base_output_dir = r"C:\Users\luisl\Desktop\testmagnetogram"
-    label = "test"
+    label = "NLD"
     output_dir = os.path.join(base_output_dir, label)
     figure_output_dir = os.path.join(base_output_dir, "images")
 
 
     configs = [
         {
-        "date": "2020-01-20T01:17:00",
+        "date": "2026-07-01T06:17:00",
         "write_map": True,
         "show_map": True,
         "visu_type": "sinlat",
-        "rotate_to_stonyhurst": False,
+        "rotate_to_stonyhurst": True,
         "interpolation": False,
         "interpolation_order": 2,
         "flux_correct": False,
         "flux_correction_method": "surface_mean", #surface_mean' or 'polarity_scaling'
-        "map_type": "GONG_mrzqs",
+        "map_type": "GONG_mrbqs",
         "adapt_map": 6,
         "output_dir": output_dir,
         "download_dir": output_dir,
