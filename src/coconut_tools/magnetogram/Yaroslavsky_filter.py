@@ -145,7 +145,7 @@ def process_magnetogram_date(
     Args:
         config (dict[str, Any]): Processing configuration. Common keys are
             ``map_type``, ``output_dir``, ``download_dir``, ``r_st``,
-            ``adapt_map``, ``write_map``, ``show_map``, ``visu_type``,
+            ``amp``, ``adapt_map``, ``write_map``, ``show_map``, ``visu_type``,
             ``alpha``, ``Rn``, ``sig``, ``interpolation_order``,
             ``interpolation``, ``rotate_to_stonyhurst``, ``flux_correct``,
             ``flux_correction_method``, ``drms_email`` or ``jsoc_email``, and
@@ -164,6 +164,7 @@ def process_magnetogram_date(
     output_dir = config.get("output_dir", "../")
     download_dir = config.get("download_dir", output_dir)
     r_st = config.get("r_st", 1.0)
+    amp = config.get("amp", 1)
     adapt_map = config.get("adapt_map", 6)
     write_map = _as_bool(config.get("write_map", True))
     show_map = _as_bool(config.get("show_map", True))
@@ -259,6 +260,7 @@ def process_magnetogram_date(
     )
 
     Br_filtered = Br_filtered / 2.2
+    Br_filtered *= amp
 
     if write_map:
         write_bc_file(output_name, Br_filtered, Theta[:, 0], Phi[0, :], r_st)
@@ -351,6 +353,7 @@ if __name__ == "__main__":
 
     configs = [{
             "date": "2026-07-01T06:17:00",
+            "amp": 1,
             "write_map": True,
             "show_map": True,
             "visu_type": "sinlat",
@@ -367,7 +370,7 @@ if __name__ == "__main__":
             "drms_email": "luis.linan@kuleuven.be",
             "alpha": 1.4,
             "Rn" : 2,
-            "sig": 1.0
+            "sig": 1.5
         }]
 
     # for time evolving add : cadence_hours and total_hours to the config dictionary, e.g.:

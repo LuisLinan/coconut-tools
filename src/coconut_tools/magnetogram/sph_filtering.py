@@ -48,6 +48,8 @@ from coconut_tools.tools.rotation_angle import (
 
 logger = setup_logger(__name__)
 
+_PLOT_COLOR_LIMIT_PERCENTILE = 99.0
+
 def build_theta_phi(theta, phi):
     """Build 2D meshgrids from 1D theta and phi arrays.
 
@@ -676,6 +678,39 @@ def write_bc_file(output_name, Br_mode, theta, phi, r_st):
                 F.write(f"{xcoord:.16e} {ycoord:.16e} {zcoord:.16e} {Br_mode[j, k]:.16e} \n")
     logger.info("End of writing BC file")
 
+
+def _symmetric_color_limit(values, percentile=_PLOT_COLOR_LIMIT_PERCENTILE):
+    """Return a robust symmetric colorbar limit for signed magnetogram data."""
+    finite_abs = np.abs(np.asarray(values, dtype=float))
+    finite_abs = finite_abs[np.isfinite(finite_abs)]
+    finite_abs = finite_abs[finite_abs > 0.0]
+    if finite_abs.size == 0:
+        return 1.0
+
+    limit = float(np.nanpercentile(finite_abs, percentile))
+    if not np.isfinite(limit) or limit <= 0.0:
+        limit = float(np.nanmax(finite_abs))
+    return limit if limit > 0.0 else 1.0
+
+
+def _colorbar_extend(values, limit):
+    """Return the Matplotlib colorbar extension needed for clipped values."""
+    finite_values = np.asarray(values, dtype=float)
+    finite_values = finite_values[np.isfinite(finite_values)]
+    if finite_values.size == 0:
+        return 'neither'
+
+    extend_min = np.nanmin(finite_values) < -limit
+    extend_max = np.nanmax(finite_values) > limit
+    if extend_min and extend_max:
+        return 'both'
+    if extend_min:
+        return 'min'
+    if extend_max:
+        return 'max'
+    return 'neither'
+
+
 def plot_maps(
     Br,
     Br_mode,
@@ -720,10 +755,8 @@ def plot_maps(
     Sinlat = np.sin(np.radians(Lat))
     Sinlong = Long
 
-    vmax1 = np.max(np.abs(Br))
-    #vmax1 
-    vmax2 = np.max(np.abs(Br_mode))
-    vmax2 = vmax1 / 2.2 
+    vmax1 = _symmetric_color_limit(Br)
+    vmax2 = _symmetric_color_limit(Br_mode)
 
     def stats(name, B):
         print(
@@ -758,7 +791,7 @@ def plot_maps(
     ax1.set_title('Original magnetogram', fontsize=16)
     ax1.set_xticks(np.arange(0., 360., 60.))
     ax1.tick_params(axis='both', which='major', labelsize=12)
-    cbar1 = plt.colorbar(im1, ax=ax1)
+    cbar1 = plt.colorbar(im1, ax=ax1, extend=_colorbar_extend(Br, vmax1))
     cbar1.set_label('Br [G]', fontsize=14)
     cbar1.ax.tick_params(labelsize=12)
 
@@ -778,7 +811,7 @@ def plot_maps(
     ax2.set_ylabel(ylabel, fontsize=14)
     ax2.set_xlabel('Longitude', fontsize=14)
     ax2.tick_params(axis='both', which='major', labelsize=12)
-    cbar2 = plt.colorbar(im2, ax=ax2)
+    cbar2 = plt.colorbar(im2, ax=ax2, extend=_colorbar_extend(Br_mode, vmax2))
     cbar2.set_label('Br [G/2.2]', fontsize=14)
     cbar2.ax.tick_params(labelsize=12)
 

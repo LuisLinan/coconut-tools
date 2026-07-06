@@ -1,4 +1,5 @@
 import os
+import importlib
 from datetime import datetime
 from pathlib import Path
 
@@ -51,6 +52,116 @@ def test_yaroslavsky_spacing_uses_radian_arc_length(monkeypatch):
     assert captured["dy"] == pytest.approx(expected_delta)
     assert captured["alpha"] == 1.4
     assert captured["Rn"] == 2
+
+
+def test_local_weighted_filter_uses_article_h_relation(monkeypatch):
+    from coconut_tools.magnetogram import local_weigh_filter
+
+    captured = {}
+
+    def fake_main_loop_integration(u, i, j, Rn, h, dx, dy):
+        if not captured:
+            captured.update({"Rn": Rn, "h": h, "dx": dx, "dy": dy})
+        return u[i, j]
+
+    class FakePool:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def starmap(self, func, tasks):
+            return [func(*task) for task in tasks]
+
+    monkeypatch.setattr(local_weigh_filter, "main_loop_integration", fake_main_loop_integration)
+    monkeypatch.setattr(local_weigh_filter, "Pool", FakePool)
+
+    image = np.arange(4.0).reshape(2, 2)
+    result = local_weigh_filter.filter3(image, dx=10.0, dy=20.0, alpha=1.4, Rn=2.0)
+
+    assert np.array_equal(result, image)
+    assert captured["Rn"] == pytest.approx(40.0)
+    assert captured["h"] == pytest.approx(2.0**1.4)
+    assert captured["dx"] == 10.0
+    assert captured["dy"] == 20.0
+
+
+def test_local_weighted_filter_uses_dx_for_columns_and_dy_for_rows():
+    from coconut_tools.magnetogram.local_weigh_filter import Th
+
+    image = np.ones((5, 5), dtype=float)
+    _, weights = Th(image, i=2, j=2, Rn=1.5, h=1.0, dx=1.0, dy=2.0)
+
+    assert weights.shape == (1, 3)
+    assert np.count_nonzero(weights) == 3
+
+
+@pytest.mark.parametrize(
+    ("module_name", "filter_name", "filter_result"),
+    [
+        (
+            "coconut_tools.magnetogram.Yaroslavsky_filter",
+            "filter_radial_field_weighted",
+            lambda Br: Br * 4.4,
+        ),
+        (
+            "coconut_tools.magnetogram.NLD_implicit_method",
+            "filter_radial_field",
+            lambda Br: (Br * 4.4, 0.5),
+        ),
+    ],
+)
+def test_filtered_pipelines_apply_configured_amp_after_normalization(
+    monkeypatch,
+    tmp_path,
+    module_name,
+    filter_name,
+    filter_result,
+):
+    module = importlib.import_module(module_name)
+    captured = {}
+    Br = np.ones((2, 3))
+    theta = np.array([0.25, 0.75])
+    phi = np.linspace(0.0, 2.0 * np.pi, Br.shape[1], endpoint=False)
+    Theta, Phi = np.meshgrid(theta, phi, indexing="ij")
+    effective_date = datetime.fromisoformat(DATE)
+
+    monkeypatch.setattr(
+        module,
+        "generate_output_and_map_names",
+        lambda *args, **kwargs: (str(tmp_path / "map.dat"), str(tmp_path / "source.fits")),
+    )
+    monkeypatch.setattr(module, "read_magnetogram", lambda *args, **kwargs: (Br, Theta, Phi))
+    monkeypatch.setattr(module, "magnetogram_effective_date", lambda *args, **kwargs: effective_date)
+    monkeypatch.setattr(module, "magnetogram_display_date", lambda *args, **kwargs: effective_date)
+    monkeypatch.setattr(
+        module,
+        "apply_configured_longitude_rotation",
+        lambda Br_in, Br_linear, *args, **kwargs: (Br_in, Br_linear, None),
+    )
+    monkeypatch.setattr(module, filter_name, lambda Br_in, *args, **kwargs: filter_result(Br_in))
+    monkeypatch.setattr(
+        module,
+        "write_bc_file",
+        lambda output_name, Br_out, *args, **kwargs: captured.setdefault("Br_out", Br_out.copy()),
+    )
+
+    module.process_magnetogram_date(
+        {
+            "date": DATE,
+            "map_type": MAP_TYPE,
+            "output_dir": str(tmp_path),
+            "amp": 3,
+            "write_map": True,
+            "show_map": False,
+            "interpolation": False,
+            "rotate_to_stonyhurst": False,
+        },
+        DATE,
+    )
+
+    assert np.array_equal(captured["Br_out"], Br * 6.0)
 
 
 def _write_dat_and_png(outdir, name, Br_input, Br_output, Theta, Phi):

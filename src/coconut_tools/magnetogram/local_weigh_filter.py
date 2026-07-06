@@ -19,13 +19,13 @@ from coconut_tools.tools.logger_config import setup_logger
 logger = setup_logger(__name__)
 
 def Th(u, i, j, Rn, h, dx, dy):
-    x_mask = math.floor(Rn / dx)
     y_mask = math.floor(Rn / dy)
+    x_mask = math.floor(Rn / dx)
 
-    start_i = max(0, i - x_mask)
-    end_i = min(u.shape[0], i + x_mask + 1)
-    start_j = max(0, j - y_mask)
-    end_j = min(u.shape[1], j + y_mask + 1)
+    start_i = max(0, i - y_mask)
+    end_i = min(u.shape[0], i + y_mask + 1)
+    start_j = max(0, j - x_mask)
+    end_j = min(u.shape[1], j + x_mask + 1)
 
     u_mask = u[start_i:end_i, start_j:end_j]
     T = np.zeros_like(u_mask)
@@ -33,7 +33,7 @@ def Th(u, i, j, Rn, h, dx, dy):
 
     for ii in range(u_mask.shape[0]):
         for jj in range(u_mask.shape[1]):
-            r_sq = ((start_i + ii - i)**2 * dx**2 + (start_j + jj - j)**2 * dy**2)
+            r_sq = ((start_i + ii - i)**2 * dy**2 + (start_j + jj - j)**2 * dx**2)
             if r_sq <= Rn**2:
                 diff = (u_mask[ii, jj] - u[i, j]) / h
                 T_norm[ii, jj] = math.exp(-diff**2)
@@ -56,24 +56,35 @@ def filter3(image: np.ndarray, dx: float, dy: float, alpha: float, Rn: float, im
         image (np.ndarray): Input 2D image.
         dx (float): Spatial resolution in x-direction.
         dy (float): Spatial resolution in y-direction.
-        alpha (float): Exponent controlling the kernel width (h = Rn^alpha).
+        alpha (float): Exponent controlling the radiometric kernel width
+            following the article implementation (h = Rn^alpha, before Rn is
+            converted from grid-spacing units to physical length).
         Rn (float): Radius of influence (neighborhood size).
         image_seq (list, optional): If provided, intermediate outputs are saved.
 
     Returns:
         np.ndarray: Smoothed image.
     """
-    u = np.copy(image)
+    if dx <= 0 or dy <= 0:
+        raise ValueError("dx and dy must be positive.")
+    if Rn <= 0:
+        raise ValueError("Rn must be positive.")
+    if alpha < 0:
+        raise ValueError("alpha must be non-negative.")
+
+    u = np.asarray(image, dtype=float).copy()
     if u.ndim == 3 and u.shape[2] == 1:
         u = u[:, :, 0]
+    if u.ndim != 2:
+        raise ValueError("image must be a 2D array.")
+    if not np.all(np.isfinite(u)):
+        raise ValueError("image must contain only finite values.")
     if image_seq is not None:
         image_seq.append(u.copy())
 
     h = Rn ** alpha
     Rn *= max(dx, dy)
     u_new = np.zeros_like(u)    
-
-    
 
     logger.info(f"Starting local filter with shape {u.shape}, Rn={Rn:.3f}, h={h:.3f}")
     time_start = time.time()

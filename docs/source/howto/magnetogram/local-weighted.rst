@@ -89,10 +89,10 @@ For each target date, the output file is named like:
 
 Filter Parameters
 -----------------
-- ``alpha``: contrast-weighting factor passed to
-  ``filter_radial_field_weighted``. Larger values make the filter less willing
-  to average pixels with different magnetic-field values.
-- ``Rn``: neighborhood radius used by the local filter.
+- ``alpha``: exponent used by the article implementation to set the
+  radiometric kernel width as ``h = Rn**alpha`` before ``Rn`` is converted to a
+  physical radius. The tested range in the article is roughly ``1`` to ``1.5``.
+- ``Rn``: neighborhood radius used by the local filter, in grid-spacing units.
 - ``sig``: optional Gaussian pre-smoothing width, default ``0.0``.
 - ``write_gaussian_prepass``: optional debug output for the Gaussian prepass,
   default ``False``.
