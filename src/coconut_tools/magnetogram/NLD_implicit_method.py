@@ -139,6 +139,7 @@ def process_magnetogram_date(
     rotate_to_stonyhurst = _as_bool(config.get("rotate_to_stonyhurst", True))
     flux_correction_method = config.get("flux_correction_method", "surface_mean")
     drms_email = config.get("drms_email", config.get("jsoc_email"))
+    resize = _as_bool(config.get("resize", False))
 
     tau = config.get("tau", 5)
     iterations = config.get("iterations", 7)
@@ -175,7 +176,7 @@ def process_magnetogram_date(
             method_used=method_used,
             drms_email=drms_email,
         )
-        Br, Theta, Phi = read_magnetogram(local_file, map_type, adapt_map)
+        Br, Theta, Phi = read_magnetogram(local_file, map_type, adapt_map, resize=resize)
         Br_linear = None
         selection = None
 
@@ -206,6 +207,7 @@ def process_magnetogram_date(
         use_interpolation,
         rotate_to_stonyhurst,
         effective_date=effective_date,
+        resize=resize and not interpolated,
     )
 
     if _as_bool(config.get("flux_correct", False)):
@@ -332,6 +334,7 @@ if __name__ == "__main__":
         "rotate_to_stonyhurst": True,
         "interpolation": False,
         "interpolation_order": 2,
+        "resize": False,
         "flux_correct": False,
         "flux_correction_method": "surface_mean", #surface_mean' or 'polarity_scaling'
         "map_type": "GONG_mrbqs",

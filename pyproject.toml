@@ -29,6 +29,7 @@ dependencies = [
   "pyvista",
   "requests",
   "scipy",
+  "scikit-image",
   "scikit-learn",      # sklearn
   "solarmach",
   "sunpy",

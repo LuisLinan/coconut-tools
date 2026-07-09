@@ -1,5 +1,7 @@
 from datetime import datetime
 from pathlib import Path
+import sys
+import types
 
 import numpy as np
 import pytest
@@ -14,9 +16,11 @@ from coconut_tools.magnetogram.magnetogram_download import (
     resolve_figure_path,
 )
 from coconut_tools.magnetogram.sph_filtering import (
+    apply_configured_longitude_rotation,
     closest_longitude_column,
     correct_net_flux,
     read_magnetogram,
+    resize_processed_longitude_axis,
     rotate_longitude_to_stonyhurst,
 )
 from coconut_tools.tools.rotation_angle import is_br_longitude_increasing
@@ -123,6 +127,100 @@ def test_local_rotation_helpers_use_the_expected_longitude_convention():
     index, residual = closest_longitude_column(longitude, 241.766)
     assert index == 241
     assert residual == pytest.approx(-0.266)
+
+
+def test_resize_processed_longitude_axis_preserves_origin():
+    longitude_original = np.array([181.0, 271.0, 361.0, 451.0])
+
+    longitude_resized = resize_processed_longitude_axis(longitude_original, 8)
+
+    np.testing.assert_allclose(
+        longitude_resized,
+        np.array([181.0, 226.0, 271.0, 316.0, 361.0, 406.0, 451.0, 496.0]),
+    )
+    assert resize_processed_longitude_axis(longitude_original, 4) is longitude_original
+
+
+def test_stonyhurst_rotation_uses_original_or_resized_longitude_axis(monkeypatch):
+    from coconut_tools.magnetogram import sph_filtering
+
+    longitude_original = np.array([10.0, 100.0, 190.0, 280.0])
+    Br = np.arange(8).reshape(1, 8)
+
+    monkeypatch.setattr(
+        sph_filtering,
+        "compute_rotation_angle",
+        lambda *args, **kwargs: (100.0, TARGET_DATE),
+    )
+    monkeypatch.setattr(
+        sph_filtering,
+        "processed_longitude_axis",
+        lambda *args, **kwargs: longitude_original,
+    )
+
+    Br_original_axis, _, _ = apply_configured_longitude_rotation(
+        Br,
+        None,
+        "dummy_hmi.fits",
+        "HMI_small",
+        TARGET_DATE,
+        use_interpolation=False,
+        rotate_to_stonyhurst=True,
+        effective_date=TARGET_DATE,
+        resize=False,
+    )
+    Br_resized_axis, _, _ = apply_configured_longitude_rotation(
+        Br,
+        None,
+        "dummy_hmi.fits",
+        "HMI_small",
+        TARGET_DATE,
+        use_interpolation=False,
+        rotate_to_stonyhurst=True,
+        effective_date=TARGET_DATE,
+        resize=True,
+    )
+
+    np.testing.assert_array_equal(Br_original_axis, np.array([[1, 2, 3, 4, 5, 6, 7, 0]]))
+    np.testing.assert_array_equal(Br_resized_axis, np.array([[2, 3, 4, 5, 6, 7, 0, 1]]))
+
+
+def test_read_magnetogram_can_resize_after_longitude_normalization(tmp_path, monkeypatch):
+    file_path = tmp_path / "mrzqs201207t1504c2238_181.fits"
+    data = np.array([[0.0, 1.0, 2.0, 3.0], [4.0, 5.0, 6.0, 7.0]])
+    hdu = fits.PrimaryHDU(data)
+    hdu.header["CRPIX1"] = 1.0
+    hdu.header["CRVAL1"] = 0.0
+    hdu.header["CDELT1"] = -1.0
+    hdu.writeto(file_path, overwrite=True)
+
+    captured = {}
+    fake_skimage = types.ModuleType("skimage")
+    fake_transform = types.ModuleType("skimage.transform")
+
+    def fake_resize(image, output_shape, **kwargs):
+        captured["image"] = image.copy()
+        captured["output_shape"] = output_shape
+        captured["kwargs"] = kwargs
+        return np.full(output_shape, image[0, 0], dtype=float)
+
+    fake_transform.resize = fake_resize
+    monkeypatch.setitem(sys.modules, "skimage", fake_skimage)
+    monkeypatch.setitem(sys.modules, "skimage.transform", fake_transform)
+
+    Br, Theta, Phi = read_magnetogram(str(file_path), "GONG", resize=True)
+
+    np.testing.assert_array_equal(captured["image"], data[::-1, ::-1])
+    assert captured["output_shape"] == (360, 720)
+    assert captured["kwargs"] == {
+        "preserve_range": True,
+        "mode": "edge",
+        "clip": False,
+        "anti_aliasing": True,
+    }
+    assert Br.shape == (360, 720)
+    assert Theta.shape == Br.shape
+    assert Phi.shape == Br.shape
 
 
 def test_flux_correction_balances_a_small_signed_map():

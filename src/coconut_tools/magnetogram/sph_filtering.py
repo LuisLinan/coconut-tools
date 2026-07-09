@@ -49,6 +49,25 @@ from coconut_tools.tools.rotation_angle import (
 logger = setup_logger(__name__)
 
 _PLOT_COLOR_LIMIT_PERCENTILE = 99.0
+_RESIZED_MAGNETOGRAM_SHAPE = (360, 720)
+
+
+def resize_magnetogram_if_requested(Br_data: np.ndarray, enabled: bool) -> np.ndarray:
+    """Resize a Br map to the standard 360x720 grid when requested."""
+    if not enabled:
+        return Br_data
+
+    from skimage.transform import resize as resize_image
+
+    return resize_image(
+        Br_data,
+        _RESIZED_MAGNETOGRAM_SHAPE,
+        preserve_range=True,
+        mode="edge",
+        clip=False,
+        anti_aliasing=True,
+    )
+
 
 def build_theta_phi(theta, phi):
     """Build 2D meshgrids from 1D theta and phi arrays.
@@ -195,6 +214,31 @@ def processed_longitude_axis(
     return lon
 
 
+def resize_processed_longitude_axis(
+    longitude_original: np.ndarray,
+    nb_phi: int,
+    has_duplicate_endpoint: bool = False,
+) -> np.ndarray:
+    """Resize a processed longitude axis while preserving its original origin."""
+    longitude_original = np.asarray(longitude_original, dtype=float)
+    if longitude_original.ndim != 1:
+        raise ValueError("longitude_original must be a 1D array.")
+    if longitude_original.size == 0:
+        raise ValueError("longitude_original must not be empty.")
+    if longitude_original.size == nb_phi:
+        return longitude_original
+
+    unique_longitudes = nb_phi - 1 if has_duplicate_endpoint else nb_phi
+    if unique_longitudes < 1:
+        raise ValueError("nb_phi must describe at least one unique longitude.")
+
+    start = longitude_original[0]
+    longitude = start + np.arange(unique_longitudes, dtype=float) * 360.0 / unique_longitudes
+    if has_duplicate_endpoint:
+        longitude = np.concatenate((longitude, longitude[:1] + 360.0))
+    return longitude
+
+
 def closest_longitude_column(longitude: np.ndarray, target_degrees: float) -> tuple[int, float]:
     """Find the longitude column closest to a periodic target angle.
 
@@ -220,6 +264,7 @@ def apply_configured_longitude_rotation(
     use_interpolation: bool,
     rotate_to_stonyhurst: bool,
     effective_date: str | datetime | None = None,
+    resize: bool = False,
 ) -> tuple[np.ndarray, np.ndarray | None, float | None]:
     """Apply the configured Carrington-to-Stonyhurst longitude rotation.
 
@@ -241,6 +286,8 @@ def apply_configured_longitude_rotation(
         rotate_to_stonyhurst (bool): If false, maps are returned unchanged.
         effective_date (str | datetime | None): Precomputed effective time. If
             omitted, it is derived from the source file and map type.
+        resize (bool): Whether ``Br`` was resized after reading. When false,
+            the original processed longitude axis is used unchanged.
 
     Returns:
         tuple[np.ndarray, np.ndarray | None, float | None]: Rotated ``Br``,
@@ -278,11 +325,21 @@ def apply_configured_longitude_rotation(
             interpolated=False,
         )
 
-    longitude = processed_longitude_axis(
+    has_duplicate_endpoint = map_type.lower() == "wso"
+    longitude_original = processed_longitude_axis(
         source_file,
         map_type,
         temporal=interpolated and is_gong_temporal_map_type(map_type),
     )
+    if resize:
+        longitude = resize_processed_longitude_axis(
+            longitude_original,
+            Br.shape[1],
+            has_duplicate_endpoint=has_duplicate_endpoint,
+        )
+    else:
+        longitude = longitude_original
+
     if is_gong_map_type(map_type):
         target_longitude = compute_carrington_central_meridian(rotation_date)
     else:
@@ -294,7 +351,6 @@ def apply_configured_longitude_rotation(
         residual,
     )
 
-    has_duplicate_endpoint = map_type.lower() == "wso"
     Br = rotate_longitude_to_stonyhurst(
         Br,
         rotation_angle,
@@ -464,7 +520,7 @@ def read_interpolated_magnetogram(
     return Br, Theta, Phi, Br_linear
 
 
-def read_magnetogram(file_path, map_type, adapt_map=0):
+def read_magnetogram(file_path, map_type, adapt_map=0, resize=False):
     """Read one non-interpolated magnetogram and build its spherical grid.
 
     The map is converted into the pipeline convention: latitude index ordered
@@ -479,18 +535,22 @@ def read_magnetogram(file_path, map_type, adapt_map=0):
             ``GONG_mrzqs``, ``GONG_mrbqs``, ``GONG_mrbqj``, ``GONG_mrmqs``,
             ``GONG_mrnqs``, ``HMI_small``, ``HMI_polfil``, or ``HMI_SYNC``.
         adapt_map (int, optional): Index for ADAPT map. Defaults to 0.
+        resize (bool, optional): Resize FITS maps to ``(360, 720)`` after
+            longitude normalization. Defaults to False.
 
     Returns:
         tuple[np.ndarray, np.ndarray, np.ndarray]: Br map and 2D ``Theta`` and
         ``Phi`` grids in radians.
     """
     map_type = normalize_map_type(map_type)
+    resize = _as_bool(resize)
     logger.info('Reading file')
 
     if map_type == 'ADAPT':
         input_data = read_first_fits_image(file_path)
         Br_map = input_data[adapt_map, ::-1, :]
         Br_map = ensure_increasing_longitude(Br_map, file_path, map_type)
+        Br_map = resize_magnetogram_if_requested(Br_map, resize)
         nb_th, nb_phi = Br_map.shape
         theta = np.linspace(0., np.pi, nb_th)
         phi = np.linspace(0., 2.0*np.pi, nb_phi, endpoint=False)
@@ -546,6 +606,7 @@ def read_magnetogram(file_path, map_type, adapt_map=0):
         input_data = read_first_fits_image(file_path)
         Br_data = input_data[::-1, :]
         Br_data = ensure_increasing_longitude(Br_data, file_path, map_type)
+        Br_data = resize_magnetogram_if_requested(Br_data, resize)
         nb_th, nb_phi = Br_data.shape
         sinlat = np.linspace(-1., 1., nb_th)
         theta = np.arcsin(sinlat) + np.pi/2.
@@ -759,13 +820,14 @@ def plot_maps(
     vmax2 = _symmetric_color_limit(Br_mode)
 
     def stats(name, B):
-        print(
+        logger.info(
+            "%s min %.6e max %.6e absmax %.6e p99 abs %.6e mean abs %.6e",
             name,
-            "min", np.nanmin(B),
-            "max", np.nanmax(B),
-            "absmax", np.nanmax(np.abs(B)),
-            "p99 abs", np.nanpercentile(np.abs(B), 99),
-            "mean abs", np.nanmean(np.abs(B)),
+            np.nanmin(B),
+            np.nanmax(B),
+            np.nanmax(np.abs(B)),
+            np.nanpercentile(np.abs(B), 99),
+            np.nanmean(np.abs(B)),
         )
 
     stats("original", Br)
@@ -1026,6 +1088,7 @@ def process_magnetogram_date(
     rotate_to_stonyhurst = _as_bool(config.get("rotate_to_stonyhurst", True))
     flux_correction_method = config.get("flux_correction_method", "surface_mean")
     drms_email = config.get("drms_email", config.get("jsoc_email"))
+    resize = _as_bool(config.get("resize", False))
 
     interpolated = use_interpolation and (
         is_gong_temporal_map_type(map_type) or map_type == "ADAPT"
@@ -1055,7 +1118,7 @@ def process_magnetogram_date(
             method_used=method_used,
             drms_email=drms_email,
         )
-        Br, Theta, Phi = read_magnetogram(local_file, map_type, adapt_map)
+        Br, Theta, Phi = read_magnetogram(local_file, map_type, adapt_map, resize=resize)
         Br_linear = None
         selection = None
 
@@ -1087,6 +1150,7 @@ def process_magnetogram_date(
         use_interpolation,
         rotate_to_stonyhurst,
         effective_date=effective_date,
+        resize=resize and not interpolated,
     )
 
     if _as_bool(config.get("flux_correct", False)):
@@ -1208,7 +1272,7 @@ def process_config(config: dict[str, Any], method_used: str = "sph") -> list[dic
 if __name__ == "__main__":
 
     #to run a steady test
-
+    r"""
     base_output_dir = r"C:\Users\luisl\Desktop\testmagnetogram"
     label = "sph"
     output_dir = os.path.join(base_output_dir, label)
@@ -1224,6 +1288,7 @@ if __name__ == "__main__":
         "rotate_to_stonyhurst": True,
         "interpolation": False,
         "interpolation_order": 2,
+        "resize": False,
         "flux_correct": False,
         "flux_correction_method": "surface_mean", #surface_mean' or 'polarity_scaling'
         "map_type": "GONG_mrbqs",
@@ -1238,21 +1303,22 @@ if __name__ == "__main__":
 
     # for time-evolving , you can use "mrzqs", "mrbqs", "mrbqj" magnetogram and you need to add  : "cadence_hours": 3, "total_hours": 72, in the config.
 
-
+    """
     #Below an example that test every map type and ADAPT realization. The output is written to the test folder and figures are saved in the images subfolder.
-    r"""
     base_output_dir = r"C:\Users\luisl\Desktop\testmagnetogram\test"
     figure_output_dir = os.path.join(base_output_dir, "images")
     common_config = {
         "date": "2020-01-20T01:17:00",
-        "lmax": 10,
+        "lmax": 20,
         "amp": 1,
         "write_map": True,
+        "resize": True,
         "show_map": True,
         "visu_type": "sinlat",
         "alpha": 3 * 10 ** (-6),
-        "rotate_to_stonyhurst": False,
+        "rotate_to_stonyhurst": True,
         "interpolation": False,
+        "resize": False,
         "flux_correct": False,
     }
 
@@ -1298,4 +1364,3 @@ if __name__ == "__main__":
             logger.warning(
                 f'Failed to process {config["date"]} and {config["map_type"]}: {exc}'
             )
-    """
