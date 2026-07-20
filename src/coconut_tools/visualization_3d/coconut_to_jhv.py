@@ -213,6 +213,46 @@ def read_coconut_input(filename):
     )
 
 
+def date_str_to_sunjson_time(date_str):
+    """Convert YYYYMMDDHHMMSS to the timestamp format written in SunJSON."""
+    return (
+        datetime.strptime(date_str, "%Y%m%d%H%M%S")
+        .replace(tzinfo=timezone.utc)
+        .strftime("%Y-%m-%dT%H:%M:%S")
+    )
+
+
+def stonyhurst_to_carrington_longitudes(stonyhurst_lons, date_str):
+    """Convert Stonyhurst longitudes to Carrington longitudes for a given date."""
+    from coconut_tools.tools.FrameLongitudeChange import EarthToCarringtonLong
+
+    return (np.asarray(stonyhurst_lons, dtype=float) + EarthToCarringtonLong(date_str)) % 360.0
+
+
+def carrington_lonlat_to_xyz(lon_deg, lat_deg=0.0, radius=1.0):
+    """Convert Carrington spherical longitude/latitude to Cartesian coordinates."""
+    lon_rad = np.radians(lon_deg)
+    lat_rad = np.radians(lat_deg)
+    return (
+        float(radius * np.cos(lat_rad) * np.cos(lon_rad)),
+        float(radius * np.cos(lat_rad) * np.sin(lon_rad)),
+        float(radius * np.sin(lat_rad)),
+    )
+
+
+def earth_preview_camera_position(observation_date, distance=10.0):
+    """Return a PyVista camera position matching the Earth/Stonyhurst viewpoint."""
+    from coconut_tools.tools.FrameLongitudeChange import EarthObserverCarringtonLonLat
+
+    lon, lat = EarthObserverCarringtonLonLat(observation_date)
+    position = carrington_lonlat_to_xyz(lon, lat, radius=distance)
+    print(
+        "Preview camera Earth view -> "
+        f"Carrington lon={lon:.3f} deg, lat={lat:.3f} deg"
+    )
+    return [position, (0, 0, 0), (0, 0, 1)]
+
+
 def make_seed_grid(radius=1.05, n_points=200, lat_min=-80, lat_max=80, use_tqdm=False):
     """Create an approximately uniform longitude/latitude seed grid.
 
@@ -239,14 +279,42 @@ def make_seed_grid(radius=1.05, n_points=200, lat_min=-80, lat_max=80, use_tqdm=
 
     for lat in lat_iter:
         for lon in lons:
-            lon_rad = np.radians(lon)
-            lat_rad = np.radians(lat)
+            points.append(carrington_lonlat_to_xyz(lon, lat, radius=radius))
 
-            x = radius * np.cos(lat_rad) * np.cos(lon_rad)
-            y = radius * np.cos(lat_rad) * np.sin(lon_rad)
-            z = radius * np.sin(lat_rad)
+    return pv.PolyData(np.array(points))
 
-            points.append([x, y, z])
+
+def make_limb_seed_grid(radius=1.05, n_points=200, observation_date=None,
+                        use_tqdm=False):
+    """Create seed points on the two Earth-visible Stonyhurst limb longitudes."""
+    if observation_date is None:
+        raise ValueError(
+            "observation_date is required for Stonyhurst limb seeding "
+            "(format: YYYYMMDDHHMMSS)."
+        )
+
+    n_lats = max(2, int(np.ceil(max(1, int(n_points)) / 2)))
+    stonyhurst_lons = np.array([-90.0, 90.0])
+    lons = stonyhurst_to_carrington_longitudes(stonyhurst_lons, observation_date)
+    print(
+        "Stonyhurst limb seeds [-90, 90] deg -> "
+        f"Carrington [{lons[0]:.3f}, {lons[1]:.3f}] deg"
+    )
+    lats = np.linspace(-90.0, 90.0, n_lats)
+
+    points = []
+
+    lat_iter = lats
+    if use_tqdm:
+        try:
+            from tqdm.auto import tqdm
+            lat_iter = tqdm(lats, desc="Seed latitudes", unit="lat")
+        except Exception:
+            print("tqdm not available; continuing without progress bars")
+
+    for lat in lat_iter:
+        for lon in lons:
+            points.append(carrington_lonlat_to_xyz(lon, lat, radius=radius))
 
     return pv.PolyData(np.array(points))
 
@@ -432,7 +500,7 @@ def write_sunjson(lines_xyz, output_json, thickness=0.004,
 
 
 def preview(mesh, stream, show=False, screenshot=None, tube_radius=0.01,
-            color_by=None, br_limits=None):
+            color_by=None, br_limits=None, observation_date=None):
     """Intermediate PyVista preview. The tube is only for display, not export.
     
     Args:
@@ -479,7 +547,10 @@ def preview(mesh, stream, show=False, screenshot=None, tube_radius=0.01,
         print("Warning: no streamlines to preview.")
 
     plotter.add_axes()
-    plotter.camera_position = [(10, 7, 4), (0, 0, 0), (0, 0, 1)]
+    if observation_date is not None:
+        plotter.camera_position = earth_preview_camera_position(observation_date)
+    else:
+        plotter.camera_position = [(10, 7, 4), (0, 0, 0), (0, 0, 1)]
 
     if screenshot is not None:
         plotter.show(interactive=False, auto_close=False)
@@ -496,7 +567,8 @@ def export_to_jhv_json(input_file, output_json,
                            n_seed_points=200, source_radius=1.05, max_steps=1000,
                            max_lines=None, thickness=0.004,
                            lon_offset_deg=0.0, flip_longitude=False,
-                           show=False, screenshot=None, use_tqdm=False, color_by=None):
+                           show=False, screenshot=None, use_tqdm=False, color_by=None,
+                           seed_limb_longitudes=False, observation_date=None):
     """Complete minimal pipeline with simple stage prints and timings."""
     t0 = time.perf_counter()
     print("Stage: reading input ->", input_file)
@@ -505,7 +577,19 @@ def export_to_jhv_json(input_file, output_json,
 
     t1 = time.perf_counter()
     print("Stage: building seed grid")
-    seed_source = make_seed_grid(radius=source_radius, n_points=n_seed_points, use_tqdm=use_tqdm)
+    if seed_limb_longitudes:
+        seed_source = make_limb_seed_grid(
+            radius=source_radius,
+            n_points=n_seed_points,
+            observation_date=observation_date,
+            use_tqdm=use_tqdm,
+        )
+    else:
+        seed_source = make_seed_grid(
+            radius=source_radius,
+            n_points=n_seed_points,
+            use_tqdm=use_tqdm,
+        )
     print(f"Built seed grid in {time.perf_counter() - t1:.2f}s")
 
     t2 = time.perf_counter()
@@ -574,17 +658,23 @@ def export_to_jhv_json(input_file, output_json,
         screenshot=screenshot,
         color_by=color_by,
         br_limits=br_limits,
+        observation_date=observation_date,
     )
     print(f"Preview done in {time.perf_counter() - t4:.2f}s")
 
     t5 = time.perf_counter()
     print("Stage: writing SunJSON ->", output_json)
+    sunjson_time = None
+    if observation_date is not None:
+        sunjson_time = date_str_to_sunjson_time(observation_date)
+
     write_sunjson(
         lines,
         output_json,
         thickness=thickness,
         lon_offset_deg=lon_offset_deg,
         flip_longitude=flip_longitude,
+        time=sunjson_time,
         use_tqdm=use_tqdm,
         lines_colors=lines_colors,
     )
@@ -607,9 +697,34 @@ def main():
     parser.add_argument("--show", action="store_true")
     parser.add_argument("--screenshot", default=None)
     parser.add_argument("--progress", action="store_true", help="Enable tqdm progress bars in loops")
+    parser.add_argument(
+        "--observation-date",
+        help=(
+            "Observation date as YYYYMMDDHHMMSS. Used as SunJSON time, "
+            "for Earth-view previews, and required for Stonyhurst limb seeding."
+        ),
+    )
+    parser.add_argument(
+        "--seed-limb-longitudes",
+        action="store_true",
+        help=(
+            "Seed only the Earth-visible Stonyhurst limb longitudes phi=-90 "
+            "and phi=+90 over latitudes -90..+90. The limbs are converted "
+            "to Carrington longitudes using --observation-date."
+        ),
+    )
     parser.add_argument("--color-by", choices=["none", "br"], default="none", 
                        help="Color field lines in JSON and preview: 'br' for radial magnetic field")
     args = parser.parse_args()
+
+    if args.seed_limb_longitudes and args.observation_date is None:
+        parser.error("--seed-limb-longitudes requires --observation-date YYYYMMDDHHMMSS")
+
+    if args.observation_date is not None:
+        try:
+            date_str_to_sunjson_time(args.observation_date)
+        except ValueError:
+            parser.error("--observation-date must use format YYYYMMDDHHMMSS")
 
     color_by_arg = None if args.color_by == "none" else args.color_by
 
@@ -627,6 +742,8 @@ def main():
         screenshot=args.screenshot,
         use_tqdm=args.progress,
         color_by=color_by_arg,
+        seed_limb_longitudes=args.seed_limb_longitudes,
+        observation_date=args.observation_date,
     )
 
 

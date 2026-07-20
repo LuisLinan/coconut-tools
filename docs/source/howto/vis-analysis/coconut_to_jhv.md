@@ -41,6 +41,9 @@ The screenshot and SunJSON export use the same blue-white-red colormap.
 Its limits are symmetric and set to `[-2 std(Br), +2 std(Br)]` using the
 interpolated field-line values in gauss.
 
+When `--observation-date YYYYMMDDHHMMSS` is provided, the preview camera is
+placed at the Earth/Stonyhurst viewpoint for that date.
+
 Longitude orientation can be adjusted when required:
 
 ```bash
@@ -49,7 +52,41 @@ python -m coconut_tools.visualization_3d.coconut_to_jhv input.vtu fieldlines.jso
   --flip-longitude
 ```
 
+These longitude options are low-level manual corrections applied to the
+exported SunJSON coordinates. They are not used to define the physical seed
+locations in the COCONUT mesh.
+
 The default seed count is 200. Use `--n-seed-points` to change it.
+
+## Specific fieldlines seeds
+
+Implemented as a new option:
+```bash
+--seed-limb-longitudes
+```
+
+This seeds only the two displayed limb longitudes:
+```bash
+phi = -90 deg
+phi = +90 deg
+```
+and spans the full latitude range:
+```bash
+lat = -90..+90 deg
+```
+It does not seed the whole visible hemisphere.
+The limb longitudes are interpreted in the Earth-visible Stonyhurst frame and
+converted to Carrington longitudes before tracing field lines. This keeps the
+mesh tracing and SunJSON export in Carrington coordinates while selecting the
+limbs seen by JHelioviewer.
+Example:
+```bash
+python coconut_to_jhv.py input.CFmesh fieldlines.json \
+  --seed-limb-longitudes \
+  --observation-date 20250101000000 \
+  --n-seed-points 200
+```
+With `--n-seed-points 200`, it creates about 100 latitude seed positions on each of the two limb longitudes.
 
 ## Python use
 
