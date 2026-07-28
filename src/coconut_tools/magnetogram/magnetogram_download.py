@@ -1,4 +1,5 @@
 """Magnetogram discovery, selection, and download helpers."""
+import math
 import os
 import re
 from dataclasses import dataclass
@@ -20,6 +21,8 @@ GONG_SYNCHRONIC_FILE_IDS = {"mrzqs", "mrbqs", "mrbqj"}
 GONG_DIACHRONIC_FILE_IDS = {"mrmqs", "mrnqs"}
 GONG_FILE_IDS = GONG_SYNCHRONIC_FILE_IDS | GONG_DIACHRONIC_FILE_IDS
 HMI_SYNC_SERIES = "hmi.Mrdailysynframe_720s_nrt"
+HMI_HOURLY_SERIES = "hmi.mrdailysynframe_polfil_720s_nrt"
+HMI_HOURLY_SEGMENT = "Mr_polfil"
 
 
 MAP_TYPE_ALIASES = {
@@ -28,6 +31,7 @@ MAP_TYPE_ALIASES = {
     "hmi_polfil": "HMI_polfil",
     "hmi_small": "HMI_small",
     "hmi_sync": "HMI_SYNC",
+    "hmi_hourly": "HMI_hourly",
 }
 
 
@@ -51,7 +55,7 @@ def normalize_map_type(map_type: str) -> str:
         return canonical
 
     supported = ", ".join(
-        ["WSO", "ADAPT", "HMI_polfil", "HMI_small", "HMI_SYNC"]
+        ["WSO", "ADAPT", "HMI_polfil", "HMI_small", "HMI_SYNC", "HMI_hourly"]
         + ["GONG"]
         + [f"GONG_{item}" for item in sorted(GONG_FILE_IDS)]
     )
@@ -114,6 +118,7 @@ def build_output_name(
         "HMI_polfil": "map_hmi_polfil",
         "HMI_small": "map_hmi_small",
         "HMI_SYNC": "map_hmi_sync",
+        "HMI_hourly": "map_hmi_hourly",
     }
     prefix = prefixes.get(map_type)
     if prefix is None:
@@ -280,6 +285,71 @@ def list_adapt_candidates(date: str | datetime) -> list[MagnetogramCandidate]:
     return unique_sorted_candidates(candidates)
 
 
+def parse_hmi_hourly_filename_date(name: str) -> datetime | None:
+    """Parse the observation timestamp from an HMI hourly filename."""
+    basename = os.path.basename(name)
+    match = re.search(
+        r"hmi\.synoptic_hourly_(?P<date>\d{8})_(?P<time>\d{6})\.fits(?:\.gz)?$",
+        basename,
+        flags=re.IGNORECASE,
+    )
+    if match is None:
+        return None
+
+    try:
+        return datetime.strptime(
+            match.group("date") + match.group("time"),
+            "%Y%m%d%H%M%S",
+        )
+    except ValueError as exc:
+        logger.warning(
+            "Could not parse HMI_hourly observation date from %s: %s",
+            basename,
+            exc,
+        )
+        return None
+
+
+def list_hmi_candidates(date: str | datetime) -> list[MagnetogramCandidate]:
+    """List HMI hourly candidates within one day of a target date."""
+    import drms
+
+    date_datetime = parse_iso_datetime(date)
+    start = (date_datetime - timedelta(days=1)).strftime("%Y.%m.%d_%H:%M:%S_TAI")
+    end = (date_datetime + timedelta(days=1)).strftime("%Y.%m.%d_%H:%M:%S_TAI")
+    recordset = f"{HMI_HOURLY_SERIES}[{start}-{end}]"
+
+    logger.info("Searching available HMI_hourly records: %s", recordset)
+    keys, segments = drms.Client().query(
+        recordset,
+        key="T_REC",
+        seg=HMI_HOURLY_SEGMENT,
+    )
+
+    candidates = []
+    for index in range(len(keys)):
+        t_rec = str(keys["T_REC"].iloc[index])
+        try:
+            record_date = parse_jsoc_trec(t_rec)
+        except ValueError as exc:
+            logger.warning("Skipping HMI_hourly record %s: %s", t_rec, exc)
+            continue
+
+        name = f"hmi.synoptic_hourly_{record_date.strftime('%Y%m%d_%H%M%S')}.fits"
+        candidate_date = parse_hmi_hourly_filename_date(name)
+        if candidate_date is None:
+            continue
+
+        segment_path = str(segments[HMI_HOURLY_SEGMENT].iloc[index])
+        if segment_path.startswith(("http://", "https://")):
+            remote_url = segment_path
+        else:
+            remote_url = f"http://jsoc.stanford.edu{segment_path}"
+        candidates.append(MagnetogramCandidate(name, candidate_date, remote_url))
+
+    return unique_sorted_candidates(candidates)
+
+
 def unique_sorted_candidates(
     candidates: list[MagnetogramCandidate],
 ) -> list[MagnetogramCandidate]:
@@ -303,6 +373,8 @@ def list_remote_candidates(
         return list_gong_candidates(date, file_id)
     if map_type == "ADAPT":
         return list_adapt_candidates(date)
+    if map_type == "HMI_hourly":
+        return list_hmi_candidates(date)
     raise ValueError(f"Temporal candidate listing is not supported for {map_type}")
 
 
@@ -368,6 +440,91 @@ def download_candidate(candidate: MagnetogramCandidate, output_dir: str) -> str:
     return local_file
 
 
+def download_hmi_hourly_magnetogram(
+    candidate: MagnetogramCandidate,
+    output_dir: str,
+) -> tuple[str, str]:
+    """Download an HMI hourly map and attach its complete JSOC metadata."""
+    import urllib.request
+
+    import drms
+    import numpy as np
+    from astropy.io import fits
+
+    os.makedirs(output_dir, exist_ok=True)
+    local_file = os.path.join(output_dir, candidate.name)
+    if os.path.exists(local_file):
+        logger.info("Map already exists locally: %s", local_file)
+        return local_file, candidate.name
+
+    target_time = parse_hmi_hourly_filename_date(candidate.name)
+    if target_time is None:
+        raise ValueError(
+            f"Cannot determine the HMI_hourly target time from filename: {candidate.name}"
+        )
+
+    logger.info("Direct JSOC download for %s", candidate.name)
+    temp_file = local_file + ".temp"
+    try:
+        urllib.request.urlretrieve(candidate.remote_url, temp_file)
+        with fits.open(temp_file) as hdul:
+            image_hdu = next((hdu for hdu in hdul if hdu.data is not None), None)
+            if image_hdu is None:
+                raise RuntimeError(f"No image data found in downloaded FITS file: {temp_file}")
+            data = np.nan_to_num(image_hdu.data)
+    finally:
+        if os.path.exists(temp_file):
+            os.remove(temp_file)
+
+    client = drms.Client()
+    t_rec = target_time.strftime("%Y.%m.%d_%H:%M:%S_TAI")
+    recordset = f"{HMI_HOURLY_SERIES}[{t_rec}]"
+    keys = client.query(recordset, key=drms.JsocInfoConstants.all)
+    if keys.empty:
+        raise RuntimeError(f"No JSOC metadata found for HMI_hourly record {t_rec}.")
+
+    map_header_dict = dict(keys.iloc[0])
+    if "T_OBS" in map_header_dict:
+        try:
+            map_header_dict["DATE-OBS"] = parse_jsoc_trec(
+                str(map_header_dict["T_OBS"])
+            ).strftime("%Y-%m-%dT%H:%M:%S")
+        except ValueError as exc:
+            logger.warning("Could not convert HMI_hourly T_OBS: %s", exc)
+
+    map_header_dict.update(
+        {
+            "CUNIT1": "deg",
+            "CUNIT2": "deg",
+            "CDELT2": 0.07957747154594767,
+            "BUNIT": "gauss",
+            "CRDER1": 0,
+            "CRDER2": 0,
+        }
+    )
+    for old_key, new_key in (
+        ("T_REC_epoch", "TRECEPOC"),
+        ("T_REC_step", "TRECSTEP"),
+        ("T_REC_unit", "TRECUNIT"),
+    ):
+        if old_key in map_header_dict:
+            map_header_dict[new_key] = map_header_dict.pop(old_key)
+    for key in ("CSYSER1", "CSYSER2", "HGLN_OBS", "BLD_VERS"):
+        map_header_dict.pop(key, None)
+
+    header = fits.Header()
+    for key, value in map_header_dict.items():
+        try:
+            header[key] = value
+        except (TypeError, ValueError) as exc:
+            logger.debug("Skipping incompatible FITS header card %s: %s", key, exc)
+
+    new_hdu = fits.CompImageHDU(data=data, header=header)
+    new_hdu.writeto(local_file, overwrite=True)
+    logger.info("Downloaded map: %s", local_file)
+    return local_file, candidate.name
+
+
 def download_interpolation_magnetograms(
     date: str | datetime,
     map_type: str,
@@ -385,7 +542,16 @@ def download_interpolation_magnetograms(
         selection.after,
         selection.after_next,
     ]
-    local_files = [download_candidate(candidate, output_dir) for candidate in stencil]
+    if map_type == "HMI_hourly":
+        local_files = [
+            download_hmi_hourly_magnetogram(candidate, output_dir)[0]
+            for candidate in stencil
+        ]
+    else:
+        local_files = [
+            download_candidate(candidate, output_dir)
+            for candidate in stencil
+        ]
     return local_files, selection
 
 
@@ -439,9 +605,9 @@ def magnetogram_effective_date(
     """Return the timestamp represented by a processed magnetogram.
 
     Interpolated maps represent the requested target time. Non-interpolated
-    GONG, ADAPT, and HMI_SYNC maps represent the observation time encoded in
-    their filenames. HMI small/polar-filled and WSO products use the requested
-    target time by convention.
+    GONG, ADAPT, HMI_SYNC, and HMI_hourly maps represent the observation time
+    encoded in their filenames. HMI small/polar-filled and WSO products use the
+    requested target time by convention.
     """
     map_type = normalize_map_type(map_type)
     target = parse_iso_datetime(target_date)
@@ -449,6 +615,10 @@ def magnetogram_effective_date(
         return target
     if map_type == "HMI_SYNC":
         parsed_date = parse_hmi_sync_filename_date(file_path)
+        if parsed_date is not None:
+            return parsed_date
+    if map_type == "HMI_hourly":
+        parsed_date = parse_hmi_hourly_filename_date(file_path)
         if parsed_date is not None:
             return parsed_date
     if map_type in {"HMI_small", "HMI_polfil"}:
@@ -591,6 +761,67 @@ def is_jsoc_unavailable_error(exc: Exception) -> bool:
     return any(pattern in msg for pattern in unavailable_patterns)
 
 
+def ensure_hmi_sync_wcs(
+    client,
+    t_rec: str,
+    local_file: str,
+) -> str:
+    """Attach authoritative JSOC longitude WCS metadata to an HMI_SYNC FITS."""
+    from astropy.io import fits
+
+    series = f"{HMI_SYNC_SERIES}[{t_rec}]"
+    wcs_keys = ("CRVAL1", "CRPIX1", "CDELT1", "CTYPE1", "CUNIT1")
+    metadata = client.query(series, key=",".join(wcs_keys))
+    if metadata.empty:
+        raise RuntimeError(f"No JSOC WCS metadata found for HMI_SYNC record {t_rec}.")
+
+    values = metadata.iloc[0]
+    for key in ("CRVAL1", "CRPIX1", "CDELT1"):
+        try:
+            value = float(values[key])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise RuntimeError(
+                f"Invalid JSOC {key} metadata for HMI_SYNC record {t_rec}."
+            ) from exc
+        if not math.isfinite(value) or (key == "CDELT1" and value == 0.0):
+            raise RuntimeError(
+                f"Invalid JSOC {key} metadata for HMI_SYNC record {t_rec}."
+            )
+
+    try:
+        with fits.open(local_file, mode="update") as hdul:
+            image_hdu = next(
+                (
+                    hdu
+                    for hdu in hdul
+                    if hdu.data is not None and hdu.data.ndim >= 2
+                ),
+                None,
+            )
+            if image_hdu is None:
+                raise RuntimeError(
+                    f"No image data found in downloaded HMI_SYNC FITS: {local_file}"
+                )
+            for key in wcs_keys:
+                value = values.get(key)
+                if value is not None:
+                    image_hdu.header[key] = value
+            hdul.flush()
+    except OSError as exc:
+        raise RuntimeError(
+            f"Could not update HMI_SYNC FITS metadata: {local_file}"
+        ) from exc
+
+    logger.info(
+        "Attached HMI_SYNC longitude WCS for %s: CRVAL1=%s, CRPIX1=%s, CDELT1=%s",
+        t_rec,
+        values["CRVAL1"],
+        values["CRPIX1"],
+        values["CDELT1"],
+    )
+    return local_file
+
+
 def try_download_hmi_sync_record(
     client,
     t_rec: str,
@@ -612,6 +843,7 @@ def try_download_hmi_sync_record(
         if not local_file.lower().endswith((".fits", ".fits.gz")):
             raise RuntimeError(f"JSOC did not return a FITS file: {local_file}")
 
+        local_file = ensure_hmi_sync_wcs(client, t_rec, local_file)
         map_name = Path(local_file).name
 
         logger.info(f"Downloaded map: {local_file}")
@@ -734,6 +966,18 @@ def generate_output_and_map_names(
             date_datetime,
             output_dir,
             drms_email,
+        )
+        logger.info(f"Output file: {output_name}")
+        logger.info(f"Downloaded map: {local_file}")
+        return output_name, local_file
+    elif map_type == "HMI_hourly":
+        candidate = select_nearest_candidate(
+            list_remote_candidates(date_datetime, map_type),
+            date_datetime,
+        )
+        local_file, map_name = download_hmi_hourly_magnetogram(
+            candidate,
+            output_dir,
         )
         logger.info(f"Output file: {output_name}")
         logger.info(f"Downloaded map: {local_file}")

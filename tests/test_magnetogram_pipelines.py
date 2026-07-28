@@ -164,6 +164,88 @@ def test_filtered_pipelines_apply_configured_amp_after_normalization(
     assert np.array_equal(captured["Br_out"], Br * 6.0)
 
 
+def test_sph_pipeline_uses_hmi_hourly_interpolation_at_requested_time(
+    monkeypatch,
+    tmp_path,
+):
+    from coconut_tools.magnetogram import sph_filtering
+
+    target = datetime(2026, 7, 1, 7, 15)
+    local_files = [
+        str(tmp_path / f"hmi.synoptic_hourly_20260701_0{hour}2400.fits")
+        for hour in range(6, 10)
+    ]
+    selection = object()
+    Br = np.arange(8.0).reshape(2, 4)
+    Br_linear = Br + 1.0
+    theta = np.array([0.25, 0.75])
+    phi = np.linspace(0.0, 2.0 * np.pi, Br.shape[1], endpoint=False)
+    Theta, Phi = np.meshgrid(theta, phi, indexing="ij")
+    captured = {}
+
+    monkeypatch.setattr(
+        sph_filtering,
+        "generate_output_and_interpolation_map_names",
+        lambda *args, **kwargs: (
+            str(tmp_path / "map_hmi_hourly_sph.dat"),
+            local_files,
+            selection,
+        ),
+    )
+    monkeypatch.setattr(
+        sph_filtering,
+        "generate_output_and_map_names",
+        lambda *args, **kwargs: pytest.fail(
+            "interpolation=True must not use the single-map download path"
+        ),
+    )
+    monkeypatch.setattr(
+        sph_filtering,
+        "read_interpolated_magnetogram",
+        lambda *args, **kwargs: (Br, Theta, Phi, Br_linear),
+    )
+
+    def fake_rotation(Br_in, Br_linear_in, *args, **kwargs):
+        captured["use_interpolation"] = args[3]
+        captured["effective_date"] = kwargs["effective_date"]
+        return Br_in, Br_linear_in, None
+
+    monkeypatch.setattr(
+        sph_filtering,
+        "apply_configured_longitude_rotation",
+        fake_rotation,
+    )
+    monkeypatch.setattr(
+        sph_filtering,
+        "project_and_reconstruct",
+        lambda Br_in, *args, **kwargs: (Br_in, np.array([1.0])),
+    )
+
+    result = sph_filtering.process_magnetogram_date(
+        {
+            "date": target.isoformat(),
+            "map_type": "HMI_hourly",
+            "output_dir": str(tmp_path),
+            "interpolation": True,
+            "write_map": False,
+            "show_map": False,
+            "rotate_to_stonyhurst": True,
+        },
+        target,
+    )
+
+    assert result["date"] == target
+    assert result["effective_date"] == target
+    assert result["magnetogram_date"] == target
+    assert result["local_file"] == local_files
+    assert result["selection"] is selection
+    np.testing.assert_array_equal(result["Br_linear"], Br_linear)
+    assert captured == {
+        "use_interpolation": True,
+        "effective_date": target,
+    }
+
+
 def _write_dat_and_png(outdir, name, Br_input, Br_output, Theta, Phi):
     from coconut_tools.magnetogram.sph_filtering import plot_maps, write_bc_file
 

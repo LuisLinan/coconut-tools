@@ -1,25 +1,37 @@
 from datetime import datetime
 from pathlib import Path
+import shutil
 import sys
 import types
 
 import numpy as np
+import pandas as pd
 import pytest
 from astropy.io import fits
 
 from coconut_tools.magnetogram.magnetogram_download import (
+    InterpolationSelection,
+    MagnetogramCandidate,
     build_output_name,
     default_figure_path,
+    download_interpolation_magnetograms,
+    download_hmi_hourly_magnetogram,
+    ensure_hmi_sync_wcs,
+    list_hmi_candidates,
     magnetogram_display_date,
     magnetogram_effective_date,
     normalize_map_type,
+    parse_hmi_hourly_filename_date,
     resolve_figure_path,
 )
 from coconut_tools.magnetogram.sph_filtering import (
     apply_configured_longitude_rotation,
     closest_longitude_column,
     correct_net_flux,
+    processed_longitude_axis,
     read_magnetogram,
+    read_interpolated_magnetogram,
+    read_temporal_br_map,
     resize_processed_longitude_axis,
     rotate_longitude_to_stonyhurst,
 )
@@ -46,6 +58,11 @@ def test_magnetogram_dates_and_paths_are_resolved_consistently():
         "HMI_SYNC",
         datetime(2020, 12, 7, 15, 30, 45),
     ) == datetime(2026, 7, 1, 6, 24)
+    assert magnetogram_effective_date(
+        "hmi.synoptic_hourly_20260701_070000.fits",
+        "HMI_hourly",
+        datetime(2020, 12, 7, 15, 30, 45),
+    ) == datetime(2026, 7, 1, 7, 0)
     assert magnetogram_effective_date(
         "magnetogram.fits",
         "GONG_mrbqs",
@@ -76,6 +93,7 @@ def test_map_type_normalization_accepts_case_variants():
 
     assert normalize_map_type("hmi_sync") == "HMI_SYNC"
     assert normalize_map_type("HMI_SYNC") == "HMI_SYNC"
+    assert normalize_map_type("HMI_HOURLY") == "HMI_hourly"
     assert normalize_map_type("Hmi_Small") == "HMI_small"
     assert normalize_map_type("gong_MRBQS") == "GONG_mrbqs"
     assert normalize_map_type(" adapt ") == "ADAPT"
@@ -88,9 +106,344 @@ def test_map_type_normalization_accepts_case_variants():
     assert build_output_name("hmi_sync", str(outdir), "sph") == str(
         outdir / "map_hmi_sync_sph.dat"
     )
+    assert build_output_name("hmi_hourly", str(outdir), "sph") == str(
+        outdir / "map_hmi_hourly_sph.dat"
+    )
     assert build_output_name("gong_MRBQS", str(outdir), "sph") == str(
         outdir / "map_gong_mrbqs_sph.dat"
     )
+
+
+def test_hmi_hourly_candidates_use_timestamps_encoded_in_their_names(monkeypatch):
+    captured = {}
+    keys = pd.DataFrame(
+        {
+            "T_REC": [
+                "2026.07.01_08:00:00_TAI",
+                "2026.07.01_06:00:00_TAI",
+            ]
+        }
+    )
+    segments = pd.DataFrame(
+        {
+            "Mr_polfil": [
+                "/SUM97/D123/map_0800.fits",
+                "https://example.test/map_0600.fits",
+            ]
+        }
+    )
+
+    class FakeClient:
+        def query(self, recordset, key, seg):
+            captured.update({"recordset": recordset, "key": key, "seg": seg})
+            return keys, segments
+
+    fake_drms = types.SimpleNamespace(Client=FakeClient)
+    monkeypatch.setitem(sys.modules, "drms", fake_drms)
+
+    candidates = list_hmi_candidates(datetime(2026, 7, 1, 7, 15))
+
+    assert [candidate.name for candidate in candidates] == [
+        "hmi.synoptic_hourly_20260701_060000.fits",
+        "hmi.synoptic_hourly_20260701_080000.fits",
+    ]
+    assert [candidate.date for candidate in candidates] == [
+        datetime(2026, 7, 1, 6),
+        datetime(2026, 7, 1, 8),
+    ]
+    assert candidates[0].remote_url == "https://example.test/map_0600.fits"
+    assert candidates[1].remote_url == (
+        "http://jsoc.stanford.edu/SUM97/D123/map_0800.fits"
+    )
+    assert captured == {
+        "recordset": (
+            "hmi.mrdailysynframe_polfil_720s_nrt"
+            "[2026.06.30_07:15:00_TAI-2026.07.02_07:15:00_TAI]"
+        ),
+        "key": "T_REC",
+        "seg": "Mr_polfil",
+    }
+
+
+def test_hmi_hourly_download_uses_filename_time_for_jsoc_metadata(
+    tmp_path,
+    monkeypatch,
+):
+    source_file = tmp_path / "remote.fits"
+    fits.HDUList(
+        [
+            fits.PrimaryHDU(),
+            fits.ImageHDU(data=np.array([[1.0, np.nan], [-2.0, 3.0]])),
+        ]
+    ).writeto(source_file)
+
+    captured = {}
+    metadata = pd.DataFrame(
+        [
+            {
+                "T_OBS": "2026.07.01_07:00:00_TAI",
+                "T_REC_epoch": "1993.01.01_00:00:00_TAI",
+                "T_REC_step": 720.0,
+                "T_REC_unit": "secs",
+                "CSYSER1": "unused",
+            }
+        ]
+    )
+
+    class FakeClient:
+        def query(self, recordset, key):
+            captured.update({"recordset": recordset, "key": key})
+            return metadata
+
+    fake_drms = types.SimpleNamespace(
+        Client=FakeClient,
+        JsocInfoConstants=types.SimpleNamespace(all="ALL_JSOC_KEYS"),
+    )
+    monkeypatch.setitem(sys.modules, "drms", fake_drms)
+
+    import urllib.request
+
+    monkeypatch.setattr(
+        urllib.request,
+        "urlretrieve",
+        lambda _url, destination: (shutil.copyfile(source_file, destination), None),
+    )
+
+    candidate = MagnetogramCandidate(
+        name="hmi.synoptic_hourly_20260701_070000.fits",
+        date=datetime(2000, 1, 1),
+        remote_url="https://example.test/remote.fits",
+    )
+    local_file, map_name = download_hmi_hourly_magnetogram(candidate, str(tmp_path))
+
+    assert map_name == candidate.name
+    assert local_file == str(tmp_path / candidate.name)
+    assert captured == {
+        "recordset": (
+            "hmi.mrdailysynframe_polfil_720s_nrt"
+            "[2026.07.01_07:00:00_TAI]"
+        ),
+        "key": "ALL_JSOC_KEYS",
+    }
+    assert not Path(local_file + ".temp").exists()
+    np.testing.assert_array_equal(
+        fits.getdata(local_file),
+        np.array([[1.0, 0.0], [-2.0, 3.0]]),
+    )
+    header = fits.getheader(local_file, ext=1)
+    assert header["DATE-OBS"] == "2026-07-01T07:00:00"
+    assert header["CUNIT1"] == "deg"
+    assert header["BUNIT"] == "gauss"
+    assert header["TRECEPOC"] == "1993.01.01_00:00:00_TAI"
+    assert "T_REC_epoch" not in header
+    assert parse_hmi_hourly_filename_date(map_name) == datetime(2026, 7, 1, 7)
+
+
+@pytest.mark.parametrize(
+    ("native_longitude", "crval1", "crpix1", "cdelt1", "expected_shift"),
+    [
+        ([180.0, 90.0, 0.0, 270.0], 90.0, 2.0, -90.0, 2),
+        ([90.0, 180.0, 270.0, 0.0], 180.0, 2.0, 90.0, 1),
+    ],
+)
+def test_hmi_hourly_reader_rolls_without_reflecting_hmi_longitude(
+    tmp_path,
+    native_longitude,
+    crval1,
+    crpix1,
+    cdelt1,
+    expected_shift,
+):
+    file_path = tmp_path / "hmi.synoptic_hourly_20260701_070000.fits"
+    native_longitude = np.asarray(native_longitude)
+    data = np.vstack((native_longitude, native_longitude + 1000.0))
+    hdu = fits.CompImageHDU(data=data)
+    hdu.header["CRVAL1"] = crval1
+    hdu.header["CRPIX1"] = crpix1
+    hdu.header["CDELT1"] = cdelt1
+    hdu.writeto(file_path)
+
+    Br, _, Phi = read_magnetogram(str(file_path), "HMI_hourly")
+    temporal_Br = read_temporal_br_map(str(file_path), "HMI_hourly")
+    longitude = processed_longitude_axis(str(file_path), "HMI_hourly")
+
+    expected_longitude = np.array([0.0, 90.0, 180.0, 270.0])
+    expected_Br = np.roll(data[::-1, :], expected_shift, axis=1)
+    np.testing.assert_array_equal(Br, expected_Br)
+    np.testing.assert_array_equal(temporal_Br, expected_Br)
+    np.testing.assert_allclose(longitude, expected_longitude)
+    np.testing.assert_allclose(Phi[0], np.deg2rad(expected_longitude))
+
+
+def test_hmi_sync_uses_jsoc_wcs_for_the_same_origin_roll(tmp_path):
+    file_path = (
+        tmp_path
+        / "hmi.mrdailysynframe_720s_nrt.20260701_072400_TAI.data.fits"
+    )
+    data = np.array(
+        [
+            [180.0, 90.0, 0.0, 270.0],
+            [1180.0, 1090.0, 1000.0, 1270.0],
+        ]
+    )
+    hdu = fits.CompImageHDU(data=data)
+    hdu.header["CRVAL1"] = 0.0
+    hdu.header["CRPIX1"] = 2.5
+    hdu.header["CDELT1"] = -90.0
+    hdu.writeto(file_path)
+
+    captured = {}
+    metadata = pd.DataFrame(
+        [
+            {
+                "CRVAL1": 90.0,
+                "CRPIX1": 2.0,
+                "CDELT1": -90.0,
+                "CTYPE1": "CRLN-CEA",
+                "CUNIT1": "degree",
+            }
+        ]
+    )
+
+    class FakeClient:
+        def query(self, recordset, key):
+            captured.update({"recordset": recordset, "key": key})
+            return metadata
+
+    t_rec = "2026.07.01_07:24:00_TAI"
+    ensure_hmi_sync_wcs(FakeClient(), t_rec, str(file_path))
+    Br, _, Phi = read_magnetogram(str(file_path), "HMI_SYNC")
+    longitude = processed_longitude_axis(str(file_path), "HMI_SYNC")
+
+    expected_longitude = np.array([0.0, 90.0, 180.0, 270.0])
+    expected_Br = np.roll(data[::-1, :], 2, axis=1)
+    np.testing.assert_array_equal(Br, expected_Br)
+    np.testing.assert_allclose(longitude, expected_longitude)
+    np.testing.assert_allclose(Phi[0], np.deg2rad(expected_longitude))
+    assert captured == {
+        "recordset": (
+            "hmi.Mrdailysynframe_720s_nrt[2026.07.01_07:24:00_TAI]"
+        ),
+        "key": "CRVAL1,CRPIX1,CDELT1,CTYPE1,CUNIT1",
+    }
+    header = fits.getheader(file_path, ext=1)
+    assert header["CRVAL1"] == 90.0
+    assert header["CRPIX1"] == 2.0
+    assert header["CDELT1"] == -90.0
+    assert header["CTYPE1"] == "CRLN-CEA"
+    assert header["CUNIT1"] == "degree"
+
+
+def test_hmi_hourly_interpolation_downloads_each_map_with_jsoc_metadata(
+    tmp_path,
+    monkeypatch,
+):
+    from coconut_tools.magnetogram import magnetogram_download
+
+    dates = [datetime(2026, 7, 1, hour) for hour in range(4)]
+    candidates = [
+        MagnetogramCandidate(
+            name=f"hmi.synoptic_hourly_{date.strftime('%Y%m%d_%H%M%S')}.fits",
+            date=date,
+            remote_url=f"https://example.test/{date.hour}.fits",
+        )
+        for date in dates
+    ]
+    downloaded = []
+
+    monkeypatch.setattr(
+        magnetogram_download,
+        "list_remote_candidates",
+        lambda *_args: candidates,
+    )
+
+    def fake_download(candidate, output_dir):
+        downloaded.append(candidate)
+        return str(Path(output_dir) / candidate.name), candidate.name
+
+    monkeypatch.setattr(
+        magnetogram_download,
+        "download_hmi_hourly_magnetogram",
+        fake_download,
+    )
+    monkeypatch.setattr(
+        magnetogram_download,
+        "download_candidate",
+        lambda *_args: pytest.fail("Generic downloader must not handle HMI_hourly"),
+    )
+
+    target = datetime(2026, 7, 1, 1, 30)
+    local_files, selection = download_interpolation_magnetograms(
+        target,
+        "HMI_hourly",
+        str(tmp_path),
+    )
+
+    assert downloaded == candidates
+    assert [Path(path).name for path in local_files] == [
+        candidate.name for candidate in candidates
+    ]
+    assert selection.before.date == dates[1]
+    assert selection.after.date == dates[2]
+    assert selection.target_date == target
+
+
+def test_hmi_hourly_interpolation_aligns_each_wcs_and_uses_target_time(tmp_path):
+    dates = [datetime(2026, 7, 1, hour) for hour in range(4)]
+    candidates = []
+    local_files = []
+    base = np.array(
+        [
+            [0.0, 1.0, 2.0, 3.0],
+            [10.0, 11.0, 12.0, 13.0],
+        ]
+    )
+
+    for index, date in enumerate(dates):
+        name = f"hmi.synoptic_hourly_{date.strftime('%Y%m%d_%H%M%S')}.fits"
+        file_path = tmp_path / name
+        desired_map = base + 10.0 * index
+        shift = index
+        native_data = np.roll(desired_map, -shift, axis=1)[::-1, :]
+        hdu = fits.CompImageHDU(data=native_data)
+        hdu.header["CRVAL1"] = -90.0 * shift
+        hdu.header["CRPIX1"] = 1.0
+        hdu.header["CDELT1"] = -90.0
+        hdu.writeto(file_path)
+        candidates.append(MagnetogramCandidate(name, date, "unused"))
+        local_files.append(str(file_path))
+
+    target = datetime(2026, 7, 1, 1, 30)
+    selection = InterpolationSelection(
+        before_previous=candidates[0],
+        before=candidates[1],
+        after=candidates[2],
+        after_next=candidates[3],
+        coef_before=0.5,
+        coef_after=0.5,
+        interval_seconds=3600.0,
+        previous_interval_seconds=3600.0,
+        next_interval_seconds=3600.0,
+        target_date=target,
+    )
+
+    Br, Theta, Phi, Br_linear = read_interpolated_magnetogram(
+        local_files,
+        "HMI_hourly",
+        selection,
+        interpolation_order=2,
+    )
+
+    expected = base + 15.0
+    np.testing.assert_allclose(Br, expected)
+    np.testing.assert_allclose(Br_linear, expected)
+    assert Br.shape == Theta.shape == Phi.shape
+    assert magnetogram_effective_date(
+        local_files[0],
+        "HMI_hourly",
+        target,
+        interpolated=True,
+    ) == target
 
 
 def test_local_rotation_helpers_use_the_expected_longitude_convention():

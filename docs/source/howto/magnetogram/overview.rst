@@ -143,7 +143,9 @@ The following keys are shared by the three filters:
 - ``show_map``: write a diagnostic figure, default ``True``.
 - ``output_path_fig``: optional diagnostic figure path.
 - ``visu_type``: map projection used in the diagnostic figure, default
-  ``"sinlat"``.
+  ``"sinlat"``. This displays the native uniform sine-latitude grid with
+  ``imshow``. Set it to ``"lat"`` to display true latitude coordinates with
+  ``pcolormesh``.
 
 Output Names
 ------------
