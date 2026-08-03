@@ -577,6 +577,7 @@ def read_interpolated_magnetogram(
     selection: InterpolationSelection,
     adapt_map: int = 0,
     interpolation_order: int = 2,
+    resize: bool = False,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Read, normalize, and temporally interpolate a four-map stencil.
 
@@ -592,17 +593,21 @@ def read_interpolated_magnetogram(
         selection (InterpolationSelection): Time interpolation metadata.
         adapt_map (int): ADAPT realization index.
         interpolation_order (int): 1 for linear, 2 for cubic Hermite.
+        resize (bool): Resize each normalized FITS map to ``(360, 720)``
+            before temporal interpolation. Defaults to False.
 
     Returns:
         tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
             Br, Theta, Phi, Br_linear.
     """
     map_type = normalize_map_type(map_type)
+    resize = _as_bool(resize)
     logger.info("Reading interpolation stencil")
     Br_maps = [read_temporal_br_map(path, map_type, adapt_map) for path in local_files]
     shapes = {Br.shape for Br in Br_maps}
     if len(shapes) != 1:
         raise RuntimeError(f"Interpolation stencil has inconsistent shapes: {shapes}")
+    Br_maps = [resize_magnetogram_if_requested(Br, resize) for Br in Br_maps]
     Br, Br_linear = interpolate_br_maps(Br_maps, selection, interpolation_order)
     theta, phi = build_regular_theta_phi(Br, map_type)
     Theta, Phi = build_theta_phi(theta, phi)
@@ -1185,7 +1190,7 @@ def process_magnetogram_date(
             ``map_type``, ``output_dir``, ``download_dir``, ``lmax``, ``amp``,
             ``r_st``, ``adapt_map``, ``write_map``, ``show_map``,
             ``visu_type``, ``alpha``, ``interpolation_order``,
-            ``interpolation``, ``rotate_to_stonyhurst``, ``flux_correct``,
+            ``interpolation``, ``resize``, ``rotate_to_stonyhurst``, ``flux_correct``,
             ``flux_correction_method``, and ``drms_email`` or ``jsoc_email``.
         target_date (str | datetime): Requested processing time.
         method_used (str): Method label used in output filenames.
@@ -1237,6 +1242,7 @@ def process_magnetogram_date(
             selection,
             adapt_map=adapt_map,
             interpolation_order=interpolation_order,
+            resize=resize,
         )
         local_file = local_files
     else:
@@ -1279,7 +1285,7 @@ def process_magnetogram_date(
         use_interpolation,
         rotate_to_stonyhurst,
         effective_date=effective_date,
-        resize=resize and not interpolated,
+        resize=resize,
     )
 
     if _as_bool(config.get("flux_correct", False)):
@@ -1403,7 +1409,7 @@ if __name__ == "__main__":
     #to run a steady test
 
     base_output_dir = r"C:\Users\luisl\Desktop\testmagnetogram"
-    label = "hmi_polfil"
+    label = "hmi_hourly"
     output_dir = os.path.join(base_output_dir, label)
     figure_output_dir = os.path.join(base_output_dir, "images")
 
@@ -1412,7 +1418,7 @@ if __name__ == "__main__":
         "amp": 1,
         "write_map": True,
         "show_map": True,
-        "visu_type": "lat",
+        "visu_type": "sinlat",
         "alpha": 3 * 10 ** (-6),
         "rotate_to_stonyhurst": True,
         "interpolation": False,
@@ -1420,10 +1426,10 @@ if __name__ == "__main__":
         "resize": True,
         "flux_correct": False,
         "flux_correction_method": "surface_mean", #surface_mean' or 'polarity_scaling'
-        "map_type": "hmi_polfil",
+        "map_type": "hmi_hourly",
         "output_dir": output_dir,
         "download_dir": output_dir,
-        "output_path_fig": os.path.join(figure_output_dir, f"{label}.png"),
+        "output_path_fig": os.path.join(figure_output_dir, f"{label}_sph.png"),
         "drms_email": "luis.linan@kuleuven.be"
         }
 

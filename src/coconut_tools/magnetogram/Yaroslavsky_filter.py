@@ -147,7 +147,7 @@ def process_magnetogram_date(
             ``map_type``, ``output_dir``, ``download_dir``, ``r_st``,
             ``amp``, ``adapt_map``, ``write_map``, ``show_map``, ``visu_type``,
             ``alpha``, ``Rn``, ``sig``, ``interpolation_order``,
-            ``interpolation``, ``rotate_to_stonyhurst``, ``flux_correct``,
+            ``interpolation``, ``resize``, ``rotate_to_stonyhurst``, ``flux_correct``,
             ``flux_correction_method``, ``drms_email`` or ``jsoc_email``, and
             ``write_gaussian_prepass``.
         target_date: Requested processing time.
@@ -182,7 +182,7 @@ def process_magnetogram_date(
     resize = _as_bool(config.get("resize", False))
 
     interpolated = use_interpolation and (
-        is_gong_temporal_map_type(map_type) or map_type == "ADAPT"
+        is_gong_temporal_map_type(map_type) or map_type in {"ADAPT", "HMI_hourly"}
     )
 
     if interpolated:
@@ -199,6 +199,7 @@ def process_magnetogram_date(
             selection,
             adapt_map=adapt_map,
             interpolation_order=interpolation_order,
+            resize=resize,
         )
         local_file = local_files
     else:
@@ -240,7 +241,7 @@ def process_magnetogram_date(
         use_interpolation,
         rotate_to_stonyhurst,
         effective_date=effective_date,
-        resize=resize and not interpolated,
+        resize=resize,
     )
 
     if _as_bool(config.get("flux_correct", False)):
@@ -349,12 +350,12 @@ def process_config(config: dict[str, Any], method_used: str = "Yaroslavsky") -> 
 if __name__ == "__main__":
 
     base_output_dir = r"C:\Users\luisl\Desktop\testmagnetogram"
-    label = "yaroslavsky_gong"
+    label = "hmi_hourly"
     output_dir = os.path.join(base_output_dir, label)
     figure_output_dir = os.path.join(base_output_dir, "images")
 
     configs = [{
-            "date": "2024-07-01T06:17:00",
+            "date": "2026-06-20T13:42:00",
             "amp": 1,
             "write_map": True,
             "show_map": True,
@@ -362,14 +363,14 @@ if __name__ == "__main__":
             "rotate_to_stonyhurst": True,
             "interpolation": False,
             "interpolation_order": 2,
-            "resize": False,
+            "resize": True,
             "flux_correct": False,
             "flux_correction_method": "surface_mean", #surface_mean' or 'polarity_scaling'
-            "map_type": "GONG_mrzqs",
+            "map_type": "hmi_hourly",
             "adapt_map": 6,
             "output_dir": output_dir,
             "download_dir": output_dir,
-            "output_path_fig": os.path.join(figure_output_dir, f"{label}.png"),
+            "output_path_fig": os.path.join(figure_output_dir, f"{label}_yaroslavsky.png"),
             "drms_email": "luis.linan@kuleuven.be",
             "alpha": 1.4,
             "Rn" : 2,

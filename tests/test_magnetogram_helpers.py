@@ -446,6 +446,75 @@ def test_hmi_hourly_interpolation_aligns_each_wcs_and_uses_target_time(tmp_path)
     ) == target
 
 
+def test_hmi_hourly_interpolation_resizes_aligned_maps_before_interpolation(
+    tmp_path,
+    monkeypatch,
+):
+    dates = [datetime(2026, 7, 1, hour) for hour in range(4)]
+    candidates = []
+    local_files = []
+    base = np.array(
+        [
+            [0.0, 1.0, 2.0, 3.0],
+            [10.0, 11.0, 12.0, 13.0],
+        ]
+    )
+
+    for index, date in enumerate(dates):
+        name = f"hmi.synoptic_hourly_{date.strftime('%Y%m%d_%H%M%S')}.fits"
+        file_path = tmp_path / name
+        desired_map = base + 10.0 * index
+        native_data = np.roll(desired_map, -index, axis=1)[::-1, :]
+        hdu = fits.CompImageHDU(data=native_data)
+        hdu.header["CRVAL1"] = -90.0 * index
+        hdu.header["CRPIX1"] = 1.0
+        hdu.header["CDELT1"] = -90.0
+        hdu.writeto(file_path)
+        candidates.append(MagnetogramCandidate(name, date, "unused"))
+        local_files.append(str(file_path))
+
+    target = datetime(2026, 7, 1, 1, 30)
+    selection = InterpolationSelection(
+        before_previous=candidates[0],
+        before=candidates[1],
+        after=candidates[2],
+        after_next=candidates[3],
+        coef_before=0.5,
+        coef_after=0.5,
+        interval_seconds=3600.0,
+        previous_interval_seconds=3600.0,
+        next_interval_seconds=3600.0,
+        target_date=target,
+    )
+
+    resized_inputs = []
+    fake_skimage = types.ModuleType("skimage")
+    fake_transform = types.ModuleType("skimage.transform")
+
+    def fake_resize(image, output_shape, **kwargs):
+        resized_inputs.append(image.copy())
+        return np.full(output_shape, image[0, 0], dtype=float)
+
+    fake_transform.resize = fake_resize
+    monkeypatch.setitem(sys.modules, "skimage", fake_skimage)
+    monkeypatch.setitem(sys.modules, "skimage.transform", fake_transform)
+
+    Br, Theta, Phi, Br_linear = read_interpolated_magnetogram(
+        local_files,
+        "HMI_hourly",
+        selection,
+        interpolation_order=2,
+        resize=True,
+    )
+
+    assert len(resized_inputs) == 4
+    for index, resize_input in enumerate(resized_inputs):
+        np.testing.assert_allclose(resize_input, base + 10.0 * index)
+    assert Br.shape == Theta.shape == Phi.shape == Br_linear.shape == (360, 720)
+    np.testing.assert_allclose(Br, 15.0)
+    np.testing.assert_allclose(Br_linear, 15.0)
+
+
 def test_local_rotation_helpers_use_the_expected_longitude_convention():
     outdir = Path(__file__).parent / "_outputs" / "magnetogram_helpers"
     outdir.mkdir(parents=True, exist_ok=True)
@@ -536,6 +605,40 @@ def test_stonyhurst_rotation_uses_original_or_resized_longitude_axis(monkeypatch
 
     np.testing.assert_array_equal(Br_original_axis, np.array([[1, 2, 3, 4, 5, 6, 7, 0]]))
     np.testing.assert_array_equal(Br_resized_axis, np.array([[2, 3, 4, 5, 6, 7, 0, 1]]))
+
+
+def test_interpolated_hmi_hourly_rotation_uses_resized_longitude_axis(monkeypatch):
+    from coconut_tools.magnetogram import sph_filtering
+
+    Br = np.arange(8).reshape(1, 8)
+    Br_linear = Br + 10
+
+    monkeypatch.setattr(
+        sph_filtering,
+        "compute_carrington_central_meridian",
+        lambda *args, **kwargs: 90.0,
+    )
+    monkeypatch.setattr(
+        sph_filtering,
+        "processed_longitude_axis",
+        lambda *args, **kwargs: np.array([0.0, 90.0, 180.0, 270.0]),
+    )
+
+    Br_rotated, Br_linear_rotated, rotation_angle = apply_configured_longitude_rotation(
+        Br,
+        Br_linear,
+        ["dummy_hmi_hourly.fits"] * 4,
+        "HMI_hourly",
+        TARGET_DATE,
+        use_interpolation=True,
+        rotate_to_stonyhurst=True,
+        effective_date=TARGET_DATE,
+        resize=True,
+    )
+
+    np.testing.assert_array_equal(Br_rotated, np.roll(Br, -2, axis=1))
+    np.testing.assert_array_equal(Br_linear_rotated, np.roll(Br_linear, -2, axis=1))
+    assert rotation_angle == pytest.approx(90.0)
 
 
 def test_read_magnetogram_can_resize_after_longitude_normalization(tmp_path, monkeypatch):

@@ -199,15 +199,21 @@ def test_sph_pipeline_uses_hmi_hourly_interpolation_at_requested_time(
             "interpolation=True must not use the single-map download path"
         ),
     )
+
+    def fake_read_interpolated(*args, **kwargs):
+        captured["read_resize"] = kwargs["resize"]
+        return Br, Theta, Phi, Br_linear
+
     monkeypatch.setattr(
         sph_filtering,
         "read_interpolated_magnetogram",
-        lambda *args, **kwargs: (Br, Theta, Phi, Br_linear),
+        fake_read_interpolated,
     )
 
     def fake_rotation(Br_in, Br_linear_in, *args, **kwargs):
         captured["use_interpolation"] = args[3]
         captured["effective_date"] = kwargs["effective_date"]
+        captured["rotation_resize"] = kwargs["resize"]
         return Br_in, Br_linear_in, None
 
     monkeypatch.setattr(
@@ -227,6 +233,7 @@ def test_sph_pipeline_uses_hmi_hourly_interpolation_at_requested_time(
             "map_type": "HMI_hourly",
             "output_dir": str(tmp_path),
             "interpolation": True,
+            "resize": True,
             "write_map": False,
             "show_map": False,
             "rotate_to_stonyhurst": True,
@@ -241,8 +248,96 @@ def test_sph_pipeline_uses_hmi_hourly_interpolation_at_requested_time(
     assert result["selection"] is selection
     np.testing.assert_array_equal(result["Br_linear"], Br_linear)
     assert captured == {
+        "read_resize": True,
         "use_interpolation": True,
         "effective_date": target,
+        "rotation_resize": True,
+    }
+
+
+@pytest.mark.parametrize(
+    ("module_name", "filter_name", "filter_result"),
+    [
+        (
+            "coconut_tools.magnetogram.Yaroslavsky_filter",
+            "filter_radial_field_weighted",
+            lambda Br: Br,
+        ),
+        (
+            "coconut_tools.magnetogram.NLD_implicit_method",
+            "filter_radial_field",
+            lambda Br: (Br, 0.5),
+        ),
+    ],
+)
+def test_filtered_pipelines_forward_resize_for_hmi_hourly_interpolation(
+    monkeypatch,
+    tmp_path,
+    module_name,
+    filter_name,
+    filter_result,
+):
+    module = importlib.import_module(module_name)
+    target = datetime(2026, 7, 1, 7, 15)
+    local_files = [str(tmp_path / f"hmi_hourly_{index}.fits") for index in range(4)]
+    selection = object()
+    Br = np.arange(8.0).reshape(2, 4)
+    Br_linear = Br + 1.0
+    theta = np.array([0.25, 0.75])
+    phi = np.linspace(0.0, 2.0 * np.pi, Br.shape[1], endpoint=False)
+    Theta, Phi = np.meshgrid(theta, phi, indexing="ij")
+    captured = {}
+
+    monkeypatch.setattr(
+        module,
+        "generate_output_and_interpolation_map_names",
+        lambda *args, **kwargs: (str(tmp_path / "map.dat"), local_files, selection),
+    )
+    monkeypatch.setattr(
+        module,
+        "generate_output_and_map_names",
+        lambda *args, **kwargs: pytest.fail(
+            "HMI_hourly interpolation must not use the single-map path"
+        ),
+    )
+
+    def fake_read_interpolated(*args, **kwargs):
+        captured["read_resize"] = kwargs["resize"]
+        return Br, Theta, Phi, Br_linear
+
+    monkeypatch.setattr(module, "read_interpolated_magnetogram", fake_read_interpolated)
+    monkeypatch.setattr(module, "magnetogram_effective_date", lambda *args, **kwargs: target)
+    monkeypatch.setattr(module, "magnetogram_display_date", lambda *args, **kwargs: target)
+
+    def fake_rotation(Br_in, Br_linear_in, *args, **kwargs):
+        captured["use_interpolation"] = args[3]
+        captured["rotation_resize"] = kwargs["resize"]
+        return Br_in, Br_linear_in, 42.0
+
+    monkeypatch.setattr(module, "apply_configured_longitude_rotation", fake_rotation)
+    monkeypatch.setattr(module, filter_name, lambda Br_in, *args, **kwargs: filter_result(Br_in))
+
+    result = module.process_magnetogram_date(
+        {
+            "date": target.isoformat(),
+            "map_type": "HMI_hourly",
+            "output_dir": str(tmp_path),
+            "interpolation": True,
+            "resize": True,
+            "write_map": False,
+            "show_map": False,
+            "rotate_to_stonyhurst": True,
+        },
+        target,
+    )
+
+    assert result["local_file"] == local_files
+    assert result["selection"] is selection
+    assert result["rotation_angle"] == pytest.approx(42.0)
+    assert captured == {
+        "read_resize": True,
+        "use_interpolation": True,
+        "rotation_resize": True,
     }
 
 
