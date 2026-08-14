@@ -1408,12 +1408,12 @@ if __name__ == "__main__":
 
     #to run a steady test
 
-    base_output_dir = r"C:\Users\luisl\Desktop\testmagnetogram"
-    label = "hmi_hourly"
+    base_output_dir = r"C:\Users\luisl\Desktop\testmagnetogram\edin"
+    label = "GONG_mrbqj"
     output_dir = os.path.join(base_output_dir, label)
     figure_output_dir = os.path.join(base_output_dir, "images")
 
-    config = {"date": "2026-06-20T13:42:00",
+    config = {"date": "2011-09-09T01:47:05",
         "lmax": 20,
         "amp": 1,
         "write_map": True,
@@ -1426,10 +1426,10 @@ if __name__ == "__main__":
         "resize": True,
         "flux_correct": False,
         "flux_correction_method": "surface_mean", #surface_mean' or 'polarity_scaling'
-        "map_type": "hmi_hourly",
+        "map_type": "GONG_mrbqj",
         "output_dir": output_dir,
         "download_dir": output_dir,
-        "output_path_fig": os.path.join(figure_output_dir, f"{label}_sph.png"),
+        "output_path_fig": os.path.join(figure_output_dir, f"{label}.png"),
         "drms_email": "luis.linan@kuleuven.be"
         }
 
