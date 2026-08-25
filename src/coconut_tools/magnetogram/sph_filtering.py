@@ -10,10 +10,10 @@ optional Carrington-to-Stonyhurst rotation, optional flux balancing, spherical
 harmonic projection/reconstruction, diagnostics, and figure generation.
 
 Date handling follows the common magnetogram "effective time" convention:
-interpolated GONG/ADAPT/HMI_hourly maps represent the requested target time,
+interpolated GONG/ADAPT/HMI_hourly/HMI_fdt maps represent the requested target time,
 HMI small, HMI polar-filled, and WSO use the target time by convention, and
-non-interpolated GONG/ADAPT/HMI_SYNC/HMI_hourly maps use the timestamp encoded
-in the selected filename.
+non-interpolated GONG/ADAPT/HMI_SYNC/HMI_hourly/HMI_fdt maps use the timestamp
+encoded in the selected filename.
 """
 import os
 from datetime import datetime
@@ -51,6 +51,7 @@ logger = setup_logger(__name__)
 _PLOT_COLOR_LIMIT_PERCENTILE = 99.0
 _RESIZED_MAGNETOGRAM_SHAPE = (360, 720)
 _HMI_DYNAMIC_MAP_TYPES = {"HMI_SYNC", "HMI_hourly"}
+_ADAPT_ENSEMBLE_MAP_TYPES = {"ADAPT", "HMI_fdt"}
 
 
 def resize_magnetogram_if_requested(Br_data: np.ndarray, enabled: bool) -> np.ndarray:
@@ -190,7 +191,7 @@ def ensure_increasing_longitude(
     map_type = normalize_map_type(map_type)
     if map_type.lower() == "wso":
         return Br
-    if "hmi" in map_type.lower():
+    if "hmi" in map_type.lower() and map_type != "HMI_fdt":
         logger.info("HMI maps are assumed to have increasing longitude.")
         return Br
     if is_br_longitude_increasing(file_path):
@@ -302,8 +303,15 @@ def resize_processed_longitude_axis(
     longitude_original: np.ndarray,
     nb_phi: int,
     has_duplicate_endpoint: bool = False,
+    preserve_cell_edges: bool = False,
 ) -> np.ndarray:
-    """Resize a processed longitude axis while preserving its original origin."""
+    """Resize a processed longitude axis for the resized pixel grid.
+
+    By default, the first longitude is preserved for backward compatibility.
+    With ``preserve_cell_edges=True``, the original and resized grids instead
+    share their periodic cell edges. This matches ``skimage.resize`` with
+    ``grid_mode=True`` and is used by cell-centered HMI-FDT maps.
+    """
     longitude_original = np.asarray(longitude_original, dtype=float)
     if longitude_original.ndim != 1:
         raise ValueError("longitude_original must be a 1D array.")
@@ -316,8 +324,14 @@ def resize_processed_longitude_axis(
     if unique_longitudes < 1:
         raise ValueError("nb_phi must describe at least one unique longitude.")
 
+    output_step = 360.0 / unique_longitudes
     start = longitude_original[0]
-    longitude = start + np.arange(unique_longitudes, dtype=float) * 360.0 / unique_longitudes
+    if preserve_cell_edges and longitude_original.size > 1:
+        input_step = float(np.median(np.diff(longitude_original)))
+        if not np.isfinite(input_step) or np.isclose(input_step, 0.0):
+            raise ValueError("longitude_original must have a finite nonzero spacing.")
+        start = start - input_step / 2.0 + output_step / 2.0
+    longitude = start + np.arange(unique_longitudes, dtype=float) * output_step
     if has_duplicate_endpoint:
         longitude = np.concatenate((longitude, longitude[:1] + 360.0))
     return longitude
@@ -353,7 +367,7 @@ def apply_configured_longitude_rotation(
     """Apply the configured Carrington-to-Stonyhurst longitude rotation.
 
     The rotation date is the magnetogram effective time. For interpolated
-    GONG/ADAPT/HMI_hourly products this is the requested target time because
+    GONG/ADAPT/HMI_hourly/HMI_fdt products this is the requested target time because
     the final map is synthesized at that time. For non-interpolated products
     it is either the timestamp encoded in the selected filename or the product
     convention returned by ``magnetogram_effective_date``.
@@ -385,7 +399,7 @@ def apply_configured_longitude_rotation(
     source_file = local_file[0] if isinstance(local_file, list) else local_file
     interpolated = use_interpolation and (
         is_gong_temporal_map_type(map_type)
-        or map_type in {"ADAPT", "HMI_hourly"}
+        or map_type in {"ADAPT", "HMI_hourly", "HMI_fdt"}
     )
     rotation_date = (
         parse_iso_datetime(effective_date)
@@ -421,6 +435,7 @@ def apply_configured_longitude_rotation(
             longitude_original,
             Br.shape[1],
             has_duplicate_endpoint=has_duplicate_endpoint,
+            preserve_cell_edges=map_type == "HMI_fdt",
         )
     else:
         longitude = longitude_original
@@ -461,6 +476,60 @@ def read_first_fits_image(file_path: str) -> np.ndarray:
     raise ValueError(f"No magnetogram image HDU found in FITS file: {file_path}")
 
 
+def validate_hmi_fdt_carrington_frame(file_path: str) -> np.ndarray:
+    """Validate and return the fixed Carrington longitude grid of HMI-FDT.
+
+    HMI-FDTL also publishes central-meridian-centered ``adapt41i11`` files.
+    Interpolation uses only the ``adapt40i11`` product, whose ``LNGTYPE=0``
+    metadata denotes a fixed, full-rotation Carrington grid.
+    """
+    with fits.open(file_path) as hdul:
+        image_hdu = next(
+            (
+                hdu
+                for hdu in hdul
+                if hdu.data is not None and hdu.data.ndim >= 2
+            ),
+            None,
+        )
+        if image_hdu is None:
+            raise ValueError(
+                f"No magnetogram image HDU found in FITS file: {file_path}"
+            )
+        header = image_hdu.header
+        try:
+            longitude_type = int(header["LNGTYPE"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(
+                "HMI_fdt requires an explicit FITS LNGTYPE=0 Carrington frame: "
+                f"{file_path}"
+            ) from exc
+        if longitude_type != 0:
+            raise ValueError(
+                "HMI_fdt interpolation requires the Carrington-fixed adapt40i11 "
+                f"product (LNGTYPE=0), not LNGTYPE={longitude_type}: {file_path}"
+            )
+
+        width = int(image_hdu.data.shape[-1])
+        try:
+            longitude_step = abs(float(header["CDELT1"]))
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(
+                f"HMI_fdt requires a valid FITS CDELT1: {file_path}"
+            ) from exc
+        if (
+            not np.isfinite(longitude_step)
+            or np.isclose(longitude_step, 0.0)
+            or not np.isclose(longitude_step * width, 360.0, atol=1e-6)
+        ):
+            raise ValueError(
+                "HMI_fdt must cover one complete 360-degree Carrington grid: "
+                f"{file_path}"
+            )
+
+    return increasing_longitude_axis(file_path)
+
+
 def build_regular_theta_phi(Br: np.ndarray, map_type: str) -> tuple[np.ndarray, np.ndarray]:
     """Build regular colatitude and longitude grids for a processed Br map.
 
@@ -478,7 +547,7 @@ def build_regular_theta_phi(Br: np.ndarray, map_type: str) -> tuple[np.ndarray, 
     """
     map_type = normalize_map_type(map_type)
     nb_th, nb_phi = Br.shape
-    if map_type == "ADAPT":
+    if map_type in _ADAPT_ENSEMBLE_MAP_TYPES:
         theta = np.linspace(0.0, np.pi, nb_th)
         phi = np.linspace(0.0, 2.0 * np.pi, nb_phi, endpoint=False)
     else:
@@ -499,7 +568,7 @@ def read_temporal_br_map(file_path: str, map_type: str, adapt_map: int = 0) -> n
     Args:
         file_path (str): Local FITS file.
         map_type (str): Map type. Supported: temporal GONG variants, ADAPT,
-            and HMI_hourly.
+            HMI_hourly, and HMI_fdt.
         adapt_map (int): ADAPT realization index.
 
     Returns:
@@ -510,7 +579,9 @@ def read_temporal_br_map(file_path: str, map_type: str, adapt_map: int = 0) -> n
     if map_type == "HMI_hourly":
         Br = np.nan_to_num(input_data[::-1, :])
         return roll_hmi_dynamic_to_zero_longitude(Br, file_path)
-    if map_type == "ADAPT":
+    if map_type in _ADAPT_ENSEMBLE_MAP_TYPES:
+        if map_type == "HMI_fdt":
+            validate_hmi_fdt_carrington_frame(file_path)
         Br = np.nan_to_num(input_data[adapt_map, ::-1, :])
         return ensure_increasing_longitude(Br, file_path, map_type)
     if is_gong_map_type(map_type):
@@ -589,7 +660,7 @@ def read_interpolated_magnetogram(
     Args:
         local_files (list[str]): Local files in stencil order.
         map_type (str): Map type. Supported: temporal GONG variants, ADAPT,
-            and HMI_hourly.
+            HMI_hourly, and HMI_fdt.
         selection (InterpolationSelection): Time interpolation metadata.
         adapt_map (int): ADAPT realization index.
         interpolation_order (int): 1 for linear, 2 for cubic Hermite.
@@ -607,6 +678,19 @@ def read_interpolated_magnetogram(
     shapes = {Br.shape for Br in Br_maps}
     if len(shapes) != 1:
         raise RuntimeError(f"Interpolation stencil has inconsistent shapes: {shapes}")
+    if map_type == "HMI_fdt":
+        longitude_axes = [
+            validate_hmi_fdt_carrington_frame(path) for path in local_files
+        ]
+        reference_longitude = longitude_axes[0]
+        if any(
+            not np.allclose(longitude, reference_longitude, atol=1e-9, rtol=0.0)
+            for longitude in longitude_axes[1:]
+        ):
+            raise RuntimeError(
+                "HMI_fdt interpolation stencil does not share one fixed "
+                "Carrington longitude grid."
+            )
     Br_maps = [resize_magnetogram_if_requested(Br, resize) for Br in Br_maps]
     Br, Br_linear = interpolate_br_maps(Br_maps, selection, interpolation_order)
     theta, phi = build_regular_theta_phi(Br, map_type)
@@ -629,7 +713,7 @@ def read_magnetogram(file_path, map_type, adapt_map=0, resize=False):
         map_type (str): Map product type, for example ``WSO``, ``ADAPT``,
             ``GONG_mrzqs``, ``GONG_mrbqs``, ``GONG_mrbqj``, ``GONG_mrmqs``,
             ``GONG_mrnqs``, ``HMI_small``, ``HMI_polfil``, ``HMI_SYNC``, or
-            ``HMI_hourly``.
+            ``HMI_hourly``, or ``HMI_fdt``.
         adapt_map (int, optional): Index for ADAPT map. Defaults to 0.
         resize (bool, optional): Resize FITS maps to ``(360, 720)`` after
             longitude normalization. Defaults to False.
@@ -642,7 +726,9 @@ def read_magnetogram(file_path, map_type, adapt_map=0, resize=False):
     resize = _as_bool(resize)
     logger.info('Reading file')
 
-    if map_type == 'ADAPT':
+    if map_type in _ADAPT_ENSEMBLE_MAP_TYPES:
+        if map_type == "HMI_fdt":
+            validate_hmi_fdt_carrington_frame(file_path)
         input_data = read_first_fits_image(file_path)
         Br_map = input_data[adapt_map, ::-1, :]
         Br_map = ensure_increasing_longitude(Br_map, file_path, map_type)
@@ -1209,7 +1295,7 @@ def process_magnetogram_date(
     lmax = config.get("lmax", 20)
     amp = config.get("amp", 1)
     r_st = config.get("r_st", 1.0)
-    adapt_map = config.get("adapt_map", 6) #between 1 and 11
+    adapt_map = config.get("adapt_map", 6)  # Zero-based realization index (0 to 11).
     write_map = _as_bool(config.get("write_map", True))
     show_map = _as_bool(config.get("show_map", True))
     visu_type = config.get("visu_type", "sinlat")
@@ -1225,7 +1311,7 @@ def process_magnetogram_date(
 
     interpolated = use_interpolation and (
         is_gong_temporal_map_type(map_type)
-        or map_type in {"ADAPT", "HMI_hourly"}
+        or map_type in {"ADAPT", "HMI_hourly", "HMI_fdt"}
     )
 
     if interpolated:

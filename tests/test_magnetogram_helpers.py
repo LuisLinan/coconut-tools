@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 import shutil
 import sys
@@ -35,10 +35,31 @@ from coconut_tools.magnetogram.sph_filtering import (
     resize_processed_longitude_axis,
     rotate_longitude_to_stonyhurst,
 )
-from coconut_tools.tools.rotation_angle import is_br_longitude_increasing
+from coconut_tools.tools.rotation_angle import (
+    compute_rotation_angle,
+    is_br_longitude_increasing,
+)
 
 
 TARGET_DATE = datetime(2020, 12, 7, 15, 0)
+
+
+def _write_hmi_fdt_map(file_path, map_time, base_map):
+    """Write a small fixed-Carrington HMI-FDT/ADAPT realization cube."""
+    data = np.stack([base_map + 100.0 * index for index in range(12)])
+    hdu = fits.PrimaryHDU(data=data)
+    hdu.header["MAPDATA"] = "HMI_FDTL"
+    hdu.header["MAPTIME"] = map_time.isoformat()
+    hdu.header["LNGTYPE"] = 0
+    hdu.header["LATTYPE"] = 0
+    hdu.header["CRLNGEDG"] = 0.0
+    hdu.header["CRPIX1"] = 2.5
+    hdu.header["CRVAL1"] = 180.0
+    hdu.header["CDELT1"] = 90.0
+    hdu.header["CRPIX2"] = 2.5
+    hdu.header["CRVAL2"] = 0.0
+    hdu.header["CDELT2"] = 45.0
+    hdu.writeto(file_path)
 
 
 def test_magnetogram_dates_and_paths_are_resolved_consistently():
@@ -112,6 +133,79 @@ def test_map_type_normalization_accepts_case_variants():
     assert build_output_name("gong_MRBQS", str(outdir), "sph") == str(
         outdir / "map_gong_mrbqs_sph.dat"
     )
+
+
+def test_hmi_fdt_normalization_output_and_effective_date():
+    outdir = Path(__file__).parent / "_outputs"
+    map_name = "adapt40i11_044012_202608192000_i00011200n1.fts.gz"
+    target = datetime(2026, 8, 20, 1, 30)
+
+    assert normalize_map_type("hmi_fdt") == "HMI_fdt"
+    assert normalize_map_type("HMI_FDT") == "HMI_fdt"
+    assert build_output_name("hmi_fdt", str(outdir), "sph") == str(
+        outdir / "map_hmi_fdt_sph.dat"
+    )
+    assert magnetogram_effective_date(map_name, "hmi_fdt", target) == datetime(
+        2026, 8, 19, 20, 0
+    )
+    assert magnetogram_effective_date(
+        map_name,
+        "hmi_fdt",
+        target,
+        interpolated=True,
+    ) == target
+
+
+def test_hmi_fdt_interpolation_lists_only_fixed_carrington_maps_and_downloads_four(
+    tmp_path,
+    monkeypatch,
+):
+    from coconut_tools.magnetogram import magnetogram_download
+
+    remote_dir = "https://gong.nso.edu/adapt/maps/hmi-fdtl/"
+    dates = [datetime(2026, 8, 18, 8) + timedelta(hours=12 * index) for index in range(6)]
+    remote_names = []
+    for date in dates:
+        timestamp = date.strftime("%Y%m%d%H%M")
+        remote_names.extend(
+            [
+                f"adapt41i11_044012_{timestamp}_i00010000n1.fts.gz",
+                f"adapt40i11_044012_{timestamp}_i00010000n1.fts.gz",
+            ]
+        )
+
+    listing_calls = []
+
+    def fake_fetch(listing_url, token):
+        listing_calls.append((listing_url, token))
+        return [name for name in remote_names if token in name]
+
+    downloaded = []
+
+    def fake_download(candidate, output_dir):
+        downloaded.append(candidate)
+        return str(Path(output_dir) / candidate.name)
+
+    monkeypatch.setattr(magnetogram_download, "fetch_remote_names", fake_fetch)
+    monkeypatch.setattr(magnetogram_download, "download_candidate", fake_download)
+
+    target = dates[2] + timedelta(hours=6)
+    local_files, selection = download_interpolation_magnetograms(
+        target,
+        "HMI_fdt",
+        str(tmp_path),
+    )
+
+    assert listing_calls == [(remote_dir, "adapt40i11")]
+    assert [candidate.date for candidate in downloaded] == dates[1:5]
+    assert all(candidate.name.startswith("adapt40i11_") for candidate in downloaded)
+    assert all(candidate.remote_url == remote_dir + candidate.name for candidate in downloaded)
+    assert [Path(path).name for path in local_files] == [
+        candidate.name for candidate in downloaded
+    ]
+    assert selection.before.date == dates[2]
+    assert selection.after.date == dates[3]
+    assert selection.target_date == target
 
 
 def test_hmi_hourly_candidates_use_timestamps_encoded_in_their_names(monkeypatch):
@@ -513,6 +607,200 @@ def test_hmi_hourly_interpolation_resizes_aligned_maps_before_interpolation(
     assert Br.shape == Theta.shape == Phi.shape == Br_linear.shape == (360, 720)
     np.testing.assert_allclose(Br, 15.0)
     np.testing.assert_allclose(Br_linear, 15.0)
+
+
+def test_hmi_fdt_reader_selects_realization_on_fixed_carrington_grid(tmp_path):
+    map_time = datetime(2026, 8, 19, 20)
+    file_path = (
+        tmp_path
+        / "adapt40i11_044012_202608192000_i00011200n1.fts"
+    )
+    base = np.arange(16.0).reshape(4, 4)
+    _write_hmi_fdt_map(file_path, map_time, base)
+
+    Br, Theta, Phi = read_magnetogram(
+        str(file_path),
+        "HMI_fdt",
+        adapt_map=3,
+    )
+    temporal_Br = read_temporal_br_map(
+        str(file_path),
+        "HMI_fdt",
+        adapt_map=3,
+    )
+    longitude = processed_longitude_axis(str(file_path), "HMI_fdt")
+
+    expected = (base + 300.0)[::-1, :]
+    np.testing.assert_array_equal(Br, expected)
+    np.testing.assert_array_equal(temporal_Br, expected)
+    np.testing.assert_allclose(Theta[:, 0], np.linspace(0.0, np.pi, 4))
+    np.testing.assert_allclose(Phi[0], np.deg2rad([0.0, 90.0, 180.0, 270.0]))
+    np.testing.assert_allclose(longitude, [45.0, 135.0, 225.0, 315.0])
+
+
+def test_hmi_fdt_interpolation_resizes_normalized_carrington_cubes(
+    tmp_path,
+    monkeypatch,
+):
+    dates = [datetime(2026, 8, 18, 8) + timedelta(hours=12 * index) for index in range(4)]
+    candidates = []
+    local_files = []
+    base = np.arange(16.0).reshape(4, 4)
+
+    for index, date in enumerate(dates):
+        name = (
+            f"adapt40i11_044012_{date.strftime('%Y%m%d%H%M')}_"
+            "i00010000n1.fts"
+        )
+        file_path = tmp_path / name
+        _write_hmi_fdt_map(file_path, date, base + 10.0 * index)
+        candidates.append(MagnetogramCandidate(name, date, "unused"))
+        local_files.append(str(file_path))
+
+    target = dates[1] + timedelta(hours=6)
+    selection = InterpolationSelection(
+        before_previous=candidates[0],
+        before=candidates[1],
+        after=candidates[2],
+        after_next=candidates[3],
+        coef_before=0.5,
+        coef_after=0.5,
+        interval_seconds=12.0 * 3600.0,
+        previous_interval_seconds=12.0 * 3600.0,
+        next_interval_seconds=12.0 * 3600.0,
+        target_date=target,
+    )
+
+    resized_inputs = []
+    fake_skimage = types.ModuleType("skimage")
+    fake_transform = types.ModuleType("skimage.transform")
+
+    def fake_resize(image, output_shape, **kwargs):
+        resized_inputs.append(image.copy())
+        return np.full(output_shape, image[0, 0], dtype=float)
+
+    fake_transform.resize = fake_resize
+    monkeypatch.setitem(sys.modules, "skimage", fake_skimage)
+    monkeypatch.setitem(sys.modules, "skimage.transform", fake_transform)
+
+    Br, Theta, Phi, Br_linear = read_interpolated_magnetogram(
+        local_files,
+        "HMI_fdt",
+        selection,
+        adapt_map=3,
+        interpolation_order=2,
+        resize=True,
+    )
+
+    assert len(resized_inputs) == 4
+    for index, resize_input in enumerate(resized_inputs):
+        expected = (base + 10.0 * index + 300.0)[::-1, :]
+        np.testing.assert_array_equal(resize_input, expected)
+    assert Br.shape == Theta.shape == Phi.shape == Br_linear.shape == (360, 720)
+    np.testing.assert_allclose(Br, 327.0)
+    np.testing.assert_allclose(Br_linear, 327.0)
+    np.testing.assert_allclose(Theta[:, 0], np.linspace(0.0, np.pi, 360))
+
+    with fits.open(local_files[-1], mode="update") as hdul:
+        hdul[0].header["CRVAL1"] = 181.0
+    from coconut_tools.magnetogram import sph_filtering
+
+    monkeypatch.setattr(
+        sph_filtering,
+        "interpolate_br_maps",
+        lambda *args, **kwargs: pytest.fail(
+            "Longitude frames must be checked before temporal interpolation"
+        ),
+    )
+    with pytest.raises(RuntimeError, match="fixed Carrington longitude grid"):
+        read_interpolated_magnetogram(
+            local_files,
+            "HMI_fdt",
+            selection,
+            adapt_map=3,
+        )
+
+
+def test_interpolated_hmi_fdt_rotation_uses_target_time_and_carrington_axis(
+    tmp_path,
+    monkeypatch,
+):
+    from coconut_tools.magnetogram import sph_filtering
+
+    source_date = datetime(2026, 8, 18, 8)
+    target = datetime(2026, 8, 19, 2)
+    source_file = (
+        tmp_path
+        / "adapt40i11_044012_202608180800_i00010000n1.fts"
+    )
+    _write_hmi_fdt_map(source_file, source_date, np.zeros((4, 4)))
+
+    rotation_dates = []
+
+    def fake_central_meridian(date):
+        rotation_dates.append(date)
+        return 67.5
+
+    monkeypatch.setattr(
+        sph_filtering,
+        "compute_carrington_central_meridian",
+        fake_central_meridian,
+    )
+
+    Br = np.arange(16).reshape(2, 8)
+    Br_linear = Br + 10
+    Br_rotated, Br_linear_rotated, rotation_angle = apply_configured_longitude_rotation(
+        Br,
+        Br_linear,
+        [str(source_file)] * 4,
+        "HMI_fdt",
+        target,
+        use_interpolation=True,
+        rotate_to_stonyhurst=True,
+        resize=True,
+    )
+
+    np.testing.assert_array_equal(Br_rotated, np.roll(Br, -1, axis=1))
+    np.testing.assert_array_equal(Br_linear_rotated, np.roll(Br_linear, -1, axis=1))
+    assert rotation_angle == pytest.approx(67.5)
+    assert rotation_dates == [target]
+
+
+def test_single_hmi_fdt_rotation_uses_the_file_effective_time(
+    tmp_path,
+    monkeypatch,
+):
+    from coconut_tools.tools import rotation_angle
+
+    source_date = datetime(2026, 8, 19, 20)
+    target = datetime(2026, 8, 20, 1, 30)
+    source_file = (
+        tmp_path
+        / "adapt40i11_044012_202608192000_i00011200n1.fts"
+    )
+    _write_hmi_fdt_map(source_file, source_date, np.zeros((4, 4)))
+
+    rotation_dates = []
+
+    def fake_central_meridian(date):
+        rotation_dates.append(date)
+        return 131.25
+
+    monkeypatch.setattr(
+        rotation_angle,
+        "compute_carrington_central_meridian",
+        fake_central_meridian,
+    )
+
+    angle, effective_date = compute_rotation_angle(
+        str(source_file),
+        date_hmi=target.isoformat(),
+        map_type="HMI_fdt",
+    )
+
+    assert angle == pytest.approx(131.25)
+    assert effective_date == source_date
+    assert rotation_dates == [source_date]
 
 
 def test_local_rotation_helpers_use_the_expected_longitude_convention():

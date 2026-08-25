@@ -164,15 +164,17 @@ def test_filtered_pipelines_apply_configured_amp_after_normalization(
     assert np.array_equal(captured["Br_out"], Br * 6.0)
 
 
-def test_sph_pipeline_uses_hmi_hourly_interpolation_at_requested_time(
+@pytest.mark.parametrize("map_type", ["HMI_hourly", "HMI_fdt"])
+def test_sph_pipeline_uses_hmi_interpolation_at_requested_time(
     monkeypatch,
     tmp_path,
+    map_type,
 ):
     from coconut_tools.magnetogram import sph_filtering
 
     target = datetime(2026, 7, 1, 7, 15)
     local_files = [
-        str(tmp_path / f"hmi.synoptic_hourly_20260701_0{hour}2400.fits")
+        str(tmp_path / f"{map_type.lower()}_{hour}.fits")
         for hour in range(6, 10)
     ]
     selection = object()
@@ -187,7 +189,7 @@ def test_sph_pipeline_uses_hmi_hourly_interpolation_at_requested_time(
         sph_filtering,
         "generate_output_and_interpolation_map_names",
         lambda *args, **kwargs: (
-            str(tmp_path / "map_hmi_hourly_sph.dat"),
+            str(tmp_path / f"map_{map_type.lower()}_sph.dat"),
             local_files,
             selection,
         ),
@@ -196,7 +198,7 @@ def test_sph_pipeline_uses_hmi_hourly_interpolation_at_requested_time(
         sph_filtering,
         "generate_output_and_map_names",
         lambda *args, **kwargs: pytest.fail(
-            "interpolation=True must not use the single-map download path"
+            f"{map_type} interpolation must not use the single-map download path"
         ),
     )
 
@@ -230,7 +232,7 @@ def test_sph_pipeline_uses_hmi_hourly_interpolation_at_requested_time(
     result = sph_filtering.process_magnetogram_date(
         {
             "date": target.isoformat(),
-            "map_type": "HMI_hourly",
+            "map_type": map_type,
             "output_dir": str(tmp_path),
             "interpolation": True,
             "resize": True,
@@ -270,16 +272,18 @@ def test_sph_pipeline_uses_hmi_hourly_interpolation_at_requested_time(
         ),
     ],
 )
-def test_filtered_pipelines_forward_resize_for_hmi_hourly_interpolation(
+@pytest.mark.parametrize("map_type", ["HMI_hourly", "HMI_fdt"])
+def test_filtered_pipelines_forward_resize_for_hmi_interpolation(
     monkeypatch,
     tmp_path,
     module_name,
     filter_name,
     filter_result,
+    map_type,
 ):
     module = importlib.import_module(module_name)
     target = datetime(2026, 7, 1, 7, 15)
-    local_files = [str(tmp_path / f"hmi_hourly_{index}.fits") for index in range(4)]
+    local_files = [str(tmp_path / f"{map_type.lower()}_{index}.fits") for index in range(4)]
     selection = object()
     Br = np.arange(8.0).reshape(2, 4)
     Br_linear = Br + 1.0
@@ -297,7 +301,7 @@ def test_filtered_pipelines_forward_resize_for_hmi_hourly_interpolation(
         module,
         "generate_output_and_map_names",
         lambda *args, **kwargs: pytest.fail(
-            "HMI_hourly interpolation must not use the single-map path"
+            f"{map_type} interpolation must not use the single-map path"
         ),
     )
 
@@ -320,7 +324,7 @@ def test_filtered_pipelines_forward_resize_for_hmi_hourly_interpolation(
     result = module.process_magnetogram_date(
         {
             "date": target.isoformat(),
-            "map_type": "HMI_hourly",
+            "map_type": map_type,
             "output_dir": str(tmp_path),
             "interpolation": True,
             "resize": True,

@@ -1,13 +1,15 @@
 """
 Compute Carrington to Stonyhurst rotation angle from magnetogram filenames.
 
-This module parses magnetogram names from different providers (GONG, ADAPT, HMI)
-and computes the longitudinal rotation needed to align their maps with the
-Stonyhurst frame used by heliospheric models like EUHFORIA.
+This module parses magnetogram names from different providers (GONG, ADAPT,
+HMI, and HMI-FDT-driven ADAPT) and computes the longitudinal rotation needed
+to align their maps with the Stonyhurst frame used by heliospheric models like
+EUHFORIA.
 
 Supports:
 - GONG synoptic and ADAPT (CM/CAR modes),
 - HMI (with explicit observation time),
+- HMI-FDT-driven ADAPT maps on their Carrington-fixed grid,
 - Angle computation based on the central meridian difference.
 
 Used during preprocessing to rotate coronal boundary data into the appropriate HEEQ frame.
@@ -148,7 +150,7 @@ def compute_rotation_angle(
 ) -> Tuple[float, datetime]:
     """Compute the rotation angle from magnetogram filename.
 
-    Supports GONG, ADAPT (CM and CAR), and HMI.
+    Supports GONG, ADAPT (CM and CAR), HMI, and Carrington-fixed HMI-FDT.
 
     Args:
         mag_name_path (str): Path to the magnetogram file.
@@ -209,6 +211,10 @@ def compute_rotation_angle(
 
         if mode == '403':
             logger.info("The magnetogram is GONG ADAPT in CAR frame")
+            CM_CAR_value = compute_carrington_central_meridian(date)
+            return (CM_CAR_value + 0) % 360 , date
+        elif mode == '40i':
+            logger.info("The magnetogram is HMI-FDT ADAPT in CAR frame")
             CM_CAR_value = compute_carrington_central_meridian(date)
             return (CM_CAR_value + 0) % 360 , date
         elif mode == '413':

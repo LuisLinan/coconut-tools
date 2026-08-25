@@ -23,6 +23,8 @@ GONG_FILE_IDS = GONG_SYNCHRONIC_FILE_IDS | GONG_DIACHRONIC_FILE_IDS
 HMI_SYNC_SERIES = "hmi.Mrdailysynframe_720s_nrt"
 HMI_HOURLY_SERIES = "hmi.mrdailysynframe_polfil_720s_nrt"
 HMI_HOURLY_SEGMENT = "Mr_polfil"
+HMI_FDT_REMOTE_DIR = "https://gong.nso.edu/adapt/maps/hmi-fdtl/"
+HMI_FDT_CARRINGTON_FILE_ID = "adapt40i11"
 
 
 MAP_TYPE_ALIASES = {
@@ -32,6 +34,7 @@ MAP_TYPE_ALIASES = {
     "hmi_small": "HMI_small",
     "hmi_sync": "HMI_SYNC",
     "hmi_hourly": "HMI_hourly",
+    "hmi_fdt": "HMI_fdt",
 }
 
 
@@ -55,7 +58,15 @@ def normalize_map_type(map_type: str) -> str:
         return canonical
 
     supported = ", ".join(
-        ["WSO", "ADAPT", "HMI_polfil", "HMI_small", "HMI_SYNC", "HMI_hourly"]
+        [
+            "WSO",
+            "ADAPT",
+            "HMI_polfil",
+            "HMI_small",
+            "HMI_SYNC",
+            "HMI_hourly",
+            "HMI_fdt",
+        ]
         + ["GONG"]
         + [f"GONG_{item}" for item in sorted(GONG_FILE_IDS)]
     )
@@ -119,6 +130,7 @@ def build_output_name(
         "HMI_small": "map_hmi_small",
         "HMI_SYNC": "map_hmi_sync",
         "HMI_hourly": "map_hmi_hourly",
+        "HMI_fdt": "map_hmi_fdt",
     }
     prefix = prefixes.get(map_type)
     if prefix is None:
@@ -285,6 +297,55 @@ def list_adapt_candidates(date: str | datetime) -> list[MagnetogramCandidate]:
     return unique_sorted_candidates(candidates)
 
 
+def parse_hmi_fdt_filename_date(name: str) -> datetime | None:
+    """Parse an HMI-FDT Carrington-map timestamp from its ADAPT filename."""
+    basename = os.path.basename(name)
+    match = re.fullmatch(
+        rf"{HMI_FDT_CARRINGTON_FILE_ID}_[^_]+_(?P<date>\d{{12}})_"
+        r"[^_]+\.(?:fts|fits)(?:\.gz)?",
+        basename,
+        flags=re.IGNORECASE,
+    )
+    if match is None:
+        return None
+
+    try:
+        return datetime.strptime(match.group("date"), "%Y%m%d%H%M")
+    except ValueError as exc:
+        logger.warning(
+            "Could not parse HMI_fdt observation date from %s: %s",
+            basename,
+            exc,
+        )
+        return None
+
+
+def list_hmi_fdt_candidates(date: str | datetime) -> list[MagnetogramCandidate]:
+    """List HMI-FDT maps on the fixed Carrington grid.
+
+    The HMI-FDTL directory publishes both ``adapt40i11`` Carrington-fixed maps
+    and ``adapt41i11`` central-meridian-centered maps for each timestamp.  Only
+    the former are candidates so every temporal stencil shares one longitude
+    frame before interpolation.
+    """
+    parse_iso_datetime(date)
+    candidates = []
+    for name in fetch_remote_names(
+        HMI_FDT_REMOTE_DIR,
+        HMI_FDT_CARRINGTON_FILE_ID,
+    ):
+        parsed_date = parse_hmi_fdt_filename_date(name)
+        if parsed_date is not None:
+            candidates.append(
+                MagnetogramCandidate(
+                    name,
+                    parsed_date,
+                    HMI_FDT_REMOTE_DIR + name,
+                )
+            )
+    return unique_sorted_candidates(candidates)
+
+
 def parse_hmi_hourly_filename_date(name: str) -> datetime | None:
     """Parse the observation timestamp from an HMI hourly filename."""
     basename = os.path.basename(name)
@@ -375,6 +436,8 @@ def list_remote_candidates(
         return list_adapt_candidates(date)
     if map_type == "HMI_hourly":
         return list_hmi_candidates(date)
+    if map_type == "HMI_fdt":
+        return list_hmi_fdt_candidates(date)
     raise ValueError(f"Temporal candidate listing is not supported for {map_type}")
 
 
@@ -605,9 +668,9 @@ def magnetogram_effective_date(
     """Return the timestamp represented by a processed magnetogram.
 
     Interpolated maps represent the requested target time. Non-interpolated
-    GONG, ADAPT, HMI_SYNC, and HMI_hourly maps represent the observation time
-    encoded in their filenames. HMI small/polar-filled and WSO products use the
-    requested target time by convention.
+    GONG, ADAPT, HMI_SYNC, HMI_hourly, and HMI_fdt maps represent the
+    observation time encoded in their filenames. HMI small/polar-filled and
+    WSO products use the requested target time by convention.
     """
     map_type = normalize_map_type(map_type)
     target = parse_iso_datetime(target_date)
@@ -619,6 +682,10 @@ def magnetogram_effective_date(
             return parsed_date
     if map_type == "HMI_hourly":
         parsed_date = parse_hmi_hourly_filename_date(file_path)
+        if parsed_date is not None:
+            return parsed_date
+    if map_type == "HMI_fdt":
+        parsed_date = parse_hmi_fdt_filename_date(file_path)
         if parsed_date is not None:
             return parsed_date
     if map_type in {"HMI_small", "HMI_polfil"}:
@@ -948,7 +1015,7 @@ def generate_output_and_map_names(
     if map_type == "WSO":
         map_name = f"WSO.{cr_number}.txt"
         remote_file = f"http://wso.stanford.edu/synoptic/{map_name}"
-    elif is_gong_map_type(map_type) or map_type == "ADAPT":
+    elif is_gong_map_type(map_type) or map_type in {"ADAPT", "HMI_fdt"}:
         candidate = select_nearest_candidate(
             list_remote_candidates(date_datetime, map_type),
             date_datetime,

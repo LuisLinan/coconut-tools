@@ -149,7 +149,8 @@ def process_magnetogram_date(
     dy_override = config.get("dy_override", 1.0)
 
     interpolated = use_interpolation and (
-        is_gong_temporal_map_type(map_type) or map_type in {"ADAPT", "HMI_hourly"}
+        is_gong_temporal_map_type(map_type)
+        or map_type in {"ADAPT", "HMI_hourly", "HMI_fdt"}
     )
 
     if interpolated:
@@ -320,7 +321,7 @@ def process_config(config: dict[str, Any], method_used: str = "NLD") -> list[dic
 if __name__ == "__main__":
 
     base_output_dir = r"C:\Users\luisl\Desktop\testmagnetogram"
-    label = "hmi_hourly"
+    label = "hmi_fdt"
     output_dir = os.path.join(base_output_dir, label)
     figure_output_dir = os.path.join(base_output_dir, "images")
 
@@ -338,7 +339,7 @@ if __name__ == "__main__":
         "resize": True,
         "flux_correct": False,
         "flux_correction_method": "surface_mean", #surface_mean' or 'polarity_scaling'
-        "map_type": "hmi_hourly",
+        "map_type": "hmi_fdt",
         "adapt_map": 6,
         "output_dir": output_dir,
         "download_dir": output_dir,

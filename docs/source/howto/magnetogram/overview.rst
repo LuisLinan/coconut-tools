@@ -40,8 +40,9 @@ All three filters follow the same pipeline:
 
 1. Build the list of target dates from the configuration.
 2. Download the required magnetogram files.
-3. Read the magnetogram and, for GONG or ADAPT, optionally interpolate it in
-   time from four neighboring magnetograms.
+3. Read the magnetogram and, for synchronic GONG, ADAPT, HMI hourly, or
+   HMI-FDT, optionally interpolate it in time from four neighboring
+   magnetograms.
 4. Optionally remove the net magnetic flux.
 5. Apply the selected filter.
 6. Write the COCONUT ``.dat`` boundary file and, optionally, a diagnostic
@@ -83,11 +84,11 @@ Temporal interpolation is controlled by a single boolean option:
 
    "interpolation": True
 
-When enabled for ``GONG_mrzqs``, ``GONG_mrbqs``, ``GONG_mrbqj``, or ``ADAPT``,
-the code downloads four magnetograms around each target date and interpolates
-``Br`` at the requested time. ``GONG_mrmqs`` and ``GONG_mrnqs`` are diachronic
-CAR-frame maps and are selected as single nearest maps. The interpolation order
-is selected with:
+When enabled for ``GONG_mrzqs``, ``GONG_mrbqs``, ``GONG_mrbqj``, ``ADAPT``,
+``HMI_hourly``, or ``HMI_fdt``, the code downloads four magnetograms around
+each target date and interpolates ``Br`` at the requested time.
+``GONG_mrmqs`` and ``GONG_mrnqs`` are diachronic CAR-frame maps and are
+selected as single nearest maps. The interpolation order is selected with:
 
 .. code-block:: python
 
@@ -96,14 +97,23 @@ is selected with:
 Use ``1`` for linear interpolation and ``2`` for cubic Hermite interpolation.
 The default is cubic Hermite.
 
-Temporal interpolation is currently implemented only for the synchronic GONG
-variants and ``ADAPT``. For ``GONG_mrmqs``, ``GONG_mrnqs``, ``HMI_small``,
-``HMI_polfil``, and ``WSO``, the pipeline uses the single magnetogram selected
-for the target date or Carrington rotation.
+Temporal interpolation is implemented for the synchronic GONG variants,
+``ADAPT``, ``HMI_hourly``, and ``HMI_fdt``. For ``GONG_mrmqs``,
+``GONG_mrnqs``, ``HMI_small``, ``HMI_polfil``, ``HMI_SYNC``, and ``WSO``, the
+pipeline uses the single magnetogram selected for the target date or
+Carrington rotation.
 
-For ``ADAPT``, ``adapt_map`` selects the realization stored in the FITS file.
-This is a Python zero-based index, so ``adapt_map=6`` selects the seventh ADAPT
-realization.
+For ``ADAPT`` and ``HMI_fdt``, ``adapt_map`` selects the realization stored in
+the FITS cube. This is a Python zero-based index, so ``adapt_map=6`` selects
+the seventh realization.
+
+``HMI_fdt`` downloads HMI-FDTL-driven ADAPT maps from
+``https://gong.nso.edu/adapt/maps/hmi-fdtl/``. The server publishes both a
+Carrington-fixed product (``adapt40i11``) and a central-meridian-centered
+product (``adapt41i11``) at each time. The pipeline deliberately uses only
+``adapt40i11`` so all four inputs share the same Carrington longitude grid
+before interpolation; Stonyhurst rotation is applied once at the requested
+target time.
 
 Net Flux Correction
 -------------------
@@ -124,7 +134,8 @@ The following keys are shared by the three filters:
 - ``date``: initial ISO timestamp, for example ``"2025-10-09T18:00:00"``.
 - ``map_type``: one of ``"GONG_mrzqs"``, ``"GONG_mrbqs"``,
   ``"GONG_mrbqj"``, ``"GONG_mrmqs"``, ``"GONG_mrnqs"``, ``"ADAPT"``,
-  ``"HMI_small"``, ``"HMI_polfil"``, ``"HMI_SYNC"``, or ``"WSO"``.
+  ``"HMI_small"``, ``"HMI_polfil"``, ``"HMI_SYNC"``, ``"HMI_hourly"``,
+  ``"HMI_fdt"``, or ``"WSO"``.
 - ``output_dir``: directory where COCONUT ``.dat`` files are written.
 - ``download_dir``: optional directory for downloaded FITS files. If omitted,
   ``output_dir`` is used.
@@ -132,8 +143,11 @@ The following keys are shared by the three filters:
   ``map_type`` is ``"HMI_SYNC"``. ``jsoc_email`` is also accepted.
 - ``cadence_hours`` and ``total_hours``: optional time-series controls.
 - ``interpolation``: enable or disable four-magnetogram interpolation for
-  synchronic GONG variants and ADAPT.
+  synchronic GONG variants, ADAPT, HMI hourly, and HMI-FDT.
 - ``interpolation_order``: ``1`` for linear, ``2`` for cubic Hermite.
+- ``resize``: resize each normalized input map to ``360 x 720`` before
+  temporal interpolation (or resize the selected single map), default
+  ``False``.
 - ``flux_correct``: enable or disable net-flux correction.
 - ``adapt_map``: ADAPT realization index, default ``6``.
 - ``lmax``: value included in output filenames. For SPH it is also the

@@ -182,7 +182,8 @@ def process_magnetogram_date(
     resize = _as_bool(config.get("resize", False))
 
     interpolated = use_interpolation and (
-        is_gong_temporal_map_type(map_type) or map_type in {"ADAPT", "HMI_hourly"}
+        is_gong_temporal_map_type(map_type)
+        or map_type in {"ADAPT", "HMI_hourly", "HMI_fdt"}
     )
 
     if interpolated:
