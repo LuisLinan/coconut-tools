@@ -48,6 +48,44 @@ All three filters follow the same pipeline:
 6. Write the COCONUT ``.dat`` boundary file and, optionally, a diagnostic
    figure.
 
+Latitude Geometry and FITS Headers
+----------------------------------
+All three pipelines share the same physical FITS latitude decoder. ``Theta``
+contains the actual pixel centers, ordered from the north toward the south;
+the code does not remap a magnetogram onto another spatial grid before
+filtering or spherical-harmonic projection.
+
+The decoder uses ``CRPIX2``, ``CRVAL2``, ``CDELT2`` (or ``CD2_2``),
+``CTYPE2``, ``CUNIT2``, and ``LATTYPE``. An explicit ``Sine Latitude`` unit or
+``CSLT`` axis is interpreted directly as sine latitude, even when ``CTYPE2``
+also contains ``CRLT-CEA``. A standards-compliant CEA axis with an angular
+unit is inverted through FITS WCS. Linear latitude axes remain linear in
+latitude. Invalid, non-monotonic, non-finite, contradictory, or out-of-domain
+axes are rejected.
+
+If the coordinate keywords are incomplete, a warning is emitted before using
+the known cell-centered product convention: uniform sine latitude for GONG
+and HMI, and uniform latitude for ADAPT and HMI-FDT. These fallback grids do
+not put centers at the poles. For example, a 180-row GONG grid starts near
+``theta=6.04 degrees`` and a 180-row ADAPT grid starts at
+``theta=0.5 degrees``.
+
+With ``resize=True``, the outer physical latitude edges are preserved and new
+centers are generated in the same native coordinate. Temporal interpolation
+requires all four normalized latitude axes to be identical; incompatible
+FITS files raise an error instead of being spatially remapped silently.
+
+Pixel areas are derived from the reconstructed cell edges:
+
+.. math::
+
+   \Delta\Omega_{ij}
+   = \left|\cos\theta_{i-1/2}-\cos\theta_{i+1/2}\right|\Delta\phi_j.
+
+The same areas are used for spherical-harmonic projection, flux diagnostics,
+surface-mean correction, and polarity scaling. The NLD and Yaroslavsky filter
+operators themselves are unchanged.
+
 Single Date and Time Series
 ---------------------------
 The initial date is given with the ``date`` key, using an ISO timestamp:
@@ -157,9 +195,28 @@ The following keys are shared by the three filters:
 - ``show_map``: write a diagnostic figure, default ``True``.
 - ``output_path_fig``: optional diagnostic figure path.
 - ``visu_type``: map projection used in the diagnostic figure, default
-  ``"sinlat"``. This displays the native uniform sine-latitude grid with
-  ``imshow``. Set it to ``"lat"`` to display true latitude coordinates with
-  ``pcolormesh``.
+  ``"sinlat"``. Uniform sine-latitude centers are displayed with ``imshow``
+  using their cell edges; nonuniform axes use ``pcolormesh``. Set it to
+  ``"lat"`` to display true latitude cell edges with ``pcolormesh``.
+
+Boundary-File Point Count
+-------------------------
+The COCONUT boundary file keeps the existing ``x y z Br`` columns and writes
+the physical coordinates of every retained center. A latitude row is reduced
+to one point only when its center is actually ``theta=0`` or ``theta=pi``
+within a strict numerical tolerance. All longitudes are written for a
+near-polar ring.
+
+Consequently, the declared point count is
+
+.. math::
+
+   N_{\mathrm{points}}
+   = N_\theta N_\phi - N_{\mathrm{pole}}(N_\phi-1).
+
+A centered ``180 x 360`` GONG map therefore writes 64,800 points. Historical
+grids containing two true pole rows keep the previous count
+``(N_theta - 2) * N_phi + 2``.
 
 Output Names
 ------------

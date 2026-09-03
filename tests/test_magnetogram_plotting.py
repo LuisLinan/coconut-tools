@@ -62,7 +62,7 @@ def test_native_sine_latitude_grid_uses_imshow():
     assert [call[0] for call in axis.calls] == ["imshow"]
     args, kwargs = axis.calls[0][1:]
     np.testing.assert_array_equal(args[0], values[::-1])
-    assert kwargs["extent"] == pytest.approx([0.0, 270.0, -1.0, 1.0])
+    assert kwargs["extent"] == pytest.approx([-45.0, 315.0, -1.0, 1.0])
 
 
 def test_true_latitude_grid_uses_pcolormesh_coordinates():
@@ -83,7 +83,31 @@ def test_true_latitude_grid_uses_pcolormesh_coordinates():
     assert ylabel == "Latitude"
     assert [call[0] for call in axis.calls] == ["pcolormesh"]
     args, kwargs = axis.calls[0][1:]
-    np.testing.assert_array_equal(args[0], longitude)
-    np.testing.assert_array_equal(args[1], latitude)
+    np.testing.assert_array_equal(args[0], [-45.0, 45.0, 135.0, 225.0, 315.0])
+    np.testing.assert_allclose(args[1], [90.0, 60.0, -30.0, -90.0])
     np.testing.assert_array_equal(args[2], values)
-    assert kwargs["shading"] == "auto"
+    assert kwargs["shading"] == "flat"
+
+
+def test_nonuniform_sine_latitude_grid_uses_pcolormesh_coordinates():
+    axis = RecordingAxis()
+    values = np.arange(12.0).reshape(3, 4)
+    longitude = np.array([0.0, 90.0, 180.0, 270.0])
+    latitude = np.array([80.0, 20.0, -70.0])
+
+    _, ylabel = _plot_magnetogram_axis(
+        axis,
+        values,
+        longitude,
+        latitude,
+        "sinlat",
+        limit=10.0,
+    )
+
+    assert ylabel == "Sine Latitude"
+    assert [call[0] for call in axis.calls] == ["pcolormesh"]
+    args, kwargs = axis.calls[0][1:]
+    assert args[0].shape == (5,)
+    assert args[1].shape == (4,)
+    np.testing.assert_array_equal(args[2], values)
+    assert kwargs["shading"] == "flat"

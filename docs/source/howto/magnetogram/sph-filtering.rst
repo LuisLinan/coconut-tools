@@ -7,6 +7,12 @@ The SPH pipeline projects the radial magnetic field on spherical harmonics,
 keeps modes up to ``lmax``, optionally damps high-degree modes with ``alpha``,
 then reconstructs the map used as the COCONUT inner boundary.
 
+Projection is performed on the native physical FITS latitude centers. The
+quadrature uses exact solid angles reconstructed from the cell edges, whether
+the product is uniform in sine latitude (GONG/HMI) or in latitude
+(ADAPT/HMI-FDT). No uniform-latitude remapping is applied before or after the
+spherical-harmonic decomposition.
+
 Module
 ------
 ``coconut_tools.magnetogram.sph_filtering``

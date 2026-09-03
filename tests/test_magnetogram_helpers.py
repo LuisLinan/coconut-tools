@@ -633,7 +633,10 @@ def test_hmi_fdt_reader_selects_realization_on_fixed_carrington_grid(tmp_path):
     expected = (base + 300.0)[::-1, :]
     np.testing.assert_array_equal(Br, expected)
     np.testing.assert_array_equal(temporal_Br, expected)
-    np.testing.assert_allclose(Theta[:, 0], np.linspace(0.0, np.pi, 4))
+    np.testing.assert_allclose(
+        Theta[:, 0],
+        (np.arange(4, dtype=float) + 0.5) * np.pi / 4.0,
+    )
     np.testing.assert_allclose(Phi[0], np.deg2rad([0.0, 90.0, 180.0, 270.0]))
     np.testing.assert_allclose(longitude, [45.0, 135.0, 225.0, 315.0])
 
@@ -699,7 +702,10 @@ def test_hmi_fdt_interpolation_resizes_normalized_carrington_cubes(
     assert Br.shape == Theta.shape == Phi.shape == Br_linear.shape == (360, 720)
     np.testing.assert_allclose(Br, 327.0)
     np.testing.assert_allclose(Br_linear, 327.0)
-    np.testing.assert_allclose(Theta[:, 0], np.linspace(0.0, np.pi, 360))
+    np.testing.assert_allclose(
+        Theta[:, 0],
+        (np.arange(360, dtype=float) + 0.5) * np.pi / 360.0,
+    )
 
     with fits.open(local_files[-1], mode="update") as hdul:
         hdul[0].header["CRVAL1"] = 181.0

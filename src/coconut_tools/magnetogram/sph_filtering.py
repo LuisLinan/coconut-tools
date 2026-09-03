@@ -24,6 +24,7 @@ from astropy.io import fits
 from scipy import interpolate
 from scipy import special as scisp
 import matplotlib.pyplot as plt
+from coconut_tools.magnetogram.coordinates import fits_latitude_axis
 from coconut_tools.magnetogram.magnetogram_download import (
     InterpolationSelection,
     build_processing_dates,
@@ -476,6 +477,17 @@ def read_first_fits_image(file_path: str) -> np.ndarray:
     raise ValueError(f"No magnetogram image HDU found in FITS file: {file_path}")
 
 
+def _read_first_fits_shape_and_header(
+    file_path: str,
+) -> tuple[tuple[int, ...], fits.Header]:
+    """Read the first image shape and a detached copy of its FITS header."""
+    with fits.open(file_path) as hdul:
+        for hdu in hdul:
+            if hdu.data is not None and hdu.data.ndim >= 2:
+                return tuple(hdu.data.shape), hdu.header.copy()
+    raise ValueError(f"No magnetogram image HDU found in FITS file: {file_path}")
+
+
 def validate_hmi_fdt_carrington_frame(file_path: str) -> np.ndarray:
     """Validate and return the fixed Carrington longitude grid of HMI-FDT.
 
@@ -530,12 +542,98 @@ def validate_hmi_fdt_carrington_frame(file_path: str) -> np.ndarray:
     return increasing_longitude_axis(file_path)
 
 
-def build_regular_theta_phi(Br: np.ndarray, map_type: str) -> tuple[np.ndarray, np.ndarray]:
-    """Build regular colatitude and longitude grids for a processed Br map.
+def _fallback_theta_axis(size: int, map_type: str) -> tuple[np.ndarray, str]:
+    """Return known cell-centered latitude coordinates for a FITS product."""
+    if size < 1:
+        raise ValueError("A magnetogram latitude axis must contain at least one row.")
+    map_type = normalize_map_type(map_type)
+    if map_type in _ADAPT_ENSEMBLE_MAP_TYPES:
+        theta = (np.arange(size, dtype=float) + 0.5) * np.pi / size
+        return theta, "latitude"
+    if is_gong_map_type(map_type) or map_type.startswith("HMI_"):
+        mu = 1.0 - (np.arange(size, dtype=float) + 0.5) * 2.0 / size
+        return np.arccos(mu), "sine"
+    raise ValueError(f"No FITS latitude fallback is defined for {map_type}.")
 
-    ADAPT maps are represented on a regular colatitude grid. Other supported
-    FITS maps are represented on a regular sine-latitude grid converted to
-    colatitude. Longitudes are endpoint-free in [0, 2*pi).
+
+def _resample_theta_centers(
+    theta: np.ndarray,
+    target_size: int,
+    native_coordinate: str,
+) -> np.ndarray:
+    """Resize latitude centers while preserving their outer physical edges."""
+    theta = np.asarray(theta, dtype=float)
+    if target_size < 1:
+        raise ValueError("target_size must be positive.")
+    if target_size == theta.size:
+        return theta.copy()
+
+    edges = theta_cell_edges(theta, coordinate=native_coordinate)
+    if native_coordinate == "sine":
+        north_mu = np.cos(edges[0])
+        south_mu = np.cos(edges[-1])
+        step = (north_mu - south_mu) / target_size
+        mu = north_mu - (np.arange(target_size, dtype=float) + 0.5) * step
+        return np.arccos(np.clip(mu, -1.0, 1.0))
+
+    step = (edges[-1] - edges[0]) / target_size
+    return edges[0] + (np.arange(target_size, dtype=float) + 0.5) * step
+
+
+def read_fits_theta_axis(
+    file_path: str,
+    map_type: str,
+    target_size: int | None = None,
+) -> tuple[np.ndarray, bool]:
+    """Read physical FITS latitude centers in north-to-south colatitude order.
+
+    Returns the one-dimensional, strictly increasing colatitude axis and a
+    boolean telling the caller whether the FITS image rows must be reversed.
+    A coherent FITS latitude description is authoritative.  Only missing
+    coordinate metadata activates the warned product-specific fallback.
+
+    When ``target_size`` is supplied, the source outer cell edges are retained
+    and new centers are placed uniformly in the source native coordinate
+    (latitude or sine latitude).  No artificial pole center is introduced.
+    """
+    map_type = normalize_map_type(map_type)
+    image_shape, header = _read_first_fits_shape_and_header(file_path)
+    native_size = int(image_shape[-2])
+    if int(header.get("NAXIS2", native_size)) != native_size:
+        raise ValueError(
+            f"FITS NAXIS2 does not match the image latitude dimension: {file_path}"
+        )
+
+    try:
+        latitude, _, metadata = fits_latitude_axis(header, output="deg")
+        theta = np.pi / 2.0 - np.radians(latitude[::-1])
+        flip_rows = not bool(metadata["flipped"])
+        native_coordinate = str(metadata["native_coordinate"])
+    except KeyError as exc:
+        theta, native_coordinate = _fallback_theta_axis(native_size, map_type)
+        flip_rows = True
+        logger.warning(
+            "Incomplete FITS latitude metadata in %s (%s); using the known "
+            "cell-centered %s-latitude grid for %s.",
+            file_path,
+            exc,
+            "sine" if native_coordinate == "sine" else "uniform",
+            map_type,
+        )
+
+    _validate_theta_axis(theta)
+    if target_size is not None:
+        theta = _resample_theta_centers(theta, int(target_size), native_coordinate)
+        _validate_theta_axis(theta)
+    return theta, flip_rows
+
+
+def build_regular_theta_phi(Br: np.ndarray, map_type: str) -> tuple[np.ndarray, np.ndarray]:
+    """Build warned-fallback, cell-centered coordinates for a processed map.
+
+    This compatibility helper cannot inspect a FITS header.  New FITS readers
+    use :func:`read_fits_theta_axis`; callers using this helper receive the
+    documented product-specific fallback grid. Longitudes remain endpoint-free.
 
     Args:
         Br (np.ndarray): Magnetic field map.
@@ -547,14 +645,47 @@ def build_regular_theta_phi(Br: np.ndarray, map_type: str) -> tuple[np.ndarray, 
     """
     map_type = normalize_map_type(map_type)
     nb_th, nb_phi = Br.shape
-    if map_type in _ADAPT_ENSEMBLE_MAP_TYPES:
-        theta = np.linspace(0.0, np.pi, nb_th)
-        phi = np.linspace(0.0, 2.0 * np.pi, nb_phi, endpoint=False)
-    else:
-        sinlat = np.linspace(-1.0, 1.0, nb_th)
-        theta = np.arcsin(sinlat) + np.pi / 2.0
-        phi = np.linspace(0.0, 2.0 * np.pi, nb_phi, endpoint=False)
+    theta, _ = _fallback_theta_axis(nb_th, map_type)
+    phi = np.linspace(0.0, 2.0 * np.pi, nb_phi, endpoint=False)
     return theta, phi
+
+
+def _read_temporal_br_map_and_theta(
+    file_path: str,
+    map_type: str,
+    adapt_map: int = 0,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Read one temporal FITS map together with its normalized latitude axis."""
+    map_type = normalize_map_type(map_type)
+    input_data = read_first_fits_image(file_path)
+    theta, flip_rows = read_fits_theta_axis(file_path, map_type)
+
+    if map_type == "HMI_hourly":
+        Br = np.asarray(input_data)
+    elif map_type in _ADAPT_ENSEMBLE_MAP_TYPES:
+        if map_type == "HMI_fdt":
+            validate_hmi_fdt_carrington_frame(file_path)
+        Br = np.asarray(input_data[adapt_map, :, :])
+    elif is_gong_map_type(map_type):
+        Br = np.asarray(input_data)
+    else:
+        raise ValueError(f"Temporal interpolation is not supported for {map_type}")
+
+    if Br.ndim != 2 or Br.shape[0] != theta.size:
+        raise ValueError(
+            f"Magnetogram data and FITS latitude axis are incompatible: {file_path}"
+        )
+    if flip_rows:
+        Br = Br[::-1, :]
+    Br = np.nan_to_num(Br)
+
+    if map_type == "HMI_hourly":
+        Br = roll_hmi_dynamic_to_zero_longitude(Br, file_path)
+    else:
+        Br = ensure_increasing_longitude(Br, file_path, map_type)
+        if is_gong_map_type(map_type):
+            Br = circular_shift_longitude(Br, extract_gong_longitude_shift(file_path))
+    return Br, theta
 
 
 def read_temporal_br_map(file_path: str, map_type: str, adapt_map: int = 0) -> np.ndarray:
@@ -574,21 +705,8 @@ def read_temporal_br_map(file_path: str, map_type: str, adapt_map: int = 0) -> n
     Returns:
         np.ndarray: Normalized radial magnetic field map.
     """
-    map_type = normalize_map_type(map_type)
-    input_data = read_first_fits_image(file_path)
-    if map_type == "HMI_hourly":
-        Br = np.nan_to_num(input_data[::-1, :])
-        return roll_hmi_dynamic_to_zero_longitude(Br, file_path)
-    if map_type in _ADAPT_ENSEMBLE_MAP_TYPES:
-        if map_type == "HMI_fdt":
-            validate_hmi_fdt_carrington_frame(file_path)
-        Br = np.nan_to_num(input_data[adapt_map, ::-1, :])
-        return ensure_increasing_longitude(Br, file_path, map_type)
-    if is_gong_map_type(map_type):
-        Br = np.nan_to_num(input_data[::-1, :])
-        Br = ensure_increasing_longitude(Br, file_path, map_type)
-        return circular_shift_longitude(Br, extract_gong_longitude_shift(file_path))
-    raise ValueError(f"Temporal interpolation is not supported for {map_type}")
+    Br, _ = _read_temporal_br_map_and_theta(file_path, map_type, adapt_map)
+    return Br
 
 
 def interpolate_br_maps(
@@ -674,10 +792,28 @@ def read_interpolated_magnetogram(
     map_type = normalize_map_type(map_type)
     resize = _as_bool(resize)
     logger.info("Reading interpolation stencil")
-    Br_maps = [read_temporal_br_map(path, map_type, adapt_map) for path in local_files]
+    normalized_maps = [
+        _read_temporal_br_map_and_theta(path, map_type, adapt_map)
+        for path in local_files
+    ]
+    Br_maps = [item[0] for item in normalized_maps]
+    theta_axes = [item[1] for item in normalized_maps]
     shapes = {Br.shape for Br in Br_maps}
     if len(shapes) != 1:
         raise RuntimeError(f"Interpolation stencil has inconsistent shapes: {shapes}")
+    reference_theta = theta_axes[0]
+    incompatible_latitude_files = [
+        path
+        for path, theta in zip(local_files[1:], theta_axes[1:])
+        if theta.shape != reference_theta.shape
+        or not np.allclose(theta, reference_theta, atol=1.0e-12, rtol=0.0)
+    ]
+    if incompatible_latitude_files:
+        files = ", ".join([str(local_files[0]), *map(str, incompatible_latitude_files)])
+        raise RuntimeError(
+            "Temporal interpolation requires identical physical latitude grids; "
+            f"incompatible FITS files: {files}"
+        )
     if map_type == "HMI_fdt":
         longitude_axes = [
             validate_hmi_fdt_carrington_frame(path) for path in local_files
@@ -693,7 +829,16 @@ def read_interpolated_magnetogram(
             )
     Br_maps = [resize_magnetogram_if_requested(Br, resize) for Br in Br_maps]
     Br, Br_linear = interpolate_br_maps(Br_maps, selection, interpolation_order)
-    theta, phi = build_regular_theta_phi(Br, map_type)
+    theta = (
+        read_fits_theta_axis(
+            local_files[0],
+            map_type,
+            target_size=_RESIZED_MAGNETOGRAM_SHAPE[0],
+        )[0]
+        if resize
+        else reference_theta
+    )
+    phi = np.linspace(0.0, 2.0 * np.pi, Br.shape[1], endpoint=False)
     Theta, Phi = build_theta_phi(theta, phi)
     logger.info("End of reading interpolation stencil")
     return Br, Theta, Phi, Br_linear
@@ -730,11 +875,17 @@ def read_magnetogram(file_path, map_type, adapt_map=0, resize=False):
         if map_type == "HMI_fdt":
             validate_hmi_fdt_carrington_frame(file_path)
         input_data = read_first_fits_image(file_path)
-        Br_map = input_data[adapt_map, ::-1, :]
+        theta, flip_rows = read_fits_theta_axis(
+            file_path,
+            map_type,
+            target_size=_RESIZED_MAGNETOGRAM_SHAPE[0] if resize else None,
+        )
+        Br_map = input_data[adapt_map, :, :]
+        if flip_rows:
+            Br_map = Br_map[::-1, :]
         Br_map = ensure_increasing_longitude(Br_map, file_path, map_type)
         Br_map = resize_magnetogram_if_requested(Br_map, resize)
-        nb_th, nb_phi = Br_map.shape
-        theta = np.linspace(0., np.pi, nb_th)
+        _, nb_phi = Br_map.shape
         phi = np.linspace(0., 2.0*np.pi, nb_phi, endpoint=False)
         Theta, Phi = build_theta_phi(theta, phi)
 
@@ -786,15 +937,18 @@ def read_magnetogram(file_path, map_type, adapt_map=0, resize=False):
 
     else:
         input_data = read_first_fits_image(file_path)
-        Br_data = input_data[::-1, :]
+        theta, flip_rows = read_fits_theta_axis(
+            file_path,
+            map_type,
+            target_size=_RESIZED_MAGNETOGRAM_SHAPE[0] if resize else None,
+        )
+        Br_data = input_data[::-1, :] if flip_rows else input_data
         if map_type in _HMI_DYNAMIC_MAP_TYPES:
             Br_data = roll_hmi_dynamic_to_zero_longitude(Br_data, file_path)
         else:
             Br_data = ensure_increasing_longitude(Br_data, file_path, map_type)
         Br_data = resize_magnetogram_if_requested(Br_data, resize)
-        nb_th, nb_phi = Br_data.shape
-        sinlat = np.linspace(-1., 1., nb_th)
-        theta = np.arcsin(sinlat) + np.pi/2.
+        _, nb_phi = Br_data.shape
         phi = np.linspace(0., 2.0*np.pi, nb_phi, endpoint=False)
         Theta, Phi = build_theta_phi(theta, phi)
         Br_map = np.nan_to_num(Br_data)
@@ -832,25 +986,7 @@ def project_and_reconstruct(Br, Theta, Phi, lmax, amp=1, alpha=0):
     theta = Theta[:, 0]
     phi = Phi[0, :]
 
-    # Cell-width integration: more faithful than np.gradient for cell-centered grids.
-    theta_edges = np.empty(theta.size + 1)
-    theta_edges[0] = 0.0
-    theta_edges[-1] = np.pi
-    theta_edges[1:-1] = 0.5 * (theta[:-1] + theta[1:])
-    dtheta_1d = np.diff(theta_edges)
-
-    phi_unwrapped = np.unwrap(phi)
-    dphi_default = 2.0 * np.pi / nb_phi
-    phi_edges = np.empty(phi.size + 1)
-    phi_edges[1:-1] = 0.5 * (phi_unwrapped[:-1] + phi_unwrapped[1:])
-    phi_edges[0] = phi_unwrapped[0] - 0.5 * dphi_default
-    phi_edges[-1] = phi_edges[0] + 2.0 * np.pi
-    dphi_1d = np.diff(phi_edges)
-
-    dtheta = np.tile(dtheta_1d, (nb_phi, 1)).T
-    dphi = np.tile(dphi_1d, (nb_th, 1))
-
-    surface_weight = np.sin(Theta) * dtheta * dphi
+    surface_weight = spherical_pixel_areas(theta, phi, Br.shape)
 
     coefbr = np.zeros(nb_modes_tot, dtype=complex)
 
@@ -910,13 +1046,29 @@ def write_bc_file(output_name, Br_mode, theta, phi, r_st):
     output_dir = os.path.dirname(output_name)
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
+    Br_mode = np.asarray(Br_mode)
+    theta = np.asarray(theta, dtype=float)
+    phi = np.asarray(phi, dtype=float)
+    if Br_mode.ndim != 2 or Br_mode.shape != (theta.size, phi.size):
+        raise ValueError("Br_mode shape must match the theta and phi axes.")
+    _validate_theta_axis(theta)
     nb_th, nb_phi = Br_mode.shape
+    pole_tolerance = 1.0e-12
+    polar_rows = np.isclose(theta, 0.0, atol=pole_tolerance, rtol=0.0) | np.isclose(
+        theta,
+        np.pi,
+        atol=pole_tolerance,
+        rtol=0.0,
+    )
+    number_of_points = nb_th * nb_phi - int(np.count_nonzero(polar_rows)) * (
+        nb_phi - 1
+    )
     with open(output_name, 'w') as F:
         F.write('1 \n')
-        F.write(f'!PHOTOSPHERE {(nb_th - 2) * nb_phi + 2} \n')
+        F.write(f'!PHOTOSPHERE {number_of_points} \n')
         for j in range(nb_th):
             for k in range(nb_phi):
-                if ((j == 0 or j == nb_th - 1) and k != 0):
+                if polar_rows[j] and k != 0:
                     continue
                 xcoord = r_st * np.sin(theta[j]) * np.cos(phi[k])
                 ycoord = r_st * np.sin(theta[j]) * np.sin(phi[k])
@@ -957,6 +1109,29 @@ def _colorbar_extend(values, limit):
     return 'neither'
 
 
+def _center_edges(values: np.ndarray, lower=None, upper=None) -> np.ndarray:
+    """Extrapolate monotonic cell-center coordinates to plotting edges."""
+    values = np.asarray(values, dtype=float)
+    if values.ndim != 1 or values.size == 0 or not np.all(np.isfinite(values)):
+        raise ValueError("Plot coordinates must be a non-empty finite 1D array.")
+    if values.size == 1:
+        half_width = 0.5
+        edges = np.array([values[0] - half_width, values[0] + half_width])
+    else:
+        differences = np.diff(values)
+        if not (np.all(differences > 0.0) or np.all(differences < 0.0)):
+            raise ValueError("Plot coordinates must be strictly monotonic.")
+        edges = np.empty(values.size + 1, dtype=float)
+        edges[1:-1] = 0.5 * (values[:-1] + values[1:])
+        edges[0] = values[0] - 0.5 * differences[0]
+        edges[-1] = values[-1] + 0.5 * differences[-1]
+    if lower is not None:
+        edges = np.maximum(edges, lower)
+    if upper is not None:
+        edges = np.minimum(edges, upper)
+    return edges
+
+
 def _plot_magnetogram_axis(
     ax,
     values,
@@ -967,17 +1142,18 @@ def _plot_magnetogram_axis(
 ):
     """Plot one magnetogram on its requested latitude coordinate.
 
-    Sine-latitude magnetograms have uniformly spaced native pixels, so
-    ``imshow`` represents them without resampling. True-latitude coordinates
-    are nonuniform for those maps and therefore require ``pcolormesh`` with
-    the latitude of every row.
+    Uniform sine-latitude pixels can use ``imshow`` without resampling.  Other
+    coordinates use ``pcolormesh`` with explicit physical cell edges.
     """
+    longitude_edges = _center_edges(longitude)
+    theta = np.radians(90.0 - np.asarray(latitude, dtype=float))
+    latitude_edges = 90.0 - np.degrees(theta_cell_edges(theta))
     if visu_type == 'lat':
         artist = ax.pcolormesh(
-            longitude,
-            latitude,
+            longitude_edges,
+            latitude_edges,
             values,
-            shading='auto',
+            shading='flat',
             cmap='seismic',
             vmin=-limit,
             vmax=limit,
@@ -985,16 +1161,36 @@ def _plot_magnetogram_axis(
         return artist, 'Latitude'
 
     sinlat = np.sin(np.radians(latitude))
+    sine_differences = np.diff(sinlat)
+    uniform_sine = sine_differences.size <= 1 or np.allclose(
+        sine_differences,
+        np.median(sine_differences),
+        atol=1.0e-12,
+        rtol=1.0e-8,
+    )
+    sine_edges = np.cos(theta_cell_edges(theta))
+    if not uniform_sine:
+        artist = ax.pcolormesh(
+            longitude_edges,
+            sine_edges,
+            values,
+            shading='flat',
+            cmap='seismic',
+            vmin=-limit,
+            vmax=limit,
+        )
+        return artist, 'Sine Latitude'
+
     artist = ax.imshow(
         values[::-1],
         aspect='auto',
         origin='lower',
         cmap='seismic',
         extent=[
-            np.min(longitude),
-            np.max(longitude),
-            np.min(sinlat),
-            np.max(sinlat),
+            longitude_edges[0],
+            longitude_edges[-1],
+            sine_edges[-1],
+            sine_edges[0],
         ],
         vmin=-limit,
         vmax=limit,
@@ -1116,24 +1312,131 @@ def _regular_phi_from_br(Br: np.ndarray) -> np.ndarray:
     return np.linspace(0.0, 2.0 * np.pi, Br.shape[1], endpoint=False)
 
 
-def _cell_widths(values: np.ndarray, fallback: float) -> np.ndarray:
-    """Estimate cell widths from ordered cell centers."""
-    if values.size < 2:
-        return np.full(values.shape, fallback)
-    return np.concatenate([np.diff(values), [values[-1] - values[-2]]])
+def _validate_theta_axis(theta: np.ndarray) -> None:
+    """Validate north-to-south physical colatitude centers."""
+    theta = np.asarray(theta, dtype=float)
+    if theta.ndim != 1 or theta.size == 0:
+        raise ValueError("theta must be a non-empty 1D array.")
+    if not np.all(np.isfinite(theta)):
+        raise ValueError("theta contains non-finite values.")
+    tolerance = 1.0e-12
+    if np.any(theta < -tolerance) or np.any(theta > np.pi + tolerance):
+        raise ValueError("theta centers must lie in the physical [0, pi] domain.")
+    if theta.size > 1 and not np.all(np.diff(theta) > 0.0):
+        raise ValueError("theta centers must be strictly increasing north-to-south.")
+
+
+def _spacing_error(values: np.ndarray) -> float:
+    """Return a dimensionless measure of departure from uniform spacing."""
+    differences = np.diff(np.asarray(values, dtype=float))
+    if differences.size <= 1:
+        return 0.0
+    reference = float(np.median(differences))
+    scale = max(abs(reference), np.finfo(float).eps)
+    return float(np.max(np.abs(differences - reference)) / scale)
+
+
+def _theta_coordinate(theta: np.ndarray) -> str:
+    """Infer whether centers are regular in latitude or in sine latitude."""
+    theta = np.asarray(theta, dtype=float)
+    if theta.size < 3:
+        return "latitude"
+    theta_error = _spacing_error(theta)
+    sine_error = _spacing_error(np.cos(theta))
+    uniform_tolerance = 1.0e-7
+    if sine_error <= uniform_tolerance and theta_error > uniform_tolerance:
+        return "sine"
+    # Angular midpoints are the conservative fallback for an irregular axis:
+    # they do not assume an unadvertised equal-area parameterization.
+    return "latitude"
+
+
+def theta_cell_edges(
+    theta: np.ndarray,
+    coordinate: str | None = None,
+) -> np.ndarray:
+    """Construct physical cell edges from colatitude centers.
+
+    Uniform sine-latitude grids are extrapolated in ``mu=cos(theta)``;
+    uniform-latitude grids are extrapolated in ``theta``.  Extrapolated edges
+    are clipped to the physical poles, so centered full-sphere grids recover
+    exactly the complete spherical surface without manufacturing pole centers.
+    """
+    theta = np.asarray(theta, dtype=float)
+    _validate_theta_axis(theta)
+    if coordinate is None:
+        coordinate = _theta_coordinate(theta)
+    if coordinate not in {"sine", "latitude"}:
+        raise ValueError("coordinate must be 'sine' or 'latitude'.")
+    if theta.size == 1:
+        return np.array([0.0, np.pi])
+
+    if coordinate == "sine":
+        mu = np.cos(theta)
+        mu_edges = np.empty(mu.size + 1, dtype=float)
+        mu_edges[1:-1] = 0.5 * (mu[:-1] + mu[1:])
+        mu_edges[0] = mu[0] + 0.5 * (mu[0] - mu[1])
+        mu_edges[-1] = mu[-1] + 0.5 * (mu[-1] - mu[-2])
+        mu_edges = np.clip(mu_edges, -1.0, 1.0)
+        edges = np.arccos(mu_edges)
+    else:
+        edges = np.empty(theta.size + 1, dtype=float)
+        edges[1:-1] = 0.5 * (theta[:-1] + theta[1:])
+        edges[0] = theta[0] - 0.5 * (theta[1] - theta[0])
+        edges[-1] = theta[-1] + 0.5 * (theta[-1] - theta[-2])
+        edges = np.clip(edges, 0.0, np.pi)
+
+    if not np.all(np.diff(edges) >= 0.0):
+        raise ValueError("Computed theta cell edges are not monotonic.")
+    return edges
+
+
+def longitude_cell_widths(phi: np.ndarray) -> np.ndarray:
+    """Return periodic longitude-cell widths whose sum is exactly ``2*pi``."""
+    phi = np.asarray(phi, dtype=float)
+    if phi.ndim != 1 or phi.size == 0 or not np.all(np.isfinite(phi)):
+        raise ValueError("phi must be a non-empty finite 1D array.")
+    if phi.size == 1:
+        return np.array([2.0 * np.pi])
+    phi_unwrapped = np.unwrap(phi)
+    differences = np.diff(phi_unwrapped)
+    if not np.all(differences > 0.0):
+        raise ValueError("phi centers must be strictly increasing.")
+
+    span = phi_unwrapped[-1] - phi_unwrapped[0]
+    if np.isclose(span, 2.0 * np.pi, atol=1.0e-10, rtol=0.0):
+        # WSO carries a duplicated 0/360-degree endpoint.  Keep its last value
+        # for compatibility, but assign the duplicate no additional area.
+        widths = np.zeros(phi.size, dtype=float)
+        widths[:-1] = longitude_cell_widths(phi_unwrapped[:-1])
+        return widths
+    wrap_gap = 2.0 * np.pi - span
+    if wrap_gap <= 0.0:
+        raise ValueError("phi centers span more than one periodic revolution.")
+    gaps = np.concatenate((differences, [wrap_gap]))
+    return 0.5 * (np.roll(gaps, 1) + gaps)
+
+
+def spherical_pixel_areas(
+    theta: np.ndarray,
+    phi: np.ndarray,
+    shape: tuple[int, int] | None = None,
+) -> np.ndarray:
+    """Compute exact solid angles from latitude and longitude cell edges."""
+    theta = np.asarray(theta, dtype=float)
+    phi = np.asarray(phi, dtype=float)
+    if shape is not None and shape != (theta.size, phi.size):
+        raise ValueError("theta and phi lengths must match the Br dimensions.")
+    theta_edges = theta_cell_edges(theta)
+    latitude_weights = np.abs(
+        np.cos(theta_edges[:-1]) - np.cos(theta_edges[1:])
+    )
+    return latitude_weights[:, None] * longitude_cell_widths(phi)[None, :]
 
 
 def _pixel_area(theta: np.ndarray, phi: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
     """Compute spherical pixel areas from colatitude and longitude centers."""
-    nb_th, nb_phi = shape
-    if len(theta) != nb_th:
-        raise ValueError("theta length must match the first Br dimension.")
-    if len(phi) != nb_phi:
-        raise ValueError("phi length must match the second Br dimension.")
-    dtheta = np.tile(_cell_widths(theta, np.pi), (nb_phi, 1)).T
-    dphi = np.tile(_cell_widths(phi, 2.0 * np.pi), (nb_th, 1))
-    Theta, _ = build_theta_phi(theta, phi)
-    return np.abs(np.sin(Theta) * dtheta * dphi)
+    return spherical_pixel_areas(theta, phi, shape)
 
 
 def _surface_mean_area(
@@ -1142,18 +1445,7 @@ def _surface_mean_area(
     shape: tuple[int, int],
 ) -> np.ndarray:
     """Compute spherical areas used by the surface-mean flux correction."""
-    nb_th, nb_phi = shape
-    if len(theta) != nb_th:
-        raise ValueError("theta length must match the first Br dimension.")
-    if len(phi) != nb_phi:
-        raise ValueError("phi length must match the second Br dimension.")
-    theta_edges = np.empty(len(theta) + 1)
-    theta_edges[0] = 0.0
-    theta_edges[-1] = np.pi
-    theta_edges[1:-1] = 0.5 * (theta[:-1] + theta[1:])
-    lat_weights = np.abs(np.cos(theta_edges[:-1]) - np.cos(theta_edges[1:]))
-    dphi = np.abs(_cell_widths(phi, 2.0 * np.pi))
-    return lat_weights[:, None] * dphi[None, :]
+    return spherical_pixel_areas(theta, phi, shape)
 
 
 def _flux_summary(Br: np.ndarray, pixel_area: np.ndarray) -> tuple[float, float, float, float]:
@@ -1215,7 +1507,7 @@ def correct_net_flux(
     if method in {"surface_mean", "mean", "subtract_mean"}:
         pixel_area = _surface_mean_area(theta, phi, Br.shape)
         _log_flux_summary("Before surface_mean correction", Br, pixel_area)
-        Br_corrected = _correct_net_flux_surface_mean(Br, theta)
+        Br_corrected = _correct_net_flux_surface_mean(Br, pixel_area)
         _log_flux_summary("After surface_mean correction", Br_corrected, pixel_area)
         return Br_corrected
     if method in {"polarity_scaling", "polarity", "multiplicative"}:
@@ -1229,14 +1521,12 @@ def correct_net_flux(
     )
 
 
-def _correct_net_flux_surface_mean(Br: np.ndarray, theta: np.ndarray) -> np.ndarray:
+def _correct_net_flux_surface_mean(
+    Br: np.ndarray,
+    pixel_area: np.ndarray,
+) -> np.ndarray:
     """Subtract the surface-weighted mean Br from all pixels."""
-    theta_edges = np.empty(len(theta) + 1)
-    theta_edges[0] = 0.0
-    theta_edges[-1] = np.pi
-    theta_edges[1:-1] = 0.5 * (theta[:-1] + theta[1:])
-    lat_weights = np.abs(np.cos(theta_edges[:-1]) - np.cos(theta_edges[1:]))
-    mean_br = np.sum(Br * lat_weights[:, None]) / (Br.shape[1] * np.sum(lat_weights))
+    mean_br = np.sum(Br * pixel_area) / np.sum(pixel_area)
     logger.info(f"Net flux correction: subtracting surface mean Br={mean_br:.6e}")
     return Br - mean_br
 
@@ -1494,8 +1784,8 @@ if __name__ == "__main__":
 
     #to run a steady test
 
-    base_output_dir = r"C:\Users\luisl\Desktop\testmagnetogram\edin"
-    label = "GONG_mrbqj"
+    base_output_dir = r"C:\Users\luisl\Desktop\testmagnetogram\edin_test"
+    label = "hmi_polfil"
     output_dir = os.path.join(base_output_dir, label)
     figure_output_dir = os.path.join(base_output_dir, "images")
 
@@ -1512,7 +1802,7 @@ if __name__ == "__main__":
         "resize": True,
         "flux_correct": False,
         "flux_correction_method": "surface_mean", #surface_mean' or 'polarity_scaling'
-        "map_type": "GONG_mrbqj",
+        "map_type": "hmi_polfil",
         "output_dir": output_dir,
         "download_dir": output_dir,
         "output_path_fig": os.path.join(figure_output_dir, f"{label}.png"),

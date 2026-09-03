@@ -2,8 +2,8 @@
 
 This module provides small, focused helpers to:
 
-- Read longitude/latitude world coordinates directly from a FITS header (no
-  third‑party WCS objects required).
+- Read longitude/latitude world coordinates from FITS metadata, including the
+  WCS inversion required by standards-compliant CEA latitude axes.
 - Detect unit quirks in synoptic products (e.g., *micro‑degrees* in some GONG
   files) and convert to degrees when appropriate.
 - Infer the starting Carrington longitude from either header keywords or from
@@ -17,10 +17,11 @@ The public entry point is :func:`plot_synoptic_aligned`, which returns the
 
 Notes
 -----
-- The FITS header is accessed directly; the formulas follow the simple linear
-  world‑coordinate relation::
+- Linear FITS axes follow the world‑coordinate relation::
 
     world = CRVALn + (i - CRPIXn) * CDELTn,  with i starting at 1
+
+  Angular CEA latitude axes are inverted with Astropy/WCSLIB instead.
 
 - Longitude wrapping uses the ``[0, 360)`` convention.
 - Latitude is returned in degrees. If the header encodes sine‑latitude (CSLT),
@@ -44,6 +45,10 @@ from pathlib import Path
 from astropy.io import fits
 import numpy as np
 import matplotlib.pyplot as plt
+
+from coconut_tools.magnetogram.coordinates import (
+    fits_latitude_axis as _decode_fits_latitude_axis,
+)
 
 
 GONG_FILE_IDS = {"mrzqs", "mrbqs", "mrbqj", "mrmqs", "mrnqs"}
@@ -147,120 +152,20 @@ def fits_latitude_axis(
     force_degrees=False,
     force_sine=False,
 ):
-    """Build a latitude axis from FITS WCS keywords.
+    """Build a physical latitude axis using the shared FITS decoder.
 
-    Supports degrees-latitude and sine-latitude conventions. If the output
-    latitude is descending, the axis is flipped to be increasing and the data
-    are flipped consistently.
-
-    Args:
-        header (collections.abc.Mapping): FITS header.
-        data (np.ndarray | np.ma.MaskedArray | None, optional): 2D data array
-            with shape ``(..., ny, nx)`` or ``(ny, nx)``. If provided, it will
-            be flipped when the latitude axis is reversed.
-        output (str, optional): ``"deg"`` or ``"sin"`` output axis.
-        one_based_fits (bool, optional): FITS CRPIX convention is 1-based.
-        force_degrees (bool, optional): Force interpretation as degrees.
-        force_sine (bool, optional): Force interpretation as sine-latitude.
-
-    Returns:
-        tuple[np.ndarray, np.ndarray | np.ma.MaskedArray | None, dict]:
-        ``(lat_out, data_out, meta)`` where ``lat_out`` has shape ``(ny,)``,
-        ``data_out`` is flipped if needed, and ``meta`` contains diagnostics
-        such as ``detected_mode``, ``flipped``, and the WCS keywords used.
-
-    Raises:
-        KeyError: If required WCS keywords are missing from the header.
-        ValueError: If ``output`` is not ``"deg"`` or ``"sin"`` or if both
-        ``force_degrees`` and ``force_sine`` are True.
+    The result is ordered from south to north.  See
+    :func:`coconut_tools.magnetogram.coordinates.fits_latitude_axis` for the
+    header-priority and CEA-inversion rules.
     """
-    if "NAXIS2" not in header:
-        raise KeyError("NAXIS2 missing from FITS header.")
-    ny = int(header["NAXIS2"])
-
-    crpix2 = float(header.get("CRPIX2", 1.0))
-    crval2 = float(header.get("CRVAL2", 0.0))
-
-    if "CDELT2" in header and header["CDELT2"] not in (None, ""):
-        cdelt2 = float(header["CDELT2"])
-    elif "CD2_2" in header and header["CD2_2"] not in (None, ""):
-        cdelt2 = float(header["CD2_2"])
-    else:
-        raise KeyError("Missing CDELT2 (or CD2_2) in FITS header.")
-
-    ctype2 = str(header.get("CTYPE2", "")).strip().upper()
-    cunit2 = str(header.get("CUNIT2", "")).strip().lower()
-
-    if one_based_fits:
-        pix = np.arange(1, ny + 1, dtype=float)
-    else:
-        pix = np.arange(ny, dtype=float)
-
-    # Step 1: build raw axis using linear WCS
-    # Handle potential micro-degrees in cdelt/crval if unit is not explicit
-    cdelt2_used = cdelt2
-    crval2_used = crval2
-    scale_note = "native"
-
-    if cunit2.startswith("deg"):
-        scale_note = "deg_from_cunit2"
-    else:
-        if abs(cdelt2) > 1000:
-            cdelt2_used = cdelt2 / 1e6
-            crval2_used = crval2 / 1e6
-            scale_note = "microdeg_from_cdelt2"
-
-    y_raw = (pix - crpix2) * cdelt2_used + crval2_used
-
-    # Step 2: decide whether y_raw is degrees-lat or sine-lat
-    detected_mode = None
-    if force_degrees and force_sine:
-        raise ValueError("Choose at most one of force_degrees or force_sine.")
-
-    if force_degrees or (("CRLT" in ctype2) and not force_sine):
-        y_deg = y_raw.astype(float)
-        detected_mode = "degrees"
-    elif force_sine or ("CSLT" in ctype2) or ("sine" in cunit2):
-        y_deg = np.degrees(np.arcsin(np.clip(y_raw.astype(float), -1.0, 1.0)))
-        detected_mode = "sine_to_degrees"
-    else:
-        # Heuristic: sine-lat is typically within [-1, 1]
-        if (np.nanmin(y_raw) >= -1.05) and (np.nanmax(y_raw) <= 1.05) and (not cunit2.startswith("deg")):
-            y_deg = np.degrees(np.arcsin(np.clip(y_raw.astype(float), -1.0, 1.0)))
-            detected_mode = "heuristic_sine_to_degrees"
-        else:
-            y_deg = y_raw.astype(float)
-            detected_mode = "degrees_fallback"
-
-    # Step 3: choose output axis
-    if output.lower() == "deg":
-        lat_out = y_deg
-    elif output.lower() == "sin":
-        lat_out = np.sin(np.radians(y_deg))
-    else:
-        raise ValueError('output must be "deg" or "sin".')
-
-    # Step 4: enforce increasing latitude upward
-    flipped = False
-    data_out = data
-    if lat_out[0] > lat_out[-1]:
-        flipped = True
-        lat_out = lat_out[::-1]
-        if data is not None:
-            data_out = data[..., ::-1, :]
-
-    meta = dict(
-        ny=ny,
-        ctype2=ctype2,
-        cunit2=cunit2,
-        detected_mode=detected_mode,
-        flipped=flipped,
-        crpix2=crpix2,
-        cdelt2_used=float(cdelt2_used),
-        crval2_used=float(crval2_used),
-        scale_note=scale_note,
+    return _decode_fits_latitude_axis(
+        header,
+        data,
+        output=output,
+        one_based_fits=one_based_fits,
+        force_degrees=force_degrees,
+        force_sine=force_sine,
     )
-    return lat_out, data_out, meta
 
 
 
