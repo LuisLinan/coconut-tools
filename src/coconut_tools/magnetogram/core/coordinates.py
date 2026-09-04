@@ -1,4 +1,4 @@
-"""Coordinate helpers shared by the magnetogram readers and diagnostics.
+"""Coordinate helpers shared by magnetogram readers and diagnostics.
 
 The latitude values stored in a synoptic FITS header are not always expressed
 in the same native coordinate.  Some products store latitude itself, others
@@ -36,7 +36,12 @@ def _latitude_mode(ctype2: str, cunit2: str, lattype: Any) -> str:
     unit = cunit2.replace("_", " ").replace("-", " ").strip().lower()
 
     # Explicit sine-latitude declarations take precedence over CRLT-CEA text.
-    if "sine" in unit or "sin lat" in unit or "sinlat" in unit:
+    if (
+        "sine" in unit
+        or "sin lat" in unit
+        or "sinlat" in unit
+        or unit.startswith("sin(")
+    ):
         return "sine"
     if "CSLT" in ctype2:
         return "sine"
@@ -215,3 +220,124 @@ def fits_latitude_axis(
         "scale_note": scale_note,
     }
     return latitude_out, data_out, meta
+
+
+def build_theta_phi(theta, phi):
+    """Build two-dimensional colatitude and longitude meshgrids."""
+    return np.tile(theta, (len(phi), 1)).T, np.tile(phi, (len(theta), 1))
+
+
+def _validate_theta_axis(theta: np.ndarray) -> None:
+    """Validate north-to-south physical colatitude centers."""
+    theta = np.asarray(theta, dtype=float)
+    if theta.ndim != 1 or theta.size == 0:
+        raise ValueError("theta must be a non-empty 1D array.")
+    if not np.all(np.isfinite(theta)):
+        raise ValueError("theta contains non-finite values.")
+    tolerance = 1.0e-12
+    if np.any(theta < -tolerance) or np.any(theta > np.pi + tolerance):
+        raise ValueError("theta centers must lie in the physical [0, pi] domain.")
+    if theta.size > 1 and not np.all(np.diff(theta) > 0.0):
+        raise ValueError("theta centers must be strictly increasing north-to-south.")
+
+
+def _spacing_error(values: np.ndarray) -> float:
+    """Return a dimensionless measure of departure from uniform spacing."""
+    differences = np.diff(np.asarray(values, dtype=float))
+    if differences.size <= 1:
+        return 0.0
+    reference = float(np.median(differences))
+    scale = max(abs(reference), np.finfo(float).eps)
+    return float(np.max(np.abs(differences - reference)) / scale)
+
+
+def _theta_coordinate(theta: np.ndarray) -> str:
+    """Infer whether centers are regular in latitude or in sine latitude."""
+    theta = np.asarray(theta, dtype=float)
+    if theta.size < 3:
+        return "latitude"
+    theta_error = _spacing_error(theta)
+    sine_error = _spacing_error(np.cos(theta))
+    uniform_tolerance = 1.0e-7
+    if sine_error <= uniform_tolerance and theta_error > uniform_tolerance:
+        return "sine"
+    return "latitude"
+
+
+def theta_cell_edges(
+    theta: np.ndarray,
+    coordinate: str | None = None,
+) -> np.ndarray:
+    """Construct physical cell edges from colatitude centers.
+
+    Uniform sine-latitude grids are extrapolated in ``mu=cos(theta)``;
+    uniform-latitude grids are extrapolated in ``theta``. Extrapolated edges
+    are clipped to the physical poles, without manufacturing pole centers.
+    """
+    theta = np.asarray(theta, dtype=float)
+    _validate_theta_axis(theta)
+    if coordinate is None:
+        coordinate = _theta_coordinate(theta)
+    if coordinate not in {"sine", "latitude"}:
+        raise ValueError("coordinate must be 'sine' or 'latitude'.")
+    if theta.size == 1:
+        return np.array([0.0, np.pi])
+
+    if coordinate == "sine":
+        mu = np.cos(theta)
+        mu_edges = np.empty(mu.size + 1, dtype=float)
+        mu_edges[1:-1] = 0.5 * (mu[:-1] + mu[1:])
+        mu_edges[0] = mu[0] + 0.5 * (mu[0] - mu[1])
+        mu_edges[-1] = mu[-1] + 0.5 * (mu[-1] - mu[-2])
+        edges = np.arccos(np.clip(mu_edges, -1.0, 1.0))
+    else:
+        edges = np.empty(theta.size + 1, dtype=float)
+        edges[1:-1] = 0.5 * (theta[:-1] + theta[1:])
+        edges[0] = theta[0] - 0.5 * (theta[1] - theta[0])
+        edges[-1] = theta[-1] + 0.5 * (theta[-1] - theta[-2])
+        edges = np.clip(edges, 0.0, np.pi)
+
+    if not np.all(np.diff(edges) >= 0.0):
+        raise ValueError("Computed theta cell edges are not monotonic.")
+    return edges
+
+
+def longitude_cell_widths(phi: np.ndarray) -> np.ndarray:
+    """Return periodic longitude-cell widths whose sum is exactly ``2*pi``."""
+    phi = np.asarray(phi, dtype=float)
+    if phi.ndim != 1 or phi.size == 0 or not np.all(np.isfinite(phi)):
+        raise ValueError("phi must be a non-empty finite 1D array.")
+    if phi.size == 1:
+        return np.array([2.0 * np.pi])
+    phi_unwrapped = np.unwrap(phi)
+    differences = np.diff(phi_unwrapped)
+    if not np.all(differences > 0.0):
+        raise ValueError("phi centers must be strictly increasing.")
+
+    span = phi_unwrapped[-1] - phi_unwrapped[0]
+    if np.isclose(span, 2.0 * np.pi, atol=1.0e-10, rtol=0.0):
+        widths = np.zeros(phi.size, dtype=float)
+        widths[:-1] = longitude_cell_widths(phi_unwrapped[:-1])
+        return widths
+    wrap_gap = 2.0 * np.pi - span
+    if wrap_gap <= 0.0:
+        raise ValueError("phi centers span more than one periodic revolution.")
+    gaps = np.concatenate((differences, [wrap_gap]))
+    return 0.5 * (np.roll(gaps, 1) + gaps)
+
+
+def spherical_pixel_areas(
+    theta: np.ndarray,
+    phi: np.ndarray,
+    shape: tuple[int, int] | None = None,
+) -> np.ndarray:
+    """Compute exact solid angles from latitude and longitude cell edges."""
+    theta = np.asarray(theta, dtype=float)
+    phi = np.asarray(phi, dtype=float)
+    if shape is not None and shape != (theta.size, phi.size):
+        raise ValueError("theta and phi lengths must match the Br dimensions.")
+    theta_edges = theta_cell_edges(theta)
+    latitude_weights = np.abs(
+        np.cos(theta_edges[:-1]) - np.cos(theta_edges[1:])
+    )
+    return latitude_weights[:, None] * longitude_cell_widths(phi)[None, :]

@@ -2,19 +2,22 @@ import numpy as np
 import pytest
 from astropy.io import fits
 
-from coconut_tools.magnetogram import sph_filtering
-from coconut_tools.magnetogram.play_with_the_frame import fits_latitude_axis
-from coconut_tools.magnetogram.sph_filtering import (
+from coconut_tools.magnetogram.core.coordinates import (
     build_theta_phi,
-    correct_net_flux,
-    project_and_reconstruct,
+    spherical_pixel_areas,
+    theta_cell_edges,
+)
+from coconut_tools.magnetogram.io.readers import (
     read_fits_theta_axis,
     read_interpolated_magnetogram,
     read_magnetogram,
-    spherical_pixel_areas,
-    theta_cell_edges,
-    write_bc_file,
 )
+from coconut_tools.magnetogram.io.writers import write_bc_file
+from coconut_tools.magnetogram.processing.flux_balance import correct_net_flux
+from coconut_tools.magnetogram.processing.spherical_harmonics import (
+    project_and_reconstruct,
+)
+from coconut_tools.magnetogram.visualization.frame_diagnostics import fits_latitude_axis
 
 
 def _write_map(path, *, size=4, latitude_mode=None, cdelt2=0.5):
@@ -29,6 +32,9 @@ def _write_map(path, *, size=4, latitude_mode=None, cdelt2=0.5):
     if latitude_mode == "explicit_sine":
         hdu.header["CTYPE2"] = "CRLT-CEA"
         hdu.header["CUNIT2"] = "Sine Latitude"
+    elif latitude_mode == "hmi_sin_deg":
+        hdu.header["CTYPE2"] = "CRLT-CEA"
+        hdu.header["CUNIT2"] = "sin(deg)"
     elif latitude_mode == "gong_cea":
         hdu.header["CTYPE2"] = "CRLT-CEA"
     elif latitude_mode == "standard_cea":
@@ -44,7 +50,10 @@ def _write_map(path, *, size=4, latitude_mode=None, cdelt2=0.5):
     return data
 
 
-@pytest.mark.parametrize("latitude_mode", ["explicit_sine", "gong_cea"])
+@pytest.mark.parametrize(
+    "latitude_mode",
+    ["explicit_sine", "hmi_sin_deg", "gong_cea"],
+)
 @pytest.mark.parametrize("sign", [1.0, -1.0])
 def test_sine_latitude_headers_produce_physical_centers(
     tmp_path,
@@ -91,6 +100,41 @@ def test_standard_angular_cea_header_is_inverted_by_wcs(tmp_path, sign):
     assert flip_rows is (sign > 0.0)
 
 
+def test_custom_magnetogram_uses_fits_geometry_without_map_type(tmp_path):
+    path = tmp_path / "custom_full_sphere.fits"
+    data = _write_map(path, latitude_mode="latitude", cdelt2=45.0)
+    with fits.open(path, mode="update") as hdul:
+        header = hdul[0].header
+        header["CTYPE1"] = "CRLN-CAR"
+        header["CUNIT1"] = "deg"
+        header["CRPIX1"] = 1.0
+        header["CRVAL1"] = 90.0
+        header["CDELT1"] = -90.0
+        header["BUNIT"] = "gauss"
+
+    Br, Theta, Phi = read_magnetogram(str(path))
+
+    expected = np.roll(data[::-1, ::-1], -2, axis=1)
+    np.testing.assert_array_equal(Br, expected)
+    np.testing.assert_allclose(
+        Theta[:, 0],
+        (np.arange(4, dtype=float) + 0.5) * np.pi / 4.0,
+    )
+    np.testing.assert_allclose(
+        Phi[0, :],
+        np.arange(4, dtype=float) * np.pi / 2.0,
+    )
+    assert Br.shape == Theta.shape == Phi.shape
+
+
+def test_custom_magnetogram_requires_physical_fits_axes(tmp_path):
+    path = tmp_path / "custom_without_wcs.fits"
+    fits.PrimaryHDU(np.zeros((4, 8))).writeto(path)
+
+    with pytest.raises(ValueError, match="complete FITS latitude metadata"):
+        read_magnetogram(str(path))
+
+
 @pytest.mark.parametrize("sign", [1.0, -1.0])
 def test_adapt_linear_latitude_header_keeps_centered_latitudes(tmp_path, sign):
     path = tmp_path / f"adapt_{sign:+.0f}.fits"
@@ -119,11 +163,13 @@ def test_cd2_2_is_accepted_for_linear_latitude(tmp_path):
 
 
 def test_missing_metadata_uses_warned_centered_product_fallback(tmp_path, monkeypatch):
+    from coconut_tools.magnetogram.io import readers
+
     path = tmp_path / "map_without_latitude_wcs.fits"
     fits.PrimaryHDU(np.zeros((180, 4))).writeto(path)
     warnings = []
     monkeypatch.setattr(
-        sph_filtering.logger,
+        readers.logger,
         "warning",
         lambda message, *args: warnings.append(message % args),
     )

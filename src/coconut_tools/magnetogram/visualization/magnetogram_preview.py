@@ -1,7 +1,7 @@
-"""Small playground for experiments with downloaded magnetograms."""
+"""Small diagnostic entry point for experiments with downloaded magnetograms."""
 
 from coconut_tools.tools.logger_config import setup_logger
-from coconut_tools.magnetogram.magnetogram_download import generate_output_and_map_names
+from coconut_tools.magnetogram.io.downloads import generate_output_and_map_names
 
 
 logger = setup_logger(__name__)

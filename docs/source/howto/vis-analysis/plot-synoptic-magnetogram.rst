@@ -16,7 +16,7 @@ then **shift/wrap** the columns so plotting runs from **0° → 360°** in Carri
 
 Module & entry point
 --------------------
-The helper lives in ``coconut_tools.magnetogram.play_with_the_frame`` and exposes a single
+The helper lives in ``coconut_tools.magnetogram.visualization.frame_diagnostics`` and exposes a single
 public entry point:
 
 .. code-block:: python
@@ -82,7 +82,7 @@ Minimal usage
 -------------
 .. code-block:: python
 
-   from coconut_tools.magnetogram.play_with_the_frame import plot_synoptic_aligned
+   from coconut_tools.magnetogram.visualization.frame_diagnostics import plot_synoptic_aligned
 
    # HMI (header-only)
    fig, ax, info = plot_synoptic_aligned("/path/to/hmi.Synoptic_Mr_small.2134.fits",

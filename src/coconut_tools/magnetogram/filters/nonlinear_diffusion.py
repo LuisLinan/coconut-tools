@@ -1,5 +1,5 @@
 """
-Nonlinear diffusion filter based on Perona-Malik edge-preserving smoothing.
+Low-level nonlinear diffusion filter based on Perona-Malik smoothing.
 
 Author: Jose Murteira
 Cleaned, modularized and refactored by: Luis

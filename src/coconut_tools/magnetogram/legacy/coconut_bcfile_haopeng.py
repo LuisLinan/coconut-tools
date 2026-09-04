@@ -1,3 +1,5 @@
+"""Historical monolithic boundary-file generator retained for reference."""
+
 import math
 from typing import List
 import numpy as np
@@ -11,7 +13,6 @@ import sunpy.util.net
 import requests
 from bs4 import BeautifulSoup
 from scipy.ndimage import gaussian_filter
-from urllib.request import urlopen
 import os
 
 from numpy import ndarray

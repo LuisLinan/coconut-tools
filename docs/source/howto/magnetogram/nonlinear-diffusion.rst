@@ -108,7 +108,8 @@ The low-level filter is still available for custom workflows:
 .. code-block:: python
 
    from coconut_tools.magnetogram.NLD_implicit_method import filter_radial_field
-   from coconut_tools.magnetogram.sph_filtering import write_bc_file, plot_maps
+   from coconut_tools.magnetogram.io.writers import write_bc_file
+   from coconut_tools.magnetogram.visualization.plotting import plot_maps
 
    Br_filtered, timestep = filter_radial_field(
        Br,

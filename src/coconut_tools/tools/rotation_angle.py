@@ -142,13 +142,45 @@ def _gong_file_id_from_name(mag_name: str) -> str | None:
     return prefix if prefix in GONG_FILE_IDS else None
 
 
+def _is_gong_header(header: fits.Header) -> bool:
+    """Return whether instrument provenance identifies an NSO/GONG FITS."""
+    identity = " ".join(
+        str(header.get(keyword, ""))
+        for keyword in ("ORIGIN", "OBS-SITE", "TELESCOP", "INSTRUME")
+    ).upper()
+    return "GONG" in identity
+
+
+def _gong_start_longitude_from_header(header: fits.Header) -> float:
+    """Read the GONG map's initial Carrington longitude from its header."""
+    for keyword in ("LONG0", "MAPEDGE"):
+        raw_value = header.get(keyword)
+        if raw_value in (None, ""):
+            continue
+        try:
+            value = float(raw_value)
+        except (TypeError, ValueError):
+            continue
+        if np.isfinite(value):
+            return value % 360.0
+
+    # Fall back to the western cell edge reconstructed from the WCS centers.
+    width = int(header["NAXIS1"])
+    crpix1 = float(header["CRPIX1"])
+    crval1 = float(header["CRVAL1"])
+    cdelt1 = float(header["CDELT1"])
+    first_center = crval1 + (1.0 - crpix1) * cdelt1
+    return (first_center - 0.5 * cdelt1) % 360.0
+
+
 def compute_rotation_angle(
     mag_name_path: str,
     date_hmi: str = None,
     map_type: str | None = None,
     interpolated: bool = False,
+    effective_date: str | datetime | None = None,
 ) -> Tuple[float, datetime]:
-    """Compute the rotation angle from magnetogram filename.
+    """Compute the rotation angle from magnetogram metadata.
 
     Supports GONG, ADAPT (CM and CAR), HMI, and Carrington-fixed HMI-FDT.
 
@@ -158,42 +190,91 @@ def compute_rotation_angle(
         map_type (str, optional): Magnetogram product type. When supplied with
             date_hmi, the common magnetogram effective-date convention is used.
         interpolated (bool): Whether the map is a temporal interpolation result.
+        effective_date (str or datetime, optional): Explicit map time already
+            selected by the caller.  When supplied, it takes precedence over
+            both FITS time metadata and filename parsing.
 
     Returns:
         float: Angle alpha in degrees such that lon_heeq = lon_mag - alpha (mod 360)
         datetime: Observation date of the magnetogram
     """
     mag_name = os.path.basename(mag_name_path)
-    logger.info(f"The magnetogram name is: {mag_name}")
+    is_wso = (
+        map_type.strip().casefold() == "wso"
+        if isinstance(map_type, str)
+        else mag_name.lower().startswith("wso.")
+    )
+    header = None if is_wso else _magnetogram_header(mag_name_path)
+    gong_from_header = bool(header is not None and _is_gong_header(header))
+    if gong_from_header:
+        logger.info("Using header-described GONG magnetogram metadata.")
+    else:
+        logger.info("The magnetogram name is: %s", mag_name)
 
-    effective_date = None
-    if date_hmi is not None and map_type is not None:
-        from coconut_tools.magnetogram.magnetogram_download import (
-            magnetogram_effective_date,
-        )
+    if effective_date is not None:
+        if not isinstance(effective_date, datetime):
+            from coconut_tools.magnetogram.io.downloads import parse_iso_datetime
 
-        effective_date = magnetogram_effective_date(
-            mag_name_path,
-            map_type,
-            date_hmi,
-            interpolated=interpolated,
-        )
+            effective_date = parse_iso_datetime(effective_date)
+    elif date_hmi is not None and map_type is not None:
+        if gong_from_header:
+            from coconut_tools.magnetogram.io.downloads import (
+                magnetogram_effective_date,
+            )
+
+            effective_date = magnetogram_effective_date(
+                mag_name_path,
+                map_type,
+                date_hmi,
+                interpolated=interpolated,
+            )
+        else:
+            from coconut_tools.magnetogram.io.downloads import (
+                magnetogram_effective_date,
+            )
+
+            effective_date = magnetogram_effective_date(
+                mag_name_path,
+                map_type,
+                date_hmi,
+                interpolated=interpolated,
+            )
 
     prefix = mag_name[:5].lower()
-    gong_file_id = _gong_file_id_from_name(mag_name)
-    is_wso = mag_name.lower().startswith("wso.")
-    logger.info(f"Prefix is: {prefix}")
+    gong_file_id = None if gong_from_header else _gong_file_id_from_name(mag_name)
+    if not gong_from_header:
+        logger.info("Prefix is: %s", prefix)
     if not is_wso:
         is_br_longitude_increasing(mag_name_path)
 
     # GONG
+    if gong_from_header:
+        logger.info("The magnetogram is GONG according to FITS provenance")
+        if effective_date is not None:
+            date = effective_date
+        else:
+            from coconut_tools.magnetogram.io.metadata import read_fits_effective_time
+
+            date = read_fits_effective_time(mag_name_path).value
+
+        CM_CAR_value = compute_carrington_central_meridian(date)
+        start_lon = _gong_start_longitude_from_header(header)
+        return (CM_CAR_value - start_lon) % 360.0, date
+
     if gong_file_id is not None:
         logger.info("The magnetogram is GONG")
-        date_start = len(gong_file_id)
-        date = effective_date or datetime.strptime(
-            mag_name[date_start:date_start + 11],
-            '%y%m%dt%H%M',
-        )
+        if effective_date is not None:
+            date = effective_date
+        elif gong_file_id is not None:
+            date_start = len(gong_file_id)
+            date = datetime.strptime(
+                mag_name[date_start:date_start + 11],
+                '%y%m%dt%H%M',
+            )
+        else:
+            from coconut_tools.magnetogram.io.metadata import read_fits_effective_time
+
+            date = read_fits_effective_time(mag_name_path).value
 
         CM_CAR_value = compute_carrington_central_meridian(date)
         if gong_file_id in GONG_DIACHRONIC_FILE_IDS:

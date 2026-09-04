@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from coconut_tools.magnetogram.sph_filtering import (
+from coconut_tools.magnetogram.visualization.plotting import (
     _colorbar_extend,
     _plot_magnetogram_axis,
     _symmetric_color_limit,

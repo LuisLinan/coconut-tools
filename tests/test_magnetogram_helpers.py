@@ -9,7 +9,7 @@ import pandas as pd
 import pytest
 from astropy.io import fits
 
-from coconut_tools.magnetogram.magnetogram_download import (
+from coconut_tools.magnetogram.io.downloads import (
     InterpolationSelection,
     MagnetogramCandidate,
     build_output_name,
@@ -17,21 +17,30 @@ from coconut_tools.magnetogram.magnetogram_download import (
     download_interpolation_magnetograms,
     download_hmi_hourly_magnetogram,
     ensure_hmi_sync_wcs,
+    list_gong_diachronic_candidates,
     list_hmi_candidates,
     magnetogram_display_date,
     magnetogram_effective_date,
     normalize_map_type,
     parse_hmi_hourly_filename_date,
     resolve_figure_path,
+    select_nearest_candidate,
 )
-from coconut_tools.magnetogram.sph_filtering import (
+from coconut_tools.magnetogram.io.readers import (
+    read_interpolated_magnetogram,
+    read_magnetogram,
+    read_temporal_br_map,
+)
+from coconut_tools.magnetogram.io.metadata import (
+    infer_known_fits_map_type,
+    read_fits_effective_time,
+    read_fits_longitude_axis,
+)
+from coconut_tools.magnetogram.processing.flux_balance import correct_net_flux
+from coconut_tools.magnetogram.processing.longitude import (
     apply_configured_longitude_rotation,
     closest_longitude_column,
-    correct_net_flux,
     processed_longitude_axis,
-    read_magnetogram,
-    read_interpolated_magnetogram,
-    read_temporal_br_map,
     resize_processed_longitude_axis,
     rotate_longitude_to_stonyhurst,
 )
@@ -109,6 +118,625 @@ def test_magnetogram_dates_and_paths_are_resolved_consistently():
     ) == str(outdir / "gong_20201207150000.png")
 
 
+def test_custom_display_and_rotation_date_uses_config_even_with_t_rec(tmp_path):
+    path = tmp_path / "custom_time.fits"
+    hdu = fits.PrimaryHDU(np.zeros((2, 4)))
+    hdu.header["T_REC"] = "2026.08.01_16:24:00_TAI"
+    hdu.header["T_OBS"] = "2026.08.01_16:06:07_TAI"
+    hdu.header["DATE-OBS"] = "2026-08-01T16:06:07"
+    hdu.writeto(path)
+
+    metadata = read_fits_effective_time(str(path))
+    expected = datetime(2026, 8, 1, 16, 23, 23)
+
+    assert metadata.keyword == "T_REC"
+    assert metadata.source_scale == "tai"
+    assert metadata.value == expected
+    assert magnetogram_effective_date(
+        str(path),
+        "custom",
+        TARGET_DATE,
+    ) == TARGET_DATE
+    assert magnetogram_display_date(
+        str(path),
+        "custom",
+        TARGET_DATE,
+    ) == TARGET_DATE
+
+
+def test_gong_diachronic_search_includes_adjacent_months(monkeypatch):
+    from coconut_tools.magnetogram.io import downloads
+
+    pages = {
+        "https://gong.nso.edu/data/magmap/QR/mqs/202604/": (
+            '<a href="mrmqs260429/">mrmqs260429/</a>'
+        ),
+        "https://gong.nso.edu/data/magmap/QR/mqs/202604/mrmqs260429/": (
+            '<a href="mrmqs260429t0702c2310_000.fits.gz">map</a>'
+        ),
+        "https://gong.nso.edu/data/magmap/QR/mqs/202605/": (
+            '<a href="mrmqs260526/">mrmqs260526/</a>'
+        ),
+        "https://gong.nso.edu/data/magmap/QR/mqs/202605/mrmqs260526/": (
+            '<a href="mrmqs260526t1227c2311_000.fits.gz">map</a>'
+        ),
+        "https://gong.nso.edu/data/magmap/QR/mqs/202606/": "",
+    }
+
+    class Response:
+        def __init__(self, text):
+            self.text = text
+
+    monkeypatch.setattr(
+        downloads.requests,
+        "get",
+        lambda url: Response(pages[url]),
+    )
+
+    target = datetime(2026, 5, 9, 1, 47, 5)
+    candidates = list_gong_diachronic_candidates(target, "mrmqs")
+    selected = select_nearest_candidate(candidates, target)
+
+    assert [candidate.date for candidate in candidates] == [
+        datetime(2026, 4, 29, 7, 2),
+        datetime(2026, 5, 26, 12, 27),
+    ]
+    assert selected.date == datetime(2026, 4, 29, 7, 2)
+
+
+def test_custom_effective_date_falls_back_to_valid_t_obs(tmp_path):
+    path = tmp_path / "custom_t_obs.fits"
+    hdu = fits.PrimaryHDU(np.zeros((2, 4)))
+    hdu.header["T_REC"] = "invalid"
+    hdu.header["T_OBS"] = "2026.08.01_16:06:07_UTC"
+    hdu.header["DATE-OBS"] = "2026-08-01T15:00:00"
+    hdu.writeto(path)
+
+    metadata = read_fits_effective_time(str(path))
+
+    assert metadata.keyword == "T_OBS"
+    assert metadata.source_scale == "utc"
+    assert metadata.value == datetime(2026, 8, 1, 16, 6, 7)
+
+
+def test_custom_effective_date_uses_date_obs_as_utc_fallback(tmp_path):
+    path = tmp_path / "custom_date_obs.fits"
+    hdu = fits.PrimaryHDU(np.zeros((2, 4)))
+    hdu.header["DATE-OBS"] = "2026-08-01T16:06:07"
+    hdu.writeto(path)
+
+    metadata = read_fits_effective_time(str(path))
+
+    assert metadata.keyword == "DATE-OBS"
+    assert metadata.source_scale == "utc"
+    assert metadata.value == datetime(2026, 8, 1, 16, 6, 7)
+
+
+def test_custom_effective_date_combines_gong_mapdate_and_maptime(tmp_path):
+    path = tmp_path / "renamed_gong_map.fits"
+    hdu = fits.PrimaryHDU(np.zeros((2, 4)))
+    hdu.header["MAPDATE"] = "2011-09-08"
+    hdu.header["MAPTIME"] = "23:54"
+    hdu.writeto(path)
+
+    metadata = read_fits_effective_time(str(path))
+
+    assert metadata.keyword == "MAPTIME"
+    assert metadata.raw_value == "23:54"
+    assert metadata.value == datetime(2011, 9, 8, 23, 54)
+
+
+def test_custom_gong_is_inferred_and_matches_explicit_gong_processing(
+    tmp_path,
+    monkeypatch,
+):
+    from coconut_tools.magnetogram.processing import longitude
+
+    # The deliberately misleading name proves that only FITS content matters.
+    path = tmp_path / "wso.fake.fits.gz"
+    data = np.arange(16.0).reshape(4, 4)
+    hdu = fits.PrimaryHDU(data)
+    hdu.header["ORIGIN"] = "National Solar Observatory -- GONG"
+    hdu.header["TELESCOP"] = "NSO-GONG"
+    hdu.header["CTYPE1"] = "CRLN-CEA"
+    hdu.header["CTYPE2"] = "CRLT-CEA"
+    hdu.header["CRPIX1"] = 2.5
+    hdu.header["CRPIX2"] = 2.5
+    hdu.header["CRVAL1"] = 301.0
+    hdu.header["CRVAL2"] = 0.0
+    hdu.header["CDELT1"] = 90.0
+    hdu.header["CDELT2"] = 0.5
+    hdu.header["MAPDATE"] = "2011-09-08"
+    hdu.header["MAPTIME"] = "23:54"
+    hdu.writeto(path)
+
+    assert infer_known_fits_map_type(str(path)) == "GONG"
+    Br_gong, Theta_gong, Phi_gong = read_magnetogram(str(path), "GONG_mrzqs")
+    Br_custom, Theta_custom, Phi_custom = read_magnetogram(str(path))
+
+    np.testing.assert_array_equal(Br_custom, Br_gong)
+    np.testing.assert_array_equal(Theta_custom, Theta_gong)
+    np.testing.assert_array_equal(Phi_custom, Phi_gong)
+    assert magnetogram_effective_date(
+        str(path),
+        "custom",
+        TARGET_DATE,
+    ) == TARGET_DATE
+
+    monkeypatch.setattr(
+        longitude,
+        "compute_rotation_angle",
+        lambda *args, **kwargs: (60.0, TARGET_DATE),
+    )
+    monkeypatch.setattr(
+        longitude,
+        "compute_carrington_central_meridian",
+        lambda date: 181.0,
+    )
+    rotated_gong, _, angle_gong = apply_configured_longitude_rotation(
+        Br_gong,
+        None,
+        str(path),
+        "GONG_mrzqs",
+        TARGET_DATE,
+        use_interpolation=False,
+        rotate_to_stonyhurst=True,
+        effective_date=TARGET_DATE,
+    )
+    rotated_custom, _, angle_custom = apply_configured_longitude_rotation(
+        Br_custom,
+        None,
+        str(path),
+        "custom",
+        TARGET_DATE,
+        use_interpolation=False,
+        rotate_to_stonyhurst=True,
+        effective_date=TARGET_DATE,
+    )
+
+    np.testing.assert_array_equal(rotated_custom, rotated_gong)
+    assert angle_custom == angle_gong
+
+
+def test_custom_jsoc_hmi_synoptic_matches_explicit_hmi_processing(
+    tmp_path,
+    monkeypatch,
+):
+    from coconut_tools.magnetogram.processing import longitude
+
+    # A deliberately unrelated filename verifies that only FITS metadata are
+    # used to recognize the JSOC HMI convention.
+    path = tmp_path / "renamed_input.fits"
+    data = np.array(
+        [
+            [180.0, 90.0, 0.0, 270.0],
+            [1180.0, 1090.0, 1000.0, 1270.0],
+        ]
+    )
+    hdu = fits.CompImageHDU(data=data)
+    hdu.header["ORIGIN"] = "SDO/JSOC-SDP"
+    hdu.header["TELESCOP"] = "SDO/HMI"
+    hdu.header["INSTRUME"] = "HMI_COMBINED"
+    hdu.header["CONTENT"] = "Update Synoptic MAP (Mr)"
+    hdu.header["CTYPE1"] = "CRLN-CEA"
+    hdu.header["CTYPE2"] = "CRLT-CEA"
+    hdu.header["CRVAL1"] = 90.0
+    hdu.header["CRPIX1"] = 2.0
+    hdu.header["CDELT1"] = -90.0
+    hdu.writeto(path)
+
+    assert infer_known_fits_map_type(str(path)) == "HMI_hourly"
+    Br_explicit, Theta_explicit, Phi_explicit = read_magnetogram(
+        str(path),
+        "HMI_hourly",
+    )
+    Br_custom, Theta_custom, Phi_custom = read_magnetogram(str(path))
+
+    # The HMI convention uses abs(CDELT1): only the Carrington-origin roll is
+    # applied, never a left-right reflection of the stored field.
+    expected = np.roll(data[::-1, :], 2, axis=1)
+    np.testing.assert_array_equal(Br_custom, expected)
+    np.testing.assert_array_equal(Br_custom, Br_explicit)
+    np.testing.assert_array_equal(Theta_custom, Theta_explicit)
+    np.testing.assert_array_equal(Phi_custom, Phi_explicit)
+
+    monkeypatch.setattr(
+        longitude,
+        "compute_rotation_angle",
+        lambda *args, **kwargs: pytest.fail(
+            "A header-identified custom HMI must not parse its filename"
+        ),
+    )
+    monkeypatch.setattr(
+        longitude,
+        "compute_carrington_central_meridian",
+        lambda date: 90.0,
+    )
+    rotated_custom, _, angle_custom = apply_configured_longitude_rotation(
+        Br_custom,
+        None,
+        str(path),
+        "custom",
+        TARGET_DATE,
+        use_interpolation=False,
+        rotate_to_stonyhurst=True,
+        effective_date=TARGET_DATE,
+    )
+
+    np.testing.assert_array_equal(rotated_custom, np.roll(Br_custom, -1, axis=1))
+    assert angle_custom == 90.0
+
+
+@pytest.mark.parametrize(
+    ("method", "expected_map_type"),
+    [(None, "HMI_small"), ("TEMP_SPAT", "HMI_polfil")],
+)
+def test_custom_static_hmi_synoptic_is_identified_without_origin(
+    tmp_path,
+    method,
+    expected_map_type,
+):
+    path = tmp_path / "renamed_static_hmi.fits"
+    data = np.arange(8.0).reshape(2, 4)
+    hdu = fits.PrimaryHDU(data)
+    hdu.header["TELESCOP"] = "SDO/HMI"
+    hdu.header["INSTRUME"] = "HMI_SIDE1"
+    hdu.header["CONTENT"] = "Carrington Synoptic Chart Of Br Field"
+    hdu.header["CTYPE1"] = "CRLN-CEA"
+    hdu.header["CTYPE2"] = "CRLT-CEA"
+    hdu.header["CUNIT1"] = "degree"
+    hdu.header["CUNIT2"] = "Sine Latitude"
+    hdu.header["CRPIX1"] = 2.0
+    hdu.header["CRPIX2"] = 1.5
+    hdu.header["CRVAL1"] = 360.0
+    hdu.header["CRVAL2"] = 0.0
+    hdu.header["CDELT1"] = -90.0
+    hdu.header["CDELT2"] = 1.0
+    hdu.header["T_OBS"] = "2026.04.29_07:08:43_TAI"
+    if method is not None:
+        hdu.header["METHOD"] = method
+    hdu.writeto(path)
+
+    assert infer_known_fits_map_type(str(path)) == expected_map_type
+    assert magnetogram_effective_date(
+        str(path),
+        "custom",
+        TARGET_DATE,
+    ) == TARGET_DATE
+    Br_explicit, Theta_explicit, Phi_explicit = read_magnetogram(
+        str(path),
+        expected_map_type,
+    )
+    Br_custom, Theta_custom, Phi_custom = read_magnetogram(str(path))
+
+    np.testing.assert_array_equal(Br_custom, Br_explicit)
+    np.testing.assert_array_equal(Theta_custom, Theta_explicit)
+    np.testing.assert_array_equal(Phi_custom, Phi_explicit)
+
+
+def test_custom_non_synoptic_hmi_fits_still_obeys_negative_wcs(tmp_path):
+    path = tmp_path / "generic_hmi_observation.fits"
+    _write_custom_frame_map(path, longitude_start=90.0)
+    with fits.open(path, mode="update") as hdul:
+        header = hdul[0].header
+        header["ORIGIN"] = "SDO/JSOC-SDP"
+        header["TELESCOP"] = "SDO/HMI"
+        header["INSTRUME"] = "HMI_FRONT2"
+        header["CONTENT"] = "Line-of-sight observation"
+        header["CTYPE1"] = "CRLN-CAR"
+        header["CTYPE2"] = "HGLT-CAR"
+        header["CDELT1"] = -90.0
+
+    assert infer_known_fits_map_type(str(path)) is None
+    Br, _, _ = read_magnetogram(str(path))
+
+    original = np.arange(8.0).reshape(2, 4)
+    np.testing.assert_array_equal(Br, np.roll(original[::-1, ::-1], -2, axis=1))
+
+
+@pytest.mark.parametrize(
+    ("map_data", "expected_map_type"),
+    [("GONG", "ADAPT"), ("HMI-FDT", "HMI_fdt")],
+)
+def test_custom_adapt_ensemble_is_identified_from_headers(
+    tmp_path,
+    map_data,
+    expected_map_type,
+):
+    path = tmp_path / "renamed_ensemble.fts"
+    data = np.arange(3 * 2 * 4.0).reshape(3, 2, 4)
+    hdu = fits.PrimaryHDU(data)
+    hdu.header["MODEL"] = "ADAPT"
+    hdu.header["MAPDATA"] = map_data
+    hdu.header["NREAL"] = 3
+    hdu.header["MAPTIME"] = "2026-05-09T02:00:00"
+    hdu.header["LNGTYPE"] = 0
+    hdu.header["LATTYPE"] = 0
+    hdu.header["CTYPE1"] = "Long"
+    hdu.header["CTYPE2"] = "Lat"
+    hdu.header["CUNIT1"] = "deg"
+    hdu.header["CUNIT2"] = "deg"
+    hdu.header["CRPIX1"] = 2.5
+    hdu.header["CRPIX2"] = 1.5
+    hdu.header["CRVAL1"] = 180.0
+    hdu.header["CRVAL2"] = 0.0
+    hdu.header["CDELT1"] = 90.0
+    hdu.header["CDELT2"] = 90.0
+    hdu.writeto(path)
+
+    assert infer_known_fits_map_type(str(path)) == expected_map_type
+    Br_explicit, Theta_explicit, Phi_explicit = read_magnetogram(
+        str(path),
+        expected_map_type,
+        adapt_map=1,
+    )
+    Br_custom, Theta_custom, Phi_custom = read_magnetogram(
+        str(path),
+        adapt_map=1,
+    )
+
+    np.testing.assert_array_equal(Br_custom, Br_explicit)
+    np.testing.assert_array_equal(Theta_custom, Theta_explicit)
+    np.testing.assert_array_equal(Phi_custom, Phi_explicit)
+
+
+def test_custom_solar_longitude_can_infer_missing_cunit1(tmp_path):
+    path = tmp_path / "generic_crln_without_unit.fits"
+    _write_custom_frame_map(path)
+    with fits.open(path, mode="update") as hdul:
+        del hdul[0].header["CUNIT1"]
+
+    with pytest.warns(RuntimeWarning, match="CUNIT1 is missing"):
+        geometry = read_fits_longitude_axis(str(path))
+
+    np.testing.assert_allclose(geometry.centers_degrees, [0.0, 90.0, 180.0, 270.0])
+
+
+def _write_custom_frame_map(
+    path,
+    *,
+    ctype1="CRLN-CAR",
+    longitude_start=0.0,
+    central_meridian=None,
+    observer_stonyhurst=None,
+):
+    hdu = fits.PrimaryHDU(np.arange(8.0).reshape(2, 4))
+    hdu.header["CTYPE1"] = ctype1
+    hdu.header["CUNIT1"] = "deg"
+    hdu.header["CRPIX1"] = 1.0
+    hdu.header["CRVAL1"] = longitude_start
+    hdu.header["CDELT1"] = 90.0
+    hdu.header["CTYPE2"] = "HGLT-CAR"
+    hdu.header["CUNIT2"] = "deg"
+    hdu.header["CRPIX2"] = 1.5
+    hdu.header["CRVAL2"] = 0.0
+    hdu.header["CDELT2"] = 90.0
+    if central_meridian is not None:
+        hdu.header["CRLN_OBS"] = central_meridian
+    if observer_stonyhurst is not None:
+        hdu.header["HGLN_OBS"] = observer_stonyhurst
+    hdu.writeto(path)
+
+
+def test_custom_carrington_rotation_uses_config_date_not_header_longitude(
+    tmp_path,
+    monkeypatch,
+):
+    from coconut_tools.magnetogram.processing import longitude
+
+    path = tmp_path / "custom_carrington.fits"
+    _write_custom_frame_map(path, central_meridian=90.0)
+    monkeypatch.setattr(
+        longitude,
+        "compute_carrington_central_meridian",
+        lambda date: 90.25,
+    )
+
+    Br, _, _ = read_magnetogram(str(path))
+    rotated, _, angle = apply_configured_longitude_rotation(
+        Br,
+        None,
+        str(path),
+        "custom",
+        TARGET_DATE,
+        use_interpolation=False,
+        rotate_to_stonyhurst=True,
+        effective_date=TARGET_DATE,
+    )
+
+    np.testing.assert_array_equal(rotated, np.roll(Br, -1, axis=1))
+    assert angle == pytest.approx(90.25)
+
+
+def test_custom_carrington_rotation_ignores_header_observer_for_config_date(
+    tmp_path,
+    monkeypatch,
+):
+    from coconut_tools.magnetogram.processing import longitude
+
+    path = tmp_path / "custom_non_earth_observer.fits"
+    _write_custom_frame_map(
+        path,
+        central_meridian=120.0,
+        observer_stonyhurst=30.0,
+    )
+    monkeypatch.setattr(
+        longitude,
+        "compute_carrington_central_meridian",
+        lambda date: 90.0,
+    )
+
+    Br, _, _ = read_magnetogram(str(path))
+    rotated, _, angle = apply_configured_longitude_rotation(
+        Br,
+        None,
+        str(path),
+        "custom",
+        TARGET_DATE,
+        use_interpolation=False,
+        rotate_to_stonyhurst=True,
+        effective_date=TARGET_DATE,
+    )
+
+    np.testing.assert_array_equal(rotated, np.roll(Br, -1, axis=1))
+    assert angle == pytest.approx(90.0)
+
+
+def test_custom_carrington_rotation_uses_effective_date_without_crln_obs(
+    tmp_path,
+    monkeypatch,
+):
+    from coconut_tools.magnetogram.processing import longitude
+
+    path = tmp_path / "custom_carrington_without_observer.fits"
+    _write_custom_frame_map(path)
+    dates = []
+
+    def fake_central_meridian(date):
+        dates.append(date)
+        return 180.0
+
+    monkeypatch.setattr(
+        longitude,
+        "compute_carrington_central_meridian",
+        fake_central_meridian,
+    )
+    Br, _, _ = read_magnetogram(str(path))
+    rotated, _, angle = apply_configured_longitude_rotation(
+        Br,
+        None,
+        str(path),
+        "custom",
+        TARGET_DATE,
+        use_interpolation=False,
+        rotate_to_stonyhurst=True,
+        effective_date=TARGET_DATE,
+    )
+
+    np.testing.assert_array_equal(rotated, np.roll(Br, -2, axis=1))
+    assert angle == pytest.approx(180.0)
+    assert dates == [TARGET_DATE]
+
+
+def test_custom_stonyhurst_axis_is_not_rotated_again(tmp_path, monkeypatch):
+    from coconut_tools.magnetogram.processing import longitude
+
+    path = tmp_path / "custom_stonyhurst.fits"
+    _write_custom_frame_map(path, ctype1="HGLN-CAR", longitude_start=-135.0)
+    monkeypatch.setattr(
+        longitude,
+        "compute_carrington_central_meridian",
+        lambda date: pytest.fail("A native Stonyhurst map needs no ephemeris roll"),
+    )
+
+    Br, _, Phi = read_magnetogram(str(path))
+    rotated, _, angle = apply_configured_longitude_rotation(
+        Br,
+        None,
+        str(path),
+        "custom",
+        TARGET_DATE,
+        use_interpolation=False,
+        rotate_to_stonyhurst=True,
+        effective_date=TARGET_DATE,
+    )
+
+    np.testing.assert_array_equal(rotated, Br)
+    np.testing.assert_allclose(np.degrees(Phi[0]), [45.0, 135.0, 225.0, 315.0])
+    assert angle == pytest.approx(0.0)
+
+
+def test_custom_rotation_preserves_nonzero_first_longitude_center(
+    tmp_path,
+    monkeypatch,
+):
+    from coconut_tools.magnetogram.processing import longitude
+
+    path = tmp_path / "custom_offset_centers.fits"
+    _write_custom_frame_map(
+        path,
+        longitude_start=45.0,
+        central_meridian=90.0,
+    )
+    monkeypatch.setattr(
+        longitude,
+        "compute_carrington_central_meridian",
+        lambda date: 90.0,
+    )
+
+    Br, _, Phi = read_magnetogram(str(path))
+    rotated, _, _ = apply_configured_longitude_rotation(
+        Br,
+        None,
+        str(path),
+        "custom",
+        TARGET_DATE,
+        use_interpolation=False,
+        rotate_to_stonyhurst=True,
+        effective_date=TARGET_DATE,
+    )
+
+    # Output phi[0]=45 deg samples source Carrington longitude L0+45=135 deg.
+    np.testing.assert_allclose(np.degrees(Phi[0]), [45.0, 135.0, 225.0, 315.0])
+    np.testing.assert_array_equal(rotated, np.roll(Br, -1, axis=1))
+
+
+def test_custom_resized_rotation_uses_the_resized_physical_centers(
+    tmp_path,
+    monkeypatch,
+):
+    from coconut_tools.magnetogram.processing import longitude
+
+    path = tmp_path / "custom_resized_longitude.fits"
+    _write_custom_frame_map(
+        path,
+        longitude_start=45.0,
+        central_meridian=90.0,
+    )
+    monkeypatch.setattr(
+        longitude,
+        "compute_carrington_central_meridian",
+        lambda date: 90.0,
+    )
+
+    Br, _, Phi = read_magnetogram(str(path), resize=True)
+    rotated, _, _ = apply_configured_longitude_rotation(
+        Br,
+        None,
+        str(path),
+        "custom",
+        TARGET_DATE,
+        use_interpolation=False,
+        rotate_to_stonyhurst=True,
+        effective_date=TARGET_DATE,
+        resize=True,
+    )
+
+    assert Br.shape == (360, 720)
+    assert np.degrees(Phi[0, 0]) == pytest.approx(0.25)
+    np.testing.assert_array_equal(rotated, np.roll(Br, -180, axis=1))
+
+
+def test_custom_rotation_rejects_projection_suffix_as_frame_evidence(tmp_path):
+    path = tmp_path / "custom_ambiguous_frame.fits"
+    _write_custom_frame_map(path, ctype1="LON-CAR")
+
+    geometry = read_fits_longitude_axis(str(path))
+    assert geometry.frame == "unknown"
+    Br, _, _ = read_magnetogram(str(path))
+    with pytest.raises(ValueError, match="projection suffix.*does not identify"):
+        apply_configured_longitude_rotation(
+            Br,
+            None,
+            str(path),
+            "custom",
+            TARGET_DATE,
+            use_interpolation=False,
+            rotate_to_stonyhurst=True,
+            effective_date=TARGET_DATE,
+        )
+
+
 def test_map_type_normalization_accepts_case_variants():
     outdir = Path(__file__).parent / "_outputs"
 
@@ -118,6 +746,10 @@ def test_map_type_normalization_accepts_case_variants():
     assert normalize_map_type("Hmi_Small") == "HMI_small"
     assert normalize_map_type("gong_MRBQS") == "GONG_mrbqs"
     assert normalize_map_type(" adapt ") == "ADAPT"
+    assert normalize_map_type("CUSTOM") == "custom"
+    assert build_output_name("custom", str(outdir), "sph") == str(
+        outdir / "map_custom_sph.dat"
+    )
 
     assert magnetogram_effective_date(
         "hmi.mrdailysynframe_720s_nrt.20260701_062400_TAI.data.fits",
@@ -160,7 +792,7 @@ def test_hmi_fdt_interpolation_lists_only_fixed_carrington_maps_and_downloads_fo
     tmp_path,
     monkeypatch,
 ):
-    from coconut_tools.magnetogram import magnetogram_download
+    from coconut_tools.magnetogram.io import downloads as magnetogram_download
 
     remote_dir = "https://gong.nso.edu/adapt/maps/hmi-fdtl/"
     dates = [datetime(2026, 8, 18, 8) + timedelta(hours=12 * index) for index in range(6)]
@@ -215,6 +847,7 @@ def test_hmi_hourly_candidates_use_timestamps_encoded_in_their_names(monkeypatch
             "T_REC": [
                 "2026.07.01_08:00:00_TAI",
                 "2026.07.01_06:00:00_TAI",
+                "2026.07.01_07:00:00_TAI",
             ]
         }
     )
@@ -223,6 +856,7 @@ def test_hmi_hourly_candidates_use_timestamps_encoded_in_their_names(monkeypatch
             "Mr_polfil": [
                 "/SUM97/D123/map_0800.fits",
                 "https://example.test/map_0600.fits",
+                "NoDataDirectory",
             ]
         }
     )
@@ -239,14 +873,17 @@ def test_hmi_hourly_candidates_use_timestamps_encoded_in_their_names(monkeypatch
 
     assert [candidate.name for candidate in candidates] == [
         "hmi.synoptic_hourly_20260701_060000.fits",
+        "hmi.synoptic_hourly_20260701_070000.fits",
         "hmi.synoptic_hourly_20260701_080000.fits",
     ]
     assert [candidate.date for candidate in candidates] == [
         datetime(2026, 7, 1, 6),
+        datetime(2026, 7, 1, 7),
         datetime(2026, 7, 1, 8),
     ]
     assert candidates[0].remote_url == "https://example.test/map_0600.fits"
-    assert candidates[1].remote_url == (
+    assert candidates[1].remote_url is None
+    assert candidates[2].remote_url == (
         "http://jsoc.stanford.edu/SUM97/D123/map_0800.fits"
     )
     assert captured == {
@@ -331,6 +968,88 @@ def test_hmi_hourly_download_uses_filename_time_for_jsoc_metadata(
     assert header["TRECEPOC"] == "1993.01.01_00:00:00_TAI"
     assert "T_REC_epoch" not in header
     assert parse_hmi_hourly_filename_date(map_name) == datetime(2026, 7, 1, 7)
+
+
+def test_hmi_hourly_offline_segment_is_staged_through_drms(tmp_path, monkeypatch):
+    source_file = tmp_path / "archived_source.fits"
+    fits.PrimaryHDU(data=np.array([[1.0, np.nan], [-2.0, 3.0]])).writeto(
+        source_file
+    )
+    captured = {}
+    metadata = pd.DataFrame([{"T_OBS": "2025.09.09_01:24:00_TAI"}])
+
+    class FakeExport:
+        def download(self, destination):
+            exported = Path(destination) / "Mr_polfil.fits"
+            shutil.copyfile(source_file, exported)
+            return types.SimpleNamespace(download=[str(exported)])
+
+    class FakeClient:
+        def __init__(self, email=None):
+            captured["email"] = email
+
+        def export(self, recordset, protocol):
+            captured.update(
+                {"export_recordset": recordset, "protocol": protocol}
+            )
+            return FakeExport()
+
+        def query(self, recordset, key):
+            captured.update({"metadata_recordset": recordset, "key": key})
+            return metadata
+
+    fake_drms = types.SimpleNamespace(
+        Client=FakeClient,
+        JsocInfoConstants=types.SimpleNamespace(all="ALL_JSOC_KEYS"),
+    )
+    monkeypatch.setitem(sys.modules, "drms", fake_drms)
+
+    candidate = MagnetogramCandidate(
+        name="hmi.synoptic_hourly_20250909_012400.fits",
+        date=datetime(2025, 9, 9, 1, 24),
+        remote_url=None,
+    )
+    local_file, map_name = download_hmi_hourly_magnetogram(
+        candidate,
+        str(tmp_path),
+        drms_email="registered@example.test",
+    )
+
+    assert map_name == candidate.name
+    assert local_file == str(tmp_path / candidate.name)
+    assert captured == {
+        "email": "registered@example.test",
+        "export_recordset": (
+            "hmi.mrdailysynframe_polfil_720s_nrt"
+            "[2025.09.09_01:24:00_TAI]{Mr_polfil}"
+        ),
+        "protocol": "fits",
+        "metadata_recordset": (
+            "hmi.mrdailysynframe_polfil_720s_nrt"
+            "[2025.09.09_01:24:00_TAI]"
+        ),
+        "key": "ALL_JSOC_KEYS",
+    }
+    np.testing.assert_array_equal(
+        fits.getdata(local_file, ext=1),
+        np.array([[1.0, 0.0], [-2.0, 3.0]]),
+    )
+
+
+def test_hmi_hourly_offline_segment_requires_drms_email(tmp_path, monkeypatch):
+    class FakeClient:
+        pass
+
+    fake_drms = types.SimpleNamespace(Client=FakeClient)
+    monkeypatch.setitem(sys.modules, "drms", fake_drms)
+    candidate = MagnetogramCandidate(
+        name="hmi.synoptic_hourly_20250909_012400.fits",
+        date=datetime(2025, 9, 9, 1, 24),
+        remote_url=None,
+    )
+
+    with pytest.raises(ValueError, match=r"config\['drms_email'\]"):
+        download_hmi_hourly_magnetogram(candidate, str(tmp_path))
 
 
 @pytest.mark.parametrize(
@@ -432,7 +1151,7 @@ def test_hmi_hourly_interpolation_downloads_each_map_with_jsoc_metadata(
     tmp_path,
     monkeypatch,
 ):
-    from coconut_tools.magnetogram import magnetogram_download
+    from coconut_tools.magnetogram.io import downloads as magnetogram_download
 
     dates = [datetime(2026, 7, 1, hour) for hour in range(4)]
     candidates = [
@@ -709,10 +1428,10 @@ def test_hmi_fdt_interpolation_resizes_normalized_carrington_cubes(
 
     with fits.open(local_files[-1], mode="update") as hdul:
         hdul[0].header["CRVAL1"] = 181.0
-    from coconut_tools.magnetogram import sph_filtering
+    from coconut_tools.magnetogram.io import readers
 
     monkeypatch.setattr(
-        sph_filtering,
+        readers,
         "interpolate_br_maps",
         lambda *args, **kwargs: pytest.fail(
             "Longitude frames must be checked before temporal interpolation"
@@ -731,7 +1450,7 @@ def test_interpolated_hmi_fdt_rotation_uses_target_time_and_carrington_axis(
     tmp_path,
     monkeypatch,
 ):
-    from coconut_tools.magnetogram import sph_filtering
+    from coconut_tools.magnetogram.processing import longitude
 
     source_date = datetime(2026, 8, 18, 8)
     target = datetime(2026, 8, 19, 2)
@@ -748,7 +1467,7 @@ def test_interpolated_hmi_fdt_rotation_uses_target_time_and_carrington_axis(
         return 67.5
 
     monkeypatch.setattr(
-        sph_filtering,
+        longitude,
         "compute_carrington_central_meridian",
         fake_central_meridian,
     )
@@ -858,18 +1577,18 @@ def test_resize_processed_longitude_axis_preserves_origin():
 
 
 def test_stonyhurst_rotation_uses_original_or_resized_longitude_axis(monkeypatch):
-    from coconut_tools.magnetogram import sph_filtering
+    from coconut_tools.magnetogram.processing import longitude
 
     longitude_original = np.array([10.0, 100.0, 190.0, 280.0])
     Br = np.arange(8).reshape(1, 8)
 
     monkeypatch.setattr(
-        sph_filtering,
+        longitude,
         "compute_rotation_angle",
         lambda *args, **kwargs: (100.0, TARGET_DATE),
     )
     monkeypatch.setattr(
-        sph_filtering,
+        longitude,
         "processed_longitude_axis",
         lambda *args, **kwargs: longitude_original,
     )
@@ -902,18 +1621,18 @@ def test_stonyhurst_rotation_uses_original_or_resized_longitude_axis(monkeypatch
 
 
 def test_interpolated_hmi_hourly_rotation_uses_resized_longitude_axis(monkeypatch):
-    from coconut_tools.magnetogram import sph_filtering
+    from coconut_tools.magnetogram.processing import longitude
 
     Br = np.arange(8).reshape(1, 8)
     Br_linear = Br + 10
 
     monkeypatch.setattr(
-        sph_filtering,
+        longitude,
         "compute_carrington_central_meridian",
         lambda *args, **kwargs: 90.0,
     )
     monkeypatch.setattr(
-        sph_filtering,
+        longitude,
         "processed_longitude_axis",
         lambda *args, **kwargs: np.array([0.0, 90.0, 180.0, 270.0]),
     )

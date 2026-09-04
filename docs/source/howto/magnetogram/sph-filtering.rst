@@ -133,13 +133,11 @@ The lower-level functions are still available when a custom workflow is needed:
 
 .. code-block:: python
 
-   from coconut_tools.magnetogram.sph_filtering import (
-       generate_output_and_map_names,
-       read_magnetogram,
-       project_and_reconstruct,
-       write_bc_file,
-       plot_maps,
-   )
+   from coconut_tools.magnetogram.io.downloads import generate_output_and_map_names
+   from coconut_tools.magnetogram.io.readers import read_magnetogram
+   from coconut_tools.magnetogram.io.writers import write_bc_file
+   from coconut_tools.magnetogram.processing.spherical_harmonics import project_and_reconstruct
+   from coconut_tools.magnetogram.visualization.plotting import plot_maps
 
    output_name, local_file = generate_output_and_map_names(
        "2020-12-07T15:00:00",

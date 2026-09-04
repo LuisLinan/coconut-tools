@@ -11,7 +11,7 @@ API Reference
    coconut_tools.postprocessing.group_vtu_files
    coconut_tools.tools.how_to_read_output
    coconut_tools.tools.logger_config
-   coconut_tools.magnetogram.play_with_the_frame
+   coconut_tools.magnetogram.visualization.frame_diagnostics
    coconut_tools.plot.plot
    coconut_tools.plot.plot_convergence
    coconut_tools.visualization_3d.pyvista_slice

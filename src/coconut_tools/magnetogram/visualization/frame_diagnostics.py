@@ -1,4 +1,4 @@
-"""Synoptic magnetogram utilities (header/filename parsing + aligned plotting).
+"""Synoptic-frame diagnostics and aligned magnetogram plotting utilities.
 
 This module provides small, focused helpers to:
 
@@ -46,7 +46,7 @@ from astropy.io import fits
 import numpy as np
 import matplotlib.pyplot as plt
 
-from coconut_tools.magnetogram.coordinates import (
+from coconut_tools.magnetogram.core.coordinates import (
     fits_latitude_axis as _decode_fits_latitude_axis,
 )
 
@@ -155,7 +155,7 @@ def fits_latitude_axis(
     """Build a physical latitude axis using the shared FITS decoder.
 
     The result is ordered from south to north.  See
-    :func:`coconut_tools.magnetogram.coordinates.fits_latitude_axis` for the
+    :func:`coconut_tools.magnetogram.core.coordinates.fits_latitude_axis` for the
     header-priority and CEA-inversion rules.
     """
     return _decode_fits_latitude_axis(

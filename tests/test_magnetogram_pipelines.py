@@ -55,7 +55,7 @@ def test_yaroslavsky_spacing_uses_radian_arc_length(monkeypatch):
 
 
 def test_local_weighted_filter_uses_article_h_relation(monkeypatch):
-    from coconut_tools.magnetogram import local_weigh_filter
+    from coconut_tools.magnetogram.filters import yaroslavsky as local_weigh_filter
 
     captured = {}
 
@@ -88,7 +88,7 @@ def test_local_weighted_filter_uses_article_h_relation(monkeypatch):
 
 
 def test_local_weighted_filter_uses_dx_for_columns_and_dy_for_rows():
-    from coconut_tools.magnetogram.local_weigh_filter import Th
+    from coconut_tools.magnetogram.filters.yaroslavsky import Th
 
     image = np.ones((5, 5), dtype=float)
     _, weights = Th(image, i=2, j=2, Rn=1.5, h=1.0, dx=1.0, dy=2.0)
@@ -258,6 +258,100 @@ def test_sph_pipeline_uses_hmi_interpolation_at_requested_time(
 
 
 @pytest.mark.parametrize(
+    ("module_name", "processing_name", "processing_result"),
+    [
+        (
+            "coconut_tools.magnetogram.sph_filtering",
+            "project_and_reconstruct",
+            lambda Br: (Br, np.array([1.0])),
+        ),
+        (
+            "coconut_tools.magnetogram.NLD_implicit_method",
+            "filter_radial_field",
+            lambda Br: (Br, 1.0),
+        ),
+        (
+            "coconut_tools.magnetogram.Yaroslavsky_filter",
+            "filter_radial_field_weighted",
+            lambda Br: Br,
+        ),
+    ],
+)
+def test_custom_magnetogram_skips_download_and_interpolation(
+    monkeypatch,
+    tmp_path,
+    module_name,
+    processing_name,
+    processing_result,
+):
+    module = importlib.import_module(module_name)
+    custom_path = tmp_path / "custom.fits"
+    Br = np.arange(8.0).reshape(2, 4)
+    theta = np.array([0.25, 0.75])
+    phi = np.linspace(0.0, 2.0 * np.pi, Br.shape[1], endpoint=False)
+    Theta, Phi = np.meshgrid(theta, phi, indexing="ij")
+    captured = {}
+
+    def fail_acquisition(*args, **kwargs):
+        pytest.fail("A custom magnetogram must not enter an acquisition path.")
+
+    monkeypatch.setattr(module, "generate_output_and_map_names", fail_acquisition)
+    monkeypatch.setattr(
+        module,
+        "generate_output_and_interpolation_map_names",
+        fail_acquisition,
+    )
+    monkeypatch.setattr(module, "read_interpolated_magnetogram", fail_acquisition)
+
+    def fake_read(path, map_type, adapt_map, resize=False):
+        captured.update(
+            {
+                "path": path,
+                "map_type": map_type,
+                "adapt_map": adapt_map,
+                "resize": resize,
+            }
+        )
+        return Br, Theta, Phi
+
+    monkeypatch.setattr(module, "read_magnetogram", fake_read)
+    monkeypatch.setattr(
+        module,
+        "apply_configured_longitude_rotation",
+        lambda Br_in, Br_linear, *args, **kwargs: (Br_in, Br_linear, None),
+    )
+    monkeypatch.setattr(
+        module,
+        processing_name,
+        lambda Br_in, *args, **kwargs: processing_result(Br_in),
+    )
+
+    results = module.process_config(
+        {
+            "date": DATE,
+            "custom_magnetogram": custom_path,
+            "interpolation": True,
+            "resize": True,
+            "rotate_to_stonyhurst": False,
+            "write_map": False,
+            "show_map": False,
+        }
+    )
+    result = results[0]
+
+    assert len(results) == 1
+    assert captured == {
+        "path": str(custom_path),
+        "map_type": "custom",
+        "adapt_map": 6,
+        "resize": True,
+    }
+    assert result["local_file"] == str(custom_path)
+    assert result["selection"] is None
+    assert result["Br_linear"] is None
+
+
+@pytest.mark.parametrize(
     ("module_name", "filter_name", "filter_result"),
     [
         (
@@ -346,7 +440,8 @@ def test_filtered_pipelines_forward_resize_for_hmi_interpolation(
 
 
 def _write_dat_and_png(outdir, name, Br_input, Br_output, Theta, Phi):
-    from coconut_tools.magnetogram.sph_filtering import plot_maps, write_bc_file
+    from coconut_tools.magnetogram.io.writers import write_bc_file
+    from coconut_tools.magnetogram.visualization.plotting import plot_maps
 
     dat_path = outdir / f"{name}.dat"
     png_path = outdir / f"{name}.png"
@@ -370,8 +465,8 @@ def _write_dat_and_png(outdir, name, Br_input, Br_output, Theta, Phi):
 def _run_three_filters(outdir, prefix, Br, Theta, Phi):
     from coconut_tools.magnetogram.NLD_implicit_method import filter_radial_field
     from coconut_tools.magnetogram.Yaroslavsky_filter import filter_radial_field_weighted
-    from coconut_tools.magnetogram.sph_filtering import (
-        correct_net_flux,
+    from coconut_tools.magnetogram.processing.flux_balance import correct_net_flux
+    from coconut_tools.magnetogram.processing.spherical_harmonics import (
         project_and_reconstruct,
     )
 
@@ -418,12 +513,14 @@ def test_real_gong_single_magnetogram_filters_and_outputs():
     workdir = outdir / "magnetogram" / "single"
     workdir.mkdir(parents=True, exist_ok=True)
 
-    from coconut_tools.magnetogram.sph_filtering import (
-        apply_configured_longitude_rotation,
+    from coconut_tools.magnetogram.io.downloads import (
         generate_output_and_map_names,
         magnetogram_display_date,
         magnetogram_effective_date,
-        read_magnetogram,
+    )
+    from coconut_tools.magnetogram.io.readers import read_magnetogram
+    from coconut_tools.magnetogram.processing.longitude import (
+        apply_configured_longitude_rotation,
     )
 
     output_name, local_file = generate_output_and_map_names(
@@ -469,11 +566,13 @@ def test_real_gong_temporal_interpolation_filters_and_outputs():
     workdir.mkdir(parents=True, exist_ok=True)
     rawdir.mkdir(parents=True, exist_ok=True)
 
-    from coconut_tools.magnetogram.sph_filtering import (
-        apply_configured_longitude_rotation,
+    from coconut_tools.magnetogram.io.downloads import (
         generate_output_and_interpolation_map_names,
         magnetogram_effective_date,
-        read_interpolated_magnetogram,
+    )
+    from coconut_tools.magnetogram.io.readers import read_interpolated_magnetogram
+    from coconut_tools.magnetogram.processing.longitude import (
+        apply_configured_longitude_rotation,
     )
 
     output_name, local_files, selection = generate_output_and_interpolation_map_names(

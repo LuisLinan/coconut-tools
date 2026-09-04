@@ -1,11 +1,10 @@
 """
 Preprocess magnetograms with a local weighted Yaroslavsky-style filter.
 
-This module shares the magnetogram download, reading, temporal interpolation,
-effective-time handling, Stonyhurst rotation, flux correction, plotting, and
-COCONUT boundary writing utilities from ``sph_filtering``. Its specific
-processing step applies optional Gaussian smoothing followed by the local
-weighted filter implemented in ``local_weigh_filter.filter3``.
+This module uses the shared acquisition, reading, coordinate, rotation, flux,
+plotting, and boundary-writing subpackages. Its specific processing step
+applies optional Gaussian smoothing followed by the local weighted kernel
+implemented in ``filters.yaroslavsky.filter3``.
 
 Author: Jose Murteira
 Cleaned and modularized by: Luis
@@ -17,8 +16,9 @@ from typing import Any
 import os
 
 from coconut_tools.tools.logger_config import setup_logger
-from coconut_tools.magnetogram.local_weigh_filter import filter3
-from coconut_tools.magnetogram.magnetogram_download import (
+from coconut_tools.magnetogram.filters.yaroslavsky import filter3
+from coconut_tools.magnetogram.io.downloads import (
+    build_output_name,
     build_processing_dates,
     generate_output_and_interpolation_map_names,
     generate_output_and_map_names,
@@ -29,15 +29,17 @@ from coconut_tools.magnetogram.magnetogram_download import (
     parse_iso_datetime,
     resolve_figure_path,
 )
-from coconut_tools.magnetogram.sph_filtering import (
-    _as_bool,
-    apply_configured_longitude_rotation,
-    correct_net_flux,
-    plot_maps,
-    read_magnetogram,
+from coconut_tools.magnetogram.core.config import _as_bool
+from coconut_tools.magnetogram.io.readers import (
     read_interpolated_magnetogram,
-    write_bc_file,
+    read_magnetogram,
 )
+from coconut_tools.magnetogram.io.writers import write_bc_file
+from coconut_tools.magnetogram.processing.flux_balance import correct_net_flux
+from coconut_tools.magnetogram.processing.longitude import (
+    apply_configured_longitude_rotation,
+)
+from coconut_tools.magnetogram.visualization.plotting import plot_maps
 
 logger = setup_logger(__name__)
 
@@ -160,7 +162,14 @@ def process_magnetogram_date(
         ``effective_date``, output paths, selected local file or interpolation
         stencil, optional ``Br_linear``, and rotation angle.
     """
-    map_type = normalize_map_type(config["map_type"])
+    custom_magnetogram = config.get("custom_magnetogram")
+    map_type = (
+        "custom"
+        if custom_magnetogram is not None
+        else normalize_map_type(config["map_type"])
+    )
+    if custom_magnetogram is not None:
+        custom_magnetogram = os.fspath(custom_magnetogram)
     output_dir = config.get("output_dir", "../")
     download_dir = config.get("download_dir", output_dir)
     r_st = config.get("r_st", 1.0)
@@ -173,9 +182,12 @@ def process_magnetogram_date(
     Rn = config.get("Rn", 5.0)
     sig = config.get("sig", 0.0)
     interpolation_order = config.get("interpolation_order", config.get("Interp_order", 2))
-    use_interpolation = _as_bool(
+    requested_interpolation = _as_bool(
         config.get("interpolation", is_gong_temporal_map_type(map_type) or map_type == "ADAPT")
     )
+    use_interpolation = requested_interpolation and custom_magnetogram is None
+    if custom_magnetogram is not None and requested_interpolation:
+        logger.info("Temporal interpolation is disabled for a custom magnetogram.")
     rotate_to_stonyhurst = _as_bool(config.get("rotate_to_stonyhurst", True))
     flux_correction_method = config.get("flux_correction_method", "surface_mean")
     drms_email = config.get("drms_email", config.get("jsoc_email"))
@@ -186,13 +198,29 @@ def process_magnetogram_date(
         or map_type in {"ADAPT", "HMI_hourly", "HMI_fdt"}
     )
 
-    if interpolated:
+    if custom_magnetogram is not None:
+        output_name = build_output_name(
+            map_type,
+            output_dir,
+            method_used=method_used,
+        )
+        local_file = custom_magnetogram
+        Br, Theta, Phi = read_magnetogram(
+            local_file,
+            map_type,
+            adapt_map,
+            resize=resize,
+        )
+        Br_linear = None
+        selection = None
+    elif interpolated:
         output_name, local_files, selection = generate_output_and_interpolation_map_names(
             target_date,
             map_type,
             output_dir,
             method_used=method_used,
             download_dir=download_dir,
+            drms_email=drms_email,
         )
         Br, Theta, Phi, Br_linear = read_interpolated_magnetogram(
             local_files,
@@ -324,13 +352,18 @@ def process_config(config: dict[str, Any], method_used: str = "Yaroslavsky") -> 
     )
     output_path_fig = config.get("output_path_fig")
     use_unique_figures = len(target_dates) > 1
+    figure_map_type = (
+        "custom"
+        if config.get("custom_magnetogram") is not None
+        else config["map_type"]
+    )
     results = []
     for target_date in target_dates:
         figure_path = (
             resolve_figure_path(
                 output_path_fig,
                 config.get("output_dir", "../"),
-                config["map_type"],
+                figure_map_type,
                 target_date,
                 use_unique_name=use_unique_figures,
             )

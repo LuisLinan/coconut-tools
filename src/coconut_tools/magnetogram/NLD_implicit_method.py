@@ -1,12 +1,10 @@
 """
 Preprocess magnetograms with nonlinear diffusion filtering.
 
-This module shares the magnetogram download, reading, temporal interpolation,
-effective-time handling, Stonyhurst rotation, flux correction, plotting, and
-COCONUT boundary writing utilities from ``sph_filtering``. Its specific
-processing step applies optional Gaussian smoothing followed by the
-Perona-Malik nonlinear diffusion filter implemented in
-``nonlinear_diffusion_filter``.
+This module uses the shared acquisition, reading, coordinate, rotation, flux,
+plotting, and boundary-writing subpackages. Its specific processing step
+applies optional Gaussian smoothing followed by the Perona-Malik nonlinear
+diffusion kernel implemented in ``filters.nonlinear_diffusion``.
 
 Author: Jose Murteira
 Cleaned and modularized by: Luis
@@ -16,7 +14,8 @@ import os
 
 import numpy as np
 import scipy.ndimage
-from coconut_tools.magnetogram.magnetogram_download import (
+from coconut_tools.magnetogram.io.downloads import (
+    build_output_name,
     build_processing_dates,
     generate_output_and_interpolation_map_names,
     generate_output_and_map_names,
@@ -27,16 +26,18 @@ from coconut_tools.magnetogram.magnetogram_download import (
     parse_iso_datetime,
     resolve_figure_path,
 )
-from coconut_tools.magnetogram.nonlinear_diffusion_filter import nonlinearDiffusionFilter
-from coconut_tools.magnetogram.sph_filtering import (
-    _as_bool,
-    apply_configured_longitude_rotation,
-    correct_net_flux,
-    plot_maps,
-    read_magnetogram,
+from coconut_tools.magnetogram.filters.nonlinear_diffusion import nonlinearDiffusionFilter
+from coconut_tools.magnetogram.core.config import _as_bool
+from coconut_tools.magnetogram.io.readers import (
     read_interpolated_magnetogram,
-    write_bc_file,
+    read_magnetogram,
 )
+from coconut_tools.magnetogram.io.writers import write_bc_file
+from coconut_tools.magnetogram.processing.flux_balance import correct_net_flux
+from coconut_tools.magnetogram.processing.longitude import (
+    apply_configured_longitude_rotation,
+)
+from coconut_tools.magnetogram.visualization.plotting import plot_maps
 from coconut_tools.tools.logger_config import setup_logger
 
 logger = setup_logger(__name__)
@@ -123,7 +124,14 @@ def process_magnetogram_date(
         stencil, optional ``Br_linear``, final diffusion timestep, and rotation
         angle.
     """
-    map_type = normalize_map_type(config["map_type"])
+    custom_magnetogram = config.get("custom_magnetogram")
+    map_type = (
+        "custom"
+        if custom_magnetogram is not None
+        else normalize_map_type(config["map_type"])
+    )
+    if custom_magnetogram is not None:
+        custom_magnetogram = os.fspath(custom_magnetogram)
     output_dir = config.get("output_dir", "../")
     download_dir = config.get("download_dir", output_dir)
     r_st = config.get("r_st", 1.0)
@@ -133,9 +141,12 @@ def process_magnetogram_date(
     show_map = _as_bool(config.get("show_map", True))
     visu_type = config.get("visu_type", "sinlat")
     interpolation_order = config.get("interpolation_order", config.get("Interp_order", 2))
-    use_interpolation = _as_bool(
+    requested_interpolation = _as_bool(
         config.get("interpolation", is_gong_temporal_map_type(map_type) or map_type == "ADAPT")
     )
+    use_interpolation = requested_interpolation and custom_magnetogram is None
+    if custom_magnetogram is not None and requested_interpolation:
+        logger.info("Temporal interpolation is disabled for a custom magnetogram.")
     rotate_to_stonyhurst = _as_bool(config.get("rotate_to_stonyhurst", True))
     flux_correction_method = config.get("flux_correction_method", "surface_mean")
     drms_email = config.get("drms_email", config.get("jsoc_email"))
@@ -153,13 +164,29 @@ def process_magnetogram_date(
         or map_type in {"ADAPT", "HMI_hourly", "HMI_fdt"}
     )
 
-    if interpolated:
+    if custom_magnetogram is not None:
+        output_name = build_output_name(
+            map_type,
+            output_dir,
+            method_used=method_used,
+        )
+        local_file = custom_magnetogram
+        Br, Theta, Phi = read_magnetogram(
+            local_file,
+            map_type,
+            adapt_map,
+            resize=resize,
+        )
+        Br_linear = None
+        selection = None
+    elif interpolated:
         output_name, local_files, selection = generate_output_and_interpolation_map_names(
             target_date,
             map_type,
             output_dir,
             method_used=method_used,
             download_dir=download_dir,
+            drms_email=drms_email,
         )
         Br, Theta, Phi, Br_linear = read_interpolated_magnetogram(
             local_files,
@@ -294,13 +321,18 @@ def process_config(config: dict[str, Any], method_used: str = "NLD") -> list[dic
     )
     output_path_fig = config.get("output_path_fig")
     use_unique_figures = len(target_dates) > 1
+    figure_map_type = (
+        "custom"
+        if config.get("custom_magnetogram") is not None
+        else config["map_type"]
+    )
     results = []
     for target_date in target_dates:
         figure_path = (
             resolve_figure_path(
                 output_path_fig,
                 config.get("output_dir", "../"),
-                config["map_type"],
+                figure_map_type,
                 target_date,
                 use_unique_name=use_unique_figures,
             )
@@ -320,27 +352,26 @@ def process_config(config: dict[str, Any], method_used: str = "NLD") -> list[dic
 
 if __name__ == "__main__":
 
-    base_output_dir = r"C:\Users\luisl\Desktop\testmagnetogram"
-    label = "hmi_fdt"
+    base_output_dir = r"C:\Users\luisl\Desktop\testmagnetogram\edin_test"
+    label = "hmi_polfil"
     output_dir = os.path.join(base_output_dir, label)
     figure_output_dir = os.path.join(base_output_dir, "images")
 
 
-    configs = [
-        {
-        "date": "2026-06-20T13:42:00",
+    configs =[ {"date": "2011-09-09T01:47:05",
+        "lmax": 20,
         "amp": 1,
         "write_map": True,
         "show_map": True,
         "visu_type": "sinlat",
+        "alpha": 3 * 10 ** (-6),
         "rotate_to_stonyhurst": True,
         "interpolation": False,
         "interpolation_order": 2,
         "resize": True,
         "flux_correct": False,
         "flux_correction_method": "surface_mean", #surface_mean' or 'polarity_scaling'
-        "map_type": "hmi_fdt",
-        "adapt_map": 6,
+        "map_type": "hmi_polfil",
         "output_dir": output_dir,
         "download_dir": output_dir,
         "output_path_fig": os.path.join(figure_output_dir, f"{label}_nld.png"),
@@ -349,8 +380,7 @@ if __name__ == "__main__":
         "gaussian_sigma": 1.0,
         "tau": 5,
         "iterations": 7
-        },
-    ]
+        }]
 
     # for time evolving add : cadence_hours and total_hours to the config dictionary, e.g.:
     # "cadence_hours": 3,

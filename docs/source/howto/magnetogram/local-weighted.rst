@@ -104,7 +104,8 @@ The low-level filter is still available for custom workflows:
 .. code-block:: python
 
    from coconut_tools.magnetogram.Yaroslavsky_filter import filter_radial_field_weighted
-   from coconut_tools.magnetogram.sph_filtering import write_bc_file, plot_maps
+   from coconut_tools.magnetogram.io.writers import write_bc_file
+   from coconut_tools.magnetogram.visualization.plotting import plot_maps
 
    Br_filtered = filter_radial_field_weighted(
        Br,

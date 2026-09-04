@@ -1,5 +1,5 @@
 """
-Local Weighted Smoothing Filter
+Low-level local weighted smoothing filter used by Yaroslavsky filtering.
 
 Performs nonlinear weighted averaging of each pixel's neighborhood using Gaussian-like spatial and radiometric terms.
 Uses parallel processing for efficiency.

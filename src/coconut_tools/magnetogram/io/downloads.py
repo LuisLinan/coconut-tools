@@ -1,7 +1,8 @@
-"""Magnetogram discovery, selection, and download helpers."""
+"""Discover, select, and download supported magnetogram products."""
 import math
 import os
 import re
+import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from functools import lru_cache
@@ -28,6 +29,7 @@ HMI_FDT_CARRINGTON_FILE_ID = "adapt40i11"
 
 
 MAP_TYPE_ALIASES = {
+    "custom": "custom",
     "wso": "WSO",
     "adapt": "ADAPT",
     "hmi_polfil": "HMI_polfil",
@@ -66,6 +68,7 @@ def normalize_map_type(map_type: str) -> str:
             "HMI_SYNC",
             "HMI_hourly",
             "HMI_fdt",
+            "custom",
         ]
         + ["GONG"]
         + [f"GONG_{item}" for item in sorted(GONG_FILE_IDS)]
@@ -79,7 +82,7 @@ class MagnetogramCandidate:
 
     name: str
     date: datetime
-    remote_url: str
+    remote_url: str | None
 
 
 @dataclass(frozen=True)
@@ -124,6 +127,7 @@ def build_output_name(
         return os.path.join(output_dir, filename)
 
     prefixes = {
+        "custom": "map_custom",
         "WSO": "map_wso",
         "ADAPT": "map_adapt",
         "HMI_polfil": "map_hmi_polfil",
@@ -237,41 +241,52 @@ def list_gong_diachronic_candidates(
     date: str | datetime,
     file_id: str,
 ) -> list[MagnetogramCandidate]:
-    """List GONG diachronic files from the closest available date folder."""
+    """List GONG diachronic files around the requested month.
+
+    Integral GONG maps are published once per Carrington rotation.  Looking
+    only in the target calendar month can therefore select the *next* map even
+    when the previous rotation is closer to the requested date.  Search the
+    previous, current, and next month and let the common nearest-candidate
+    selector compare the physical dates encoded in the filenames.
+    """
     date_datetime = parse_iso_datetime(date)
-    remote_base = (
-        f"https://gong.nso.edu/data/magmap/QR/{file_id[2:]}/"
-        f"{date_datetime.year}{date_datetime.month:02d}/"
-    )
-    page_text = requests.get(remote_base).text
-    soup = BeautifulSoup(page_text, "html.parser")
-    folder_names = [
-        node.get("href").strip("/")
-        for node in soup.find_all("a")
-        if node.get("href") is not None and node.get("href").startswith(file_id)
-    ]
-    if not folder_names:
-        return []
-
-    def folder_delta(folder_name: str) -> float:
-        folder_date = datetime.strptime(folder_name[len(file_id):], "%y%m%d")
-        return abs((folder_date - date_datetime).total_seconds())
-
-    map_folder = min(folder_names, key=folder_delta)
-    remote_dir = remote_base + map_folder + "/"
-
-    page_text = requests.get(remote_dir).text
-    soup = BeautifulSoup(page_text, "html.parser")
-    file_names = [
-        node.get("href")
-        for node in soup.find_all("a")
-        if node.get("href") is not None and file_id in node.get("href")
-    ]
     candidates = []
-    for file_name in file_names:
-        file_date = _parse_gong_file_date(file_name, file_id)
-        if file_date is not None:
-            candidates.append(MagnetogramCandidate(file_name, file_date, remote_dir + file_name))
+    month_index = date_datetime.year * 12 + date_datetime.month - 1
+    for month_offset in (-1, 0, 1):
+        current_index = month_index + month_offset
+        year, zero_based_month = divmod(current_index, 12)
+        remote_base = (
+            f"https://gong.nso.edu/data/magmap/QR/{file_id[2:]}/"
+            f"{year}{zero_based_month + 1:02d}/"
+        )
+        page_text = requests.get(remote_base).text
+        soup = BeautifulSoup(page_text, "html.parser")
+        folder_names = [
+            node.get("href").strip("/")
+            for node in soup.find_all("a")
+            if node.get("href") is not None
+            and node.get("href").startswith(file_id)
+        ]
+
+        for map_folder in folder_names:
+            remote_dir = remote_base + map_folder + "/"
+            page_text = requests.get(remote_dir).text
+            soup = BeautifulSoup(page_text, "html.parser")
+            file_names = [
+                node.get("href")
+                for node in soup.find_all("a")
+                if node.get("href") is not None and file_id in node.get("href")
+            ]
+            for file_name in file_names:
+                file_date = _parse_gong_file_date(file_name, file_id)
+                if file_date is not None:
+                    candidates.append(
+                        MagnetogramCandidate(
+                            file_name,
+                            file_date,
+                            remote_dir + file_name,
+                        )
+                    )
     return unique_sorted_candidates(candidates)
 
 
@@ -401,14 +416,32 @@ def list_hmi_candidates(date: str | datetime) -> list[MagnetogramCandidate]:
         if candidate_date is None:
             continue
 
-        segment_path = str(segments[HMI_HOURLY_SEGMENT].iloc[index])
-        if segment_path.startswith(("http://", "https://")):
+        segment_path = str(segments[HMI_HOURLY_SEGMENT].iloc[index]).strip()
+        if is_jsoc_segment_offline(segment_path):
+            # Keep the timestamp as a valid candidate.  The download stage can
+            # ask JSOC/SUMS to stage the archived segment through DRMS.
+            remote_url = None
+        elif segment_path.startswith(("http://", "https://")):
             remote_url = segment_path
         else:
             remote_url = f"http://jsoc.stanford.edu{segment_path}"
         candidates.append(MagnetogramCandidate(name, candidate_date, remote_url))
 
     return unique_sorted_candidates(candidates)
+
+
+def is_jsoc_segment_offline(segment_path: str | None) -> bool:
+    """Return whether JSOC reported metadata without an online segment path."""
+    if segment_path is None:
+        return True
+    normalized = str(segment_path).strip().casefold()
+    return normalized in {
+        "",
+        "none",
+        "nan",
+        "nodatafile",
+        "nodatadirectory",
+    }
 
 
 def unique_sorted_candidates(
@@ -506,8 +539,15 @@ def download_candidate(candidate: MagnetogramCandidate, output_dir: str) -> str:
 def download_hmi_hourly_magnetogram(
     candidate: MagnetogramCandidate,
     output_dir: str,
+    drms_email: str | None = None,
 ) -> tuple[str, str]:
-    """Download an HMI hourly map and attach its complete JSOC metadata."""
+    """Download an HMI hourly map and attach its complete JSOC metadata.
+
+    JSOC returns ``NoDataDirectory`` instead of a URL when an archived segment
+    is not currently staged on disk.  In that case, use a DRMS export request
+    to stage the exact segment rather than treating the sentinel as a hostname.
+    """
+    import urllib.error
     import urllib.request
 
     import drms
@@ -526,22 +566,88 @@ def download_hmi_hourly_magnetogram(
             f"Cannot determine the HMI_hourly target time from filename: {candidate.name}"
         )
 
-    logger.info("Direct JSOC download for %s", candidate.name)
-    temp_file = local_file + ".temp"
-    try:
-        urllib.request.urlretrieve(candidate.remote_url, temp_file)
-        with fits.open(temp_file) as hdul:
-            image_hdu = next((hdu for hdu in hdul if hdu.data is not None), None)
-            if image_hdu is None:
-                raise RuntimeError(f"No image data found in downloaded FITS file: {temp_file}")
-            data = np.nan_to_num(image_hdu.data)
-    finally:
-        if os.path.exists(temp_file):
-            os.remove(temp_file)
-
-    client = drms.Client()
     t_rec = target_time.strftime("%Y.%m.%d_%H:%M:%S_TAI")
     recordset = f"{HMI_HOURLY_SERIES}[{t_rec}]"
+    client = drms.Client(email=drms_email) if drms_email else drms.Client()
+
+    data = None
+    direct_error = None
+    if candidate.remote_url is not None:
+        logger.info("Direct JSOC download for %s", candidate.name)
+        logger.debug("HMI_hourly segment URL: %s", candidate.remote_url)
+        temp_file = local_file + ".temp"
+        try:
+            urllib.request.urlretrieve(candidate.remote_url, temp_file)
+            with fits.open(temp_file) as hdul:
+                image_hdu = next(
+                    (hdu for hdu in hdul if hdu.data is not None),
+                    None,
+                )
+                if image_hdu is None:
+                    raise RuntimeError(
+                        f"No image data found in downloaded FITS file: {temp_file}"
+                    )
+                data = np.nan_to_num(image_hdu.data)
+        except (OSError, urllib.error.URLError) as exc:
+            direct_error = exc
+            logger.warning(
+                "Direct download failed for %s (%s); trying a JSOC DRMS export.",
+                candidate.remote_url,
+                exc,
+            )
+        finally:
+            if os.path.exists(temp_file):
+                os.remove(temp_file)
+
+    if data is None:
+        if not drms_email:
+            reason = (
+                "JSOC reports NoDataDirectory for this archived segment"
+                if candidate.remote_url is None
+                else f"the direct download failed: {direct_error}"
+            )
+            raise ValueError(
+                f"Cannot download HMI_hourly record {t_rec}: {reason}. "
+                "Set config['drms_email'] to a registered JSOC email so DRMS "
+                "can stage the archived FITS segment."
+            )
+
+        export_recordset = f"{recordset}{{{HMI_HOURLY_SEGMENT}}}"
+        logger.info("Staging archived JSOC segment: %s", export_recordset)
+        try:
+            export = client.export(export_recordset, protocol="fits")
+            with tempfile.TemporaryDirectory(prefix="coconut_hmi_hourly_") as temp_dir:
+                downloaded_files = export.download(temp_dir)
+                downloads = downloaded_files.download
+                exported_file = (
+                    downloads.iloc[0]
+                    if hasattr(downloads, "iloc")
+                    else downloads[0]
+                )
+                exported_file = str(exported_file)
+                if not exported_file.lower().endswith((".fits", ".fits.gz")):
+                    raise RuntimeError(
+                        f"JSOC did not return a FITS file: {exported_file}"
+                    )
+                with fits.open(exported_file) as hdul:
+                    image_hdu = next(
+                        (hdu for hdu in hdul if hdu.data is not None),
+                        None,
+                    )
+                    if image_hdu is None:
+                        raise RuntimeError(
+                            "No image data found in staged HMI_hourly FITS: "
+                            f"{exported_file}"
+                        )
+                    data = np.nan_to_num(image_hdu.data)
+        except Exception as exc:
+            raise RuntimeError(
+                f"JSOC found HMI_hourly record {t_rec}, but its FITS segment "
+                "could not be staged or downloaded. The NRT file may no longer "
+                "be recoverable from the online archive; JSOC recommends "
+                "contacting jsoc@sun.stanford.edu for unavailable files."
+            ) from exc
+
     keys = client.query(recordset, key=drms.JsocInfoConstants.all)
     if keys.empty:
         raise RuntimeError(f"No JSOC metadata found for HMI_hourly record {t_rec}.")
@@ -592,6 +698,7 @@ def download_interpolation_magnetograms(
     date: str | datetime,
     map_type: str,
     output_dir: str,
+    drms_email: str | None = None,
 ) -> tuple[list[str], InterpolationSelection]:
     """Download the four magnetograms needed for temporal interpolation."""
     map_type = normalize_map_type(map_type)
@@ -606,10 +713,20 @@ def download_interpolation_magnetograms(
         selection.after_next,
     ]
     if map_type == "HMI_hourly":
-        local_files = [
-            download_hmi_hourly_magnetogram(candidate, output_dir)[0]
-            for candidate in stencil
-        ]
+        if drms_email:
+            local_files = [
+                download_hmi_hourly_magnetogram(
+                    candidate,
+                    output_dir,
+                    drms_email=drms_email,
+                )[0]
+                for candidate in stencil
+            ]
+        else:
+            local_files = [
+                download_hmi_hourly_magnetogram(candidate, output_dir)[0]
+                for candidate in stencil
+            ]
     else:
         local_files = [
             download_candidate(candidate, output_dir)
@@ -675,6 +792,13 @@ def magnetogram_effective_date(
     map_type = normalize_map_type(map_type)
     target = parse_iso_datetime(target_date)
     if interpolated:
+        return target
+    if map_type == "custom":
+        logger.info(
+            "Custom magnetogram display and rotation time comes from the "
+            "configured date: %s.",
+            target.isoformat(),
+        )
         return target
     if map_type == "HMI_SYNC":
         parsed_date = parse_hmi_sync_filename_date(file_path)
@@ -823,6 +947,7 @@ def is_jsoc_unavailable_error(exc: Exception) -> bool:
         "no fits files were exported",
         "requested fits files no longer exist",
         "nodatafile",
+        "nodatadirectory",
     ]
 
     return any(pattern in msg for pattern in unavailable_patterns)
@@ -1045,6 +1170,7 @@ def generate_output_and_map_names(
         local_file, map_name = download_hmi_hourly_magnetogram(
             candidate,
             output_dir,
+            drms_email=drms_email,
         )
         logger.info(f"Output file: {output_name}")
         logger.info(f"Downloaded map: {local_file}")
@@ -1137,6 +1263,7 @@ def generate_output_and_interpolation_map_names(
     output_dir,
     method_used="sph",
     download_dir=None,
+    drms_email: str | None = None,
 ):
     """Generate output name and download four maps for temporal interpolation."""
 
@@ -1150,6 +1277,7 @@ def generate_output_and_interpolation_map_names(
         date,
         map_type,
         download_dir or output_dir,
+        drms_email=drms_email,
     )
     logger.info(f"Output file: {output_name}")
     return output_name, local_files, selection
