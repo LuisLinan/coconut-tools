@@ -384,12 +384,13 @@ def process_config(config: dict[str, Any], method_used: str = "Yaroslavsky") -> 
 if __name__ == "__main__":
 
     base_output_dir = r"C:\Users\luisl\Desktop\testmagnetogram"
-    label = "hmi_hourly"
+    label = "ai_test"
     output_dir = os.path.join(base_output_dir, label)
     figure_output_dir = os.path.join(base_output_dir, "images")
 
     configs = [{
             "date": "2026-06-20T13:42:00",
+            "custom_magnetogram": r"C:\Users\luisl\Desktop\testmagnetogram\ai_magnetogram\AI_synopt_20260801_162400_TAI.fits",
             "amp": 1,
             "write_map": True,
             "show_map": True,
@@ -397,10 +398,10 @@ if __name__ == "__main__":
             "rotate_to_stonyhurst": True,
             "interpolation": False,
             "interpolation_order": 2,
-            "resize": True,
+            "resize": False,
             "flux_correct": False,
             "flux_correction_method": "surface_mean", #surface_mean' or 'polarity_scaling'
-            "map_type": "hmi_hourly",
+            "map_type": "custom",
             "adapt_map": 6,
             "output_dir": output_dir,
             "download_dir": output_dir,
