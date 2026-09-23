@@ -222,13 +222,6 @@ def date_str_to_sunjson_time(date_str):
     )
 
 
-def stonyhurst_to_carrington_longitudes(stonyhurst_lons, date_str):
-    """Convert Stonyhurst longitudes to Carrington longitudes for a given date."""
-    from coconut_tools.tools.FrameLongitudeChange import EarthToCarringtonLong
-
-    return (np.asarray(stonyhurst_lons, dtype=float) + EarthToCarringtonLong(date_str)) % 360.0
-
-
 def carrington_lonlat_to_xyz(lon_deg, lat_deg=0.0, radius=1.0):
     """Convert Carrington spherical longitude/latitude to Cartesian coordinates."""
     lon_rad = np.radians(lon_deg)
@@ -240,12 +233,51 @@ def carrington_lonlat_to_xyz(lon_deg, lat_deg=0.0, radius=1.0):
     )
 
 
-def earth_preview_camera_position(observation_date, distance=10.0):
-    """Return a PyVista camera position matching the Earth/Stonyhurst viewpoint."""
+def earth_view_basis(observation_date):
+    """Return an orthonormal Earth-view basis in Carrington Cartesian coordinates."""
     from coconut_tools.tools.FrameLongitudeChange import EarthObserverCarringtonLonLat
 
-    lon, lat = EarthObserverCarringtonLonLat(observation_date)
-    position = carrington_lonlat_to_xyz(lon, lat, radius=distance)
+    observer_lon, observer_lat = EarthObserverCarringtonLonLat(observation_date)
+
+    # x_view points from Sun center toward Earth, including both L0 and B0.
+    x_view = np.asarray(
+        carrington_lonlat_to_xyz(observer_lon, observer_lat, radius=1.0),
+        dtype=float,
+    )
+
+    # y_view is the east-west limb direction. z_view is projected solar north in
+    # the observer plane of sky, so the B0 tilt is part of the seed geometry.
+    solar_north = np.array([0.0, 0.0, 1.0])
+    y_view = np.cross(solar_north, x_view)
+    y_norm = np.linalg.norm(y_view)
+    if y_norm == 0.0:
+        raise ValueError("Cannot build Stonyhurst observer basis at the solar pole.")
+    y_view /= y_norm
+    z_view = np.cross(x_view, y_view)
+
+    return x_view, y_view, z_view, observer_lon, observer_lat
+
+
+def stonyhurst_view_lonlat_to_carrington_xyz(lon_deg, lat_deg, observation_date, radius=1.0):
+    """Convert Earth-view Stonyhurst lon/lat points to Carrington Cartesian points."""
+    x_view, y_view, z_view, _, _ = earth_view_basis(observation_date)
+
+    lon_rad = np.radians(np.asarray(lon_deg, dtype=float))
+    lat_rad = np.radians(np.asarray(lat_deg, dtype=float))
+
+    # Build points in the Earth-view frame and express them in Carrington
+    # Cartesian coordinates for PyVista streamline seeding.
+    return radius * (
+        np.cos(lat_rad)[..., None] * np.cos(lon_rad)[..., None] * x_view
+        + np.cos(lat_rad)[..., None] * np.sin(lon_rad)[..., None] * y_view
+        + np.sin(lat_rad)[..., None] * z_view
+    )
+
+
+def earth_preview_camera_position(observation_date, distance=10.0):
+    """Return a PyVista camera position matching the Earth/Stonyhurst viewpoint."""
+    x_view, _, _, lon, lat = earth_view_basis(observation_date)
+    position = tuple((distance * x_view).tolist())
     print(
         "Preview camera Earth view -> "
         f"Carrington lon={lon:.3f} deg, lat={lat:.3f} deg"
@@ -287,36 +319,31 @@ def make_seed_grid(radius=1.05, n_points=200, lat_min=-80, lat_max=80, use_tqdm=
 def make_limb_seed_grid(radius=1.05, n_points=200, observation_date=None,
                         use_tqdm=False):
     """Create seed points on the two Earth-visible Stonyhurst limb longitudes."""
+    _ = use_tqdm  # Limb seed generation is vectorized; progress would be noise.
     if observation_date is None:
         raise ValueError(
             "observation_date is required for Stonyhurst limb seeding "
             "(format: YYYYMMDDHHMMSS)."
-        )
+    )
 
     n_lats = max(2, int(np.ceil(max(1, int(n_points)) / 2)))
     stonyhurst_lons = np.array([-90.0, 90.0])
-    lons = stonyhurst_to_carrington_longitudes(stonyhurst_lons, observation_date)
+    _, _, _, observer_lon, observer_lat = earth_view_basis(observation_date)
     print(
-        "Stonyhurst limb seeds [-90, 90] deg -> "
-        f"Carrington [{lons[0]:.3f}, {lons[1]:.3f}] deg"
+        "Stonyhurst limb seeds [-90, 90] deg with Earth view -> "
+        f"Carrington observer lon={observer_lon:.3f} deg, "
+        f"lat={observer_lat:.3f} deg"
     )
     lats = np.linspace(-90.0, 90.0, n_lats)
+    lon_grid, lat_grid = np.meshgrid(stonyhurst_lons, lats)
+    points = stonyhurst_view_lonlat_to_carrington_xyz(
+        lon_grid.ravel(),
+        lat_grid.ravel(),
+        observation_date,
+        radius=radius,
+    )
 
-    points = []
-
-    lat_iter = lats
-    if use_tqdm:
-        try:
-            from tqdm.auto import tqdm
-            lat_iter = tqdm(lats, desc="Seed latitudes", unit="lat")
-        except Exception:
-            print("tqdm not available; continuing without progress bars")
-
-    for lat in lat_iter:
-        for lon in lons:
-            points.append(carrington_lonlat_to_xyz(lon, lat, radius=radius))
-
-    return pv.PolyData(np.array(points))
+    return pv.PolyData(points)
 
 
 def trace_fieldlines(mesh, n_seed_points=200, source_radius=1.05, max_steps=1000):

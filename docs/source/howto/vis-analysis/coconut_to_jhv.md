@@ -75,10 +75,10 @@ and spans the full latitude range:
 lat = -90..+90 deg
 ```
 It does not seed the whole visible hemisphere.
-The limb longitudes are interpreted in the Earth-visible Stonyhurst frame and
-converted to Carrington longitudes before tracing field lines. This keeps the
-mesh tracing and SunJSON export in Carrington coordinates while selecting the
-limbs seen by JHelioviewer.
+The limb curves are interpreted in the Earth-visible Stonyhurst frame and
+rotated into Carrington Cartesian coordinates before tracing field lines. This
+uses both the `L0` longitude and `B0` latitude/tilt for the observation date,
+while keeping the mesh tracing and SunJSON export in Carrington coordinates.
 Example:
 ```bash
 python coconut_to_jhv.py input.CFmesh fieldlines.json \

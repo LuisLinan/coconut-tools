@@ -991,7 +991,7 @@ def read_cfmesh_cells(
 
     # If extra fields in CFmesh
     if ncols > 9:
-        extra_field_names = [] if extra_field_names is None else list(extra_field_names)
+        extra_field_names = sorted(extra_field_names or []) #L’ordre donné par l’utilisateur est maintenant ignoré et les champs sont associés alphabétiquement, comme dans COOLFluiD.
 
         for j in range(9, ncols):
             if (j - 9) < len(extra_field_names):
