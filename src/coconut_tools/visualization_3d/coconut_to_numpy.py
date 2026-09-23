@@ -40,6 +40,7 @@ Example:
 from __future__ import annotations
 
 import errno
+import logging
 import os
 from collections import defaultdict
 
@@ -48,9 +49,8 @@ import pyvista as pv
 from scipy.stats import binned_statistic_dd
 import matplotlib.pyplot as plt
 from coconut_tools.toheliosphere.create_dat import readstruct
-from coconut_tools.tools.logger_config import setup_logger
 
-logger = setup_logger(__name__)
+logger = logging.getLogger(__name__)
 
 ###########################################
 # From .vtu !!! Should filter invalid cells if needed -> see reader.py
@@ -713,6 +713,8 @@ def plot_radial_profiles(
     logx: bool = False,
     logy: bool = False,
     interpolate_nans: bool = False,
+    newfig: bool = True,
+    label: str | None = None,
 ):
     """
     Simple matplotlib plot for one or more radial profile curves.
@@ -722,7 +724,10 @@ def plot_radial_profiles(
     """
     r = np.asarray(profiles[x_key], float)
 
-    plt.figure()
+    if newfig:
+        fig, ax = plt.subplots()
+    else:
+        fig, ax = plt.gcf(), plt.gca()
     for k in keys:
         if k not in profiles:
             raise KeyError(f"'{k}' not in profiles. Available: {list(profiles.keys())}")
@@ -735,20 +740,21 @@ def plot_radial_profiles(
                 y = y.copy()
                 y[~np.isfinite(y)] = np.interp(r[~np.isfinite(y)], r[m], y[m])
 
-        plt.plot(r, y, label=k)
+        ax.plot(r, y, label=k if label is None else label)
 
-    plt.xlabel(xlabel)
-    plt.ylabel(ylabel)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
     if title:
-        plt.title(title)
+        ax.set_title(title)
     if logx:
-        plt.xscale("log")
+        ax.set_xscale("log")
     if logy:
-        plt.yscale("log")
+        ax.set_yscale("log")
     if len(keys) > 1:
-        plt.legend()
-    plt.tight_layout()
-    plt.show()
+        ax.legend()
+    if newfig:
+        fig.tight_layout()
+        plt.show()
 
 """
 from coconut_tools.visualization_3d.reader import cfmesh_to_binned_spherical_grid
