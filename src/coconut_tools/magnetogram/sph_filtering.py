@@ -12,6 +12,7 @@ from typing import Any
 import numpy as np
 
 from coconut_tools.magnetogram.core.config import _as_bool
+from coconut_tools.magnetogram.gaussian_smoothing import filter_radial_field
 from coconut_tools.magnetogram.io.downloads import (
     build_output_name,
     build_processing_dates,
@@ -85,6 +86,8 @@ def process_magnetogram_date(
     flux_correction_method = config.get("flux_correction_method", "surface_mean")
     drms_email = config.get("drms_email", config.get("jsoc_email"))
     resize = _as_bool(config.get("resize", False))
+    apply_gaussian_filtering = _as_bool(config.get("gaussian_filtering", False))
+    template_size = config.get("template_size", 9)
 
     interpolated = use_interpolation and (
         is_gong_temporal_map_type(map_type)
@@ -182,7 +185,24 @@ def process_magnetogram_date(
             method=flux_correction_method,
         )
 
-    Br_mode, coefbr = project_and_reconstruct(Br, Theta, Phi, lmax, amp, alpha)
+    if apply_gaussian_filtering:
+        Br_filtered = filter_radial_field(
+            Br,
+            Phi[0, :],
+            Theta[:, 0],
+            template_size=template_size,
+        )
+    else:
+        Br_filtered = Br
+
+    Br_mode, coefbr = project_and_reconstruct(
+        Br_filtered,
+        Theta,
+        Phi,
+        lmax,
+        amp,
+        alpha,
+    )
 
     if write_map:
         write_bc_file(output_name, Br_mode, Theta[:, 0], Phi[0, :], r_st)
@@ -275,17 +295,18 @@ def process_config(
 
 
 if __name__ == "__main__":
-    base_output_dir = r"C:\Users\luisl\Desktop\testmagnetogram\hyunji"
-    label = "AI_final_not_rotated"
+
+    base_output_dir = r"C:\Users\luisl\Desktop\testmagnetogram\test"
+    label = "sph_filtering_with_very"
     output_dir = os.path.join(base_output_dir, label)
     figure_output_dir = os.path.join(base_output_dir, "images")
 
     config = {
-        "date": "2026-05-09T01:47:05",
-        "custom_magnetogram": r"C:\Users\luisl\Desktop\AI_synopt_20260801_162400_TAI.fits",
-        "lmax": 20,
+        "date": "2011-09-09T01:47:05",
+        "custom_magnetogram": r"C:\Users\luisl\Desktop\testmagnetogram\ai_magnetogram\AI_synopt_20260801_162400_TAI.fits",
+        "lmax": 50,
         "amp": 1,
-        "write_map": True,
+        "write_map": False,
         "show_map": True,
         "visu_type": "sinlat",
         "alpha": 3 * 10 ** (-6),
@@ -293,6 +314,8 @@ if __name__ == "__main__":
         "interpolation": False,
         "interpolation_order": 2,
         "resize": True,
+        "gaussian_filtering": True,
+        "template_size": 55,
         "flux_correct": False,
         "flux_correction_method": "surface_mean",
         "map_type": "hmi_hourly",

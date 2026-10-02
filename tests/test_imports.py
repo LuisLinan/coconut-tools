@@ -18,5 +18,6 @@ def test_magnetogram_root_contains_only_public_launch_modules():
         "NLD_implicit_method.py",
         "Yaroslavsky_filter.py",
         "__init__.py",
+        "gaussian_smoothing.py",
         "sph_filtering.py",
     }

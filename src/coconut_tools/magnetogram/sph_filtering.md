@@ -46,8 +46,11 @@ flowchart TD
     U --> V
     V -- Yes --> W[correct_net_flux using spherical cell areas]
     V -- No --> X[keep Br]
-    W --> Y[project_and_reconstruct]
-    X --> Y
+    W --> GA{gaussian_filtering?}
+    X --> GA
+    GA -- Yes --> GB[Gaussian filter with template_size]
+    GA -- No --> Y[project_and_reconstruct]
+    GB --> Y
     Y --> Z[Br_mode and damped coefficients]
     Z --> AA{write_map?}
     AA -- Yes --> AB[write_bc_file: x y z Br]
@@ -76,10 +79,11 @@ flowchart TD
 | 7 | `magnetogram_effective_date` | Determine the time represented by the field | Effective `datetime` |
 | 8 | `apply_configured_longitude_rotation` | Optionally roll Carrington columns to Stonyhurst | Rotated fields and angle |
 | 9 | `correct_net_flux` | Optionally balance flux with exact cell areas | Corrected `Br` |
-| 10 | `project_and_reconstruct` | Project, damp modes, and reconstruct | `Br_mode, coefbr` |
-| 11 | `write_bc_file` | Optionally serialize the COCONUT boundary | `x y z Br` file |
-| 12 | `plot_maps` | Optionally save the physical-grid comparison | PNG figure |
-| 13 | `_flux_summary` | Log integrated output-field diagnostics | Positive, negative, net flux, imbalance |
+| 10 | `filter_radial_field` | Optionally apply area-weighted Gaussian smoothing | Smoothed `Br` |
+| 11 | `project_and_reconstruct` | Project, damp modes, and reconstruct | `Br_mode, coefbr` |
+| 12 | `write_bc_file` | Optionally serialize the COCONUT boundary | `x y z Br` file |
+| 13 | `plot_maps` | Optionally save the physical-grid comparison | PNG figure |
+| 14 | `_flux_summary` | Log integrated output-field diagnostics | Positive, negative, net flux, imbalance |
 
 ## Stage 1: target-date expansion
 
@@ -306,7 +310,14 @@ Two methods are available:
 The correction occurs before the harmonic projection. It is skipped entirely
 unless `flux_correct=True`.
 
-## Stage 6: spherical-harmonic filter
+## Stage 6: optional Gaussian smoothing
+
+When `gaussian_filtering=True`, the pipeline applies the area-weighted
+Gaussian filter before spherical-harmonic projection. `template_size` is the
+odd kernel side length and defaults to `9`, corresponding to `k=4` and
+`sigma=1.5` pixels. Gaussian smoothing is disabled by default.
+
+## Stage 7: spherical-harmonic filter
 
 `processing.spherical_harmonics.project_and_reconstruct` validates that `Br`,
 `Theta`, and `Phi` have identical two-dimensional shapes. It then projects on
@@ -383,6 +394,8 @@ the harmonic filter.
 | `rotate_to_stonyhurst` | `True` | Roll field columns into the Stonyhurst frame |
 | `flux_correct` | `False` | Apply an area-aware net-flux correction before SPH |
 | `flux_correction_method` | `surface_mean` | `surface_mean` or `polarity_scaling` |
+| `gaussian_filtering` | `False` | Apply area-weighted Gaussian smoothing before SPH |
+| `template_size` | `9` | Positive odd side length of the Gaussian kernel |
 | `write_map` | `True` | Write the COCONUT boundary file |
 | `show_map` | `True` | Save the diagnostic figure |
 | `visu_type` | `sinlat` | `lat` for latitude or any other value for sine latitude |

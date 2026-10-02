@@ -1,22 +1,18 @@
 """
-Preprocess magnetograms with a local weighted Yaroslavsky-style filter.
+Preprocess magnetograms with surface-area-weighted Gaussian smoothing.
 
 This module uses the shared acquisition, reading, coordinate, rotation, flux,
 plotting, and boundary-writing subpackages. Its specific processing step
-applies optional Gaussian smoothing followed by the local weighted kernel
-implemented in ``filters.yaroslavsky.filter3``.
+applies the spherical Gaussian kernel implemented in
+``filters.gaussian_filter``.
 
 Author: Jose Murteira
 Cleaned and modularized by: Luis
 """
-
-import numpy as np
-import scipy.ndimage
 from typing import Any
 import os
 
-from coconut_tools.tools.logger_config import setup_logger
-from coconut_tools.magnetogram.filters.yaroslavsky import filter3
+import numpy as np
 from coconut_tools.magnetogram.io.downloads import (
     build_output_name,
     build_processing_dates,
@@ -29,6 +25,7 @@ from coconut_tools.magnetogram.io.downloads import (
     parse_iso_datetime,
     resolve_figure_path,
 )
+from coconut_tools.magnetogram.filters.gaussian_filter import gaussian_filtering
 from coconut_tools.magnetogram.core.config import _as_bool
 from coconut_tools.magnetogram.io.readers import (
     read_interpolated_magnetogram,
@@ -40,118 +37,56 @@ from coconut_tools.magnetogram.processing.longitude import (
     apply_configured_longitude_rotation,
 )
 from coconut_tools.magnetogram.visualization.plotting import plot_maps
+from coconut_tools.tools.logger_config import setup_logger
 
 logger = setup_logger(__name__)
 
-def filter_radial_field_weighted(
+
+def filter_radial_field(
     Br: np.ndarray,
     phi: np.ndarray,
     theta: np.ndarray,
-    alpha_factor: float,
-    Rn: float,
-    sig: float = 0.0,
-    write_gaussian_prepass: bool = False
-):
-    """Apply optional Gaussian smoothing and local weighted filtering to Br.
-
-    Grid spacing is estimated from the supplied longitude and colatitude vectors
-    in radians. Following the article implementation, a single isotropic
-    physical spacing ``R_sun * max(delta_theta, delta_phi)`` is passed to the
-    local weighted filter.
+    template_size: int = 9,
+) -> np.ndarray:
+    """Apply surface-area-weighted Gaussian smoothing to a radial field.
 
     Args:
-        Br (np.ndarray): Input magnetic field map.
-        phi (np.ndarray): 1D array of longitudes in radians.
-        theta (np.ndarray): 1D array of colatitudes in radians.
-        alpha_factor (float): Alpha controlling kernel sharpness.
-        Rn (float): Neighborhood radius in grid-spacing units.
-        sig (float): Sigma of optional Gaussian smoothing.
-        write_gaussian_prepass (bool): Whether to export Gaussian-smoothed version.
+        Br (np.ndarray): 2D radial magnetic-field map.
+        phi (np.ndarray): 1D endpoint-free longitude centres in radians.
+        theta (np.ndarray): 1D colatitude centres in radians, north to south.
+        template_size (int): Odd side length of the Gaussian template.
 
     Returns:
-        np.ndarray: Filtered Br field.
+        np.ndarray: Smoothed radial magnetic field.
     """
-    Br = np.asarray(Br)
-    phi = np.asarray(phi, dtype=float)
-    theta = np.asarray(theta, dtype=float)
-
-    if Br.ndim != 2:
-        raise ValueError("Br must be a 2D array.")
-    if phi.ndim != 1 or theta.ndim != 1:
-        raise ValueError("phi and theta must be 1D arrays.")
-    if Br.shape != (theta.size, phi.size):
-        raise ValueError(
-            f"Br shape {Br.shape} does not match theta/phi sizes "
-            f"({theta.size}, {phi.size})."
-        )
-    if theta.size < 2 or phi.size < 2:
-        raise ValueError("theta and phi must contain at least two points.")
-    if not (
-        np.all(np.isfinite(Br))
-        and np.all(np.isfinite(theta))
-        and np.all(np.isfinite(phi))
-    ):
-        raise ValueError("Br, theta, and phi must contain only finite values.")
-    if Rn <= 0:
-        raise ValueError("Rn must be positive.")
-    if alpha_factor < 0:
-        raise ValueError("alpha_factor must be non-negative.")
-    if sig < 0:
-        raise ValueError("sig must be non-negative.")
-
-    theta_steps = np.abs(np.diff(theta))
-    phi_steps = np.abs(np.diff(np.unwrap(phi)))
-    theta_steps = theta_steps[theta_steps > 0]
-    phi_steps = phi_steps[phi_steps > 0]
-    if theta_steps.size == 0 or phi_steps.size == 0:
-        raise ValueError("theta and phi coordinates must contain at least two distinct values.")
-
-    dtheta = float(np.median(theta_steps))
-    dphi = float(np.median(phi_steps))
-
-    R_sun = 696.34e6
-    delta_var = R_sun * max(dtheta, dphi)
-
-    Br_smoothed = scipy.ndimage.gaussian_filter(Br, sig) if sig > 0 else Br.copy()
-
-    if write_gaussian_prepass:
-        np.save("Br_gaussian_prepass.npy", Br_smoothed)
-
-    logger.info(
-        "Running local filter with alpha=%.2f, Rn=%.2f, dtheta=%.6g rad, dphi=%.6g rad, delta=%.2f m",
-        alpha_factor,
-        Rn,
-        dtheta,
-        dphi,
-        delta_var,
-    )
-    Br_filtered = filter3(Br_smoothed, delta_var, delta_var, alpha_factor, Rn)
-
-    return Br_filtered
+    logger.info("Begin Gaussian filtering")
+    filtered = gaussian_filtering(Br, phi, theta, template_size=template_size)
+    logger.info("End Gaussian filtering")
+    return filtered
 
 
 def process_magnetogram_date(
     config: dict[str, Any],
     target_date,
-    method_used: str = "Yaroslavsky",
+    method_used: str = "Gaussian",
     output_path_fig: str | None = None,
 ) -> dict[str, Any]:
-    """Process one target time with the local weighted filter pipeline.
+    """Process one target time with the Gaussian-smoothing pipeline.
 
     The function downloads or reuses a magnetogram, optionally interpolates a
     four-map stencil, computes and logs the effective magnetogram time,
     optionally rotates to Stonyhurst, optionally balances net flux, applies the
-    local weighted filter, writes the boundary file, and optionally saves a
-    diagnostic figure.
+    surface-area-weighted Gaussian filter, writes the boundary file, and optionally saves
+    a diagnostic figure.
 
     Args:
         config (dict[str, Any]): Processing configuration. Common keys are
             ``map_type``, ``output_dir``, ``download_dir``, ``r_st``,
             ``amp``, ``adapt_map``, ``write_map``, ``show_map``, ``visu_type``,
-            ``alpha``, ``Rn``, ``sig``, ``interpolation_order``,
-            ``interpolation``, ``resize``, ``rotate_to_stonyhurst``, ``flux_correct``,
+            ``interpolation_order``, ``interpolation``, ``resize``,
+            ``rotate_to_stonyhurst``, ``flux_correct``,
             ``flux_correction_method``, ``drms_email`` or ``jsoc_email``, and
-            ``write_gaussian_prepass``.
+            ``template_size``.
         target_date: Requested processing time.
         method_used (str): Method label used in output filenames.
         output_path_fig (str | None): Explicit diagnostic figure path. If
@@ -160,7 +95,8 @@ def process_magnetogram_date(
     Returns:
         dict[str, Any]: Processing metadata, including target ``date``,
         ``effective_date``, output paths, selected local file or interpolation
-        stencil, optional ``Br_linear``, and rotation angle.
+        stencil, optional ``Br_linear``, Gaussian template size, and rotation
+        angle.
     """
     custom_magnetogram = config.get("custom_magnetogram")
     map_type = (
@@ -178,9 +114,6 @@ def process_magnetogram_date(
     write_map = _as_bool(config.get("write_map", True))
     show_map = _as_bool(config.get("show_map", True))
     visu_type = config.get("visu_type", "sinlat")
-    alpha = config.get("alpha", 1.0)
-    Rn = config.get("Rn", 5.0)
-    sig = config.get("sig", 0.0)
     interpolation_order = config.get("interpolation_order", config.get("Interp_order", 2))
     requested_interpolation = _as_bool(
         config.get("interpolation", is_gong_temporal_map_type(map_type) or map_type == "ADAPT")
@@ -192,6 +125,7 @@ def process_magnetogram_date(
     flux_correction_method = config.get("flux_correction_method", "surface_mean")
     drms_email = config.get("drms_email", config.get("jsoc_email"))
     resize = _as_bool(config.get("resize", False))
+    template_size = config.get("template_size", 9)
 
     interpolated = use_interpolation and (
         is_gong_temporal_map_type(map_type)
@@ -281,14 +215,11 @@ def process_magnetogram_date(
             method=flux_correction_method,
         )
 
-    Br_filtered = filter_radial_field_weighted(
+    Br_filtered = filter_radial_field(
         Br,
         Phi[0, :],
         Theta[:, 0],
-        alpha,
-        Rn,
-        sig,
-        write_gaussian_prepass=_as_bool(config.get("write_gaussian_prepass", False)),
+        template_size=template_size,
     )
 
     Br_filtered = Br_filtered / 2.2
@@ -326,12 +257,13 @@ def process_magnetogram_date(
         "figure_path": figure_path,
         "selection": selection,
         "Br_linear": Br_linear,
+        "template_size": template_size,
         "rotation_angle": rotation_angle,
     }
 
 
-def process_config(config: dict[str, Any], method_used: str = "Yaroslavsky") -> list[dict[str, Any]]:
-    """Process all target times described by one Yaroslavsky configuration.
+def process_config(config: dict[str, Any], method_used: str = "Gaussian") -> list[dict[str, Any]]:
+    """Process all target times described by one Gaussian smoothing config.
 
     With only ``date`` set, one target time is processed. With
     ``cadence_hours`` and ``total_hours``, the function builds a time sequence
@@ -384,32 +316,29 @@ def process_config(config: dict[str, Any], method_used: str = "Yaroslavsky") -> 
 if __name__ == "__main__":
 
     base_output_dir = r"C:\Users\luisl\Desktop\testmagnetogram\test"
-    label = "Yaroslavsky_1.4_100_1.5"
+    label = "gaussian_smoothing_ts_35"
     output_dir = os.path.join(base_output_dir, label)
     figure_output_dir = os.path.join(base_output_dir, "images")
 
-    configs = [{
-            "date": "2011-09-09T01:47:05",
-            "custom_magnetogram": r"C:\Users\luisl\Desktop\testmagnetogram\ai_magnetogram\AI_synopt_20260801_162400_TAI.fits",
-            "amp": 1,
-            "write_map": False,
-            "show_map": True,
-            "visu_type": "sinlat",
-            "rotate_to_stonyhurst": False,
-            "interpolation": False,
-            "interpolation_order": 2,
-            "resize": False,
-            "flux_correct": False,
-            "flux_correction_method": "surface_mean", #surface_mean' or 'polarity_scaling'
-            "map_type": "custom",
-            "adapt_map": 6,
-            "output_dir": output_dir,
-            "download_dir": output_dir,
-            "output_path_fig": os.path.join(figure_output_dir, f"{label}.png"),
-            "drms_email": "luis.linan@kuleuven.be",
-            "alpha": 1.4,
-            "Rn" : 100,
-            "sig": 1.5
+
+    configs =[ {"date": "2011-09-09T01:47:05",
+        "custom_magnetogram": r"C:\Users\luisl\Desktop\testmagnetogram\ai_magnetogram\AI_synopt_20260801_162400_TAI.fits",
+        "amp": 1,
+        "write_map": False,
+        "show_map": True,
+        "visu_type": "sinlat",
+        "rotate_to_stonyhurst": False,
+        "interpolation": False,
+        "interpolation_order": 2,
+        "resize": True,
+        "flux_correct": False,
+        "flux_correction_method": "surface_mean", #surface_mean' or 'polarity_scaling'
+        "map_type": "hmi_polfil",
+        "output_dir": output_dir,
+        "download_dir": output_dir,
+        "output_path_fig": os.path.join(figure_output_dir, f"{label}.png"),
+        "drms_email": "luis.linan@kuleuven.be",
+        "template_size": 35,
         }]
 
     # for time evolving add : cadence_hours and total_hours to the config dictionary, e.g.:
@@ -418,9 +347,9 @@ if __name__ == "__main__":
 
     for config in configs:
         try:
-            process_config(config, method_used="Yaroslavsky")
+            process_config(config, method_used="Gaussian")
         except Exception as exc:
             logger.warning(
                 f'Failed to process {config["date"]} and {config["map_type"]}: {exc}'
             )
-
+            continue

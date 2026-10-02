@@ -352,23 +352,68 @@ def process_config(config: dict[str, Any], method_used: str = "NLD") -> list[dic
 
 if __name__ == "__main__":
 
-    base_output_dir = r"C:\Users\luisl\Desktop\testmagnetogram\edin_test"
-    label = "hmi_polfil"
+    base_output_dir = r"C:\Users\luisl\Desktop\testmagnetogram\test"
+    label = "nld_25_7"
     output_dir = os.path.join(base_output_dir, label)
     figure_output_dir = os.path.join(base_output_dir, "images")
 
 
-    configs =[ {"date": "2011-09-09T01:47:05",
-        "lmax": 20,
+    configs = [{
+        "date": "2011-09-09T01:47:05",
+        "custom_magnetogram": r"C:\Users\luisl\Desktop\testmagnetogram\ai_magnetogram\AI_synopt_20260801_162400_TAI.fits",
         "amp": 1,
-        "write_map": True,
+        "write_map": False,
         "show_map": True,
         "visu_type": "sinlat",
         "alpha": 3 * 10 ** (-6),
         "rotate_to_stonyhurst": True,
         "interpolation": False,
         "interpolation_order": 2,
-        "resize": True,
+        "resize": False,
+        "flux_correct": False,
+        "flux_correction_method": "surface_mean", #surface_mean' or 'polarity_scaling'
+        "map_type": "hmi_polfil",
+        "output_dir": output_dir,
+        "download_dir": output_dir,
+        "output_path_fig": os.path.join(figure_output_dir, f"{label}_nld.png"),
+        "drms_email": "luis.linan@kuleuven.be",
+        "apply_gaussian": True,
+        "gaussian_sigma": 1.0,
+        "tau": 25,
+        "iterations": 7
+        }]
+
+    # for time evolving add : cadence_hours and total_hours to the config dictionary, e.g.:
+    # "cadence_hours": 3,
+    # "total_hours": 72,
+
+    for config in configs:
+        try:
+            process_config(config, method_used="NLD")
+        except Exception as exc:
+            logger.warning(
+                f'Failed to process {config["date"]} and {config["map_type"]}: {exc}'
+            )
+            continue
+
+    base_output_dir = r"C:\Users\luisl\Desktop\testmagnetogram\test"
+    label = "nld_5_25"
+    output_dir = os.path.join(base_output_dir, label)
+    figure_output_dir = os.path.join(base_output_dir, "images")
+
+
+    configs = [{
+        "date": "2011-09-09T01:47:05",
+        "custom_magnetogram": r"C:\Users\luisl\Desktop\testmagnetogram\ai_magnetogram\AI_synopt_20260801_162400_TAI.fits",
+        "amp": 1,
+        "write_map": False,
+        "show_map": True,
+        "visu_type": "sinlat",
+        "alpha": 3 * 10 ** (-6),
+        "rotate_to_stonyhurst": True,
+        "interpolation": False,
+        "interpolation_order": 2,
+        "resize": False,
         "flux_correct": False,
         "flux_correction_method": "surface_mean", #surface_mean' or 'polarity_scaling'
         "map_type": "hmi_polfil",
@@ -379,7 +424,7 @@ if __name__ == "__main__":
         "apply_gaussian": True,
         "gaussian_sigma": 1.0,
         "tau": 5,
-        "iterations": 7
+        "iterations": 25
         }]
 
     # for time evolving add : cadence_hours and total_hours to the config dictionary, e.g.:

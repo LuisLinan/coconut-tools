@@ -29,8 +29,9 @@ Use ``process_config`` for normal runs:
 
 The function accepts either a single-date configuration or a time-series
 configuration. It downloads the magnetograms, reads or interpolates ``Br``,
-applies the SPH reconstruction, writes the COCONUT ``.dat`` file, and writes a
-diagnostic figure when ``show_map`` is true.
+optionally applies area-weighted Gaussian smoothing, applies the SPH
+reconstruction, writes the COCONUT ``.dat`` file, and writes a diagnostic
+figure when ``show_map`` is true.
 
 Single-Date Example
 -------------------
@@ -47,6 +48,8 @@ To process one magnetogram, provide ``date`` and omit ``total_hours``:
        "alpha": 1e-6,
        "amp": 1,
        "flux_correct": False,
+       "gaussian_filtering": True,
+       "template_size": 9,
        "write_map": True,
        "show_map": True,
        "output_dir": "./boundary/",
@@ -123,6 +126,9 @@ SPH Parameters
 - ``amp``: global scaling factor applied during reconstruction, default ``1``.
 - ``alpha``: high-degree damping factor. The coefficients are scaled by
   ``1 / (1 + alpha * l**2 * (l + 1)**2)``.
+- ``gaussian_filtering``: apply area-weighted Gaussian smoothing before the
+  spherical-harmonic projection, default ``False``.
+- ``template_size``: odd side length of the Gaussian kernel, default ``9``.
 
 Start with ``lmax=20`` and ``alpha=0``. Raise ``lmax`` to keep more spatial
 detail, and increase ``alpha`` to damp high-degree structure.

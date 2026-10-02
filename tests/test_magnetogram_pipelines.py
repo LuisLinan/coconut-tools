@@ -257,6 +257,82 @@ def test_sph_pipeline_uses_hmi_interpolation_at_requested_time(
     }
 
 
+def test_sph_pipeline_optionally_applies_gaussian_before_projection(
+    monkeypatch,
+    tmp_path,
+):
+    from coconut_tools.magnetogram import sph_filtering
+
+    Br = np.arange(12.0).reshape(3, 4)
+    theta = np.array([0.25, 0.75, 1.25])
+    phi = np.linspace(0.0, 2.0 * np.pi, Br.shape[1], endpoint=False)
+    Theta, Phi = np.meshgrid(theta, phi, indexing="ij")
+    smoothed = Br + 100.0
+    captured = {}
+    effective_date = datetime.fromisoformat(DATE)
+
+    monkeypatch.setattr(
+        sph_filtering,
+        "generate_output_and_map_names",
+        lambda *args, **kwargs: (
+            str(tmp_path / "map.dat"),
+            str(tmp_path / "source.fits"),
+        ),
+    )
+    monkeypatch.setattr(
+        sph_filtering,
+        "read_magnetogram",
+        lambda *args, **kwargs: (Br, Theta, Phi),
+    )
+    monkeypatch.setattr(
+        sph_filtering,
+        "magnetogram_effective_date",
+        lambda *args, **kwargs: effective_date,
+    )
+    monkeypatch.setattr(
+        sph_filtering,
+        "magnetogram_display_date",
+        lambda *args, **kwargs: effective_date,
+    )
+    monkeypatch.setattr(
+        sph_filtering,
+        "apply_configured_longitude_rotation",
+        lambda Br_in, Br_linear, *args, **kwargs: (Br_in, Br_linear, None),
+    )
+
+    def fake_gaussian(Br_in, phi_in, theta_in, template_size):
+        np.testing.assert_array_equal(Br_in, Br)
+        np.testing.assert_array_equal(phi_in, phi)
+        np.testing.assert_array_equal(theta_in, theta)
+        captured["template_size"] = template_size
+        return smoothed
+
+    def fake_projection(Br_in, *args):
+        captured["projected_field"] = Br_in
+        return Br_in, np.array([1.0])
+
+    monkeypatch.setattr(sph_filtering, "filter_radial_field", fake_gaussian)
+    monkeypatch.setattr(sph_filtering, "project_and_reconstruct", fake_projection)
+
+    sph_filtering.process_magnetogram_date(
+        {
+            "date": DATE,
+            "map_type": MAP_TYPE,
+            "output_dir": str(tmp_path),
+            "interpolation": False,
+            "rotate_to_stonyhurst": False,
+            "gaussian_filtering": True,
+            "template_size": 9,
+            "write_map": False,
+            "show_map": False,
+        },
+        DATE,
+    )
+
+    assert captured["template_size"] == 9
+    assert captured["projected_field"] is smoothed
+
+
 @pytest.mark.parametrize(
     ("module_name", "processing_name", "processing_result"),
     [
