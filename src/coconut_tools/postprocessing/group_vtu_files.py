@@ -67,7 +67,6 @@ def initialize(index: int, input_dir: str, output_dir: str, timestep: int, start
     merged.save(output_filename)
 
     if remove:
-        print('remove')
         for f in filenames:
             try:
                 os.remove(f)
@@ -116,7 +115,6 @@ def merge_all_snapshots(
             pool.starmap(initialize, args)
     else:
         for a in args:
-            print(a)
             initialize(*a)
 
 
@@ -132,18 +130,6 @@ if __name__ == "__main__":
         nb_proc=140,
         use_pool=False,
         stat = True,
-        remove= True
+        remove= False
     )
 
-    merge_all_snapshots(
-        input_dir="E:/coconut_spheromak/alpha/result_fullmhd_lown",
-        output_dir="E:/coconut_spheromak/alpha/result_fullmhd_lown",
-        start_time=0,
-        timestep=1,
-        nbmax=1,
-        num_processes=5,
-        nb_proc=140,
-        use_pool=False,
-        stat = True,
-        remove= True
-    )
