@@ -15,6 +15,8 @@ from coconut_tools.magnetogram.io.downloads import (
 )
 from coconut_tools.magnetogram.io.metadata import (
     infer_known_fits_map_type,
+    read_fits_carrington_central_meridian,
+    read_fits_effective_time,
     read_fits_longitude_axis,
 )
 from coconut_tools.tools.logger_config import setup_logger
@@ -28,6 +30,131 @@ from coconut_tools.tools.rotation_angle import (
 logger = setup_logger(__name__)
 
 _HMI_DYNAMIC_MAP_TYPES = {"HMI_SYNC", "HMI_hourly"}
+TEMPORAL_LONGITUDE_TOLERANCE_PIXELS = 1.0e-3
+
+
+def normalize_to_carrington(
+    Br: np.ndarray,
+    longitude: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Sort physical Carrington centers and field columns without resampling.
+
+    Longitudes are in degrees. The complete, uniform, endpoint-free grid is
+    validated before returning its exact permutation in ``[0, 360)``.
+    """
+    if Br.ndim != 2:
+        raise ValueError("Br must be a 2D array.")
+    longitude = np.asarray(longitude, dtype=float)
+    if longitude.ndim != 1 or longitude.size != Br.shape[1]:
+        raise ValueError("Longitude centers must match the Br columns.")
+    if not longitude.size or not np.all(np.isfinite(longitude)):
+        raise ValueError("Longitude centers must be finite and non-empty.")
+    wrapped = longitude % 360.0
+    order = np.argsort(wrapped, kind="stable")
+    centers = wrapped[order]
+    gaps = np.diff(np.r_[centers, centers[0] + 360.0])
+    if not np.allclose(gaps, 360.0 / centers.size, atol=1e-8, rtol=1e-9):
+        raise ValueError("Longitude centers must cover one regular periodic grid.")
+    return Br[:, order], centers
+
+
+def read_carrington_map(
+    Br: np.ndarray,
+    file_path: str,
+    map_type: str,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Normalize native FITS columns to their physical Carrington centers."""
+    map_type = normalize_map_type(map_type)
+    if map_type == "custom":
+        map_type = infer_known_fits_map_type(file_path) or map_type
+    geometry = read_fits_longitude_axis(
+        file_path, Br.shape[1], map_type=map_type, preserve_centers=True
+    )
+    if geometry.frame == "unknown":
+        raise ValueError(
+            "Cannot normalize an ambiguous longitude frame to Carrington; "
+            "provide CRLN-* or HGLN-* metadata (or ADAPT LNGTYPE=0)."
+        )
+    if geometry.flip_columns:
+        Br = Br[:, ::-1]
+    Br = np.roll(Br, geometry.roll_columns, axis=1)
+    longitude = geometry.centers_degrees
+    if geometry.frame == "stonyhurst":
+        central_meridian = read_fits_carrington_central_meridian(file_path)
+        if central_meridian is not None:
+            offset = central_meridian.value_degrees
+        else:
+            try:
+                source_time = read_fits_effective_time(file_path).value
+            except ValueError as exc:
+                raise ValueError(
+                    "Stonyhurst-to-Carrington conversion requires source L0 "
+                    "metadata or a source observation date."
+                ) from exc
+            offset = compute_carrington_central_meridian(source_time)
+        longitude = longitude + offset
+    return normalize_to_carrington(Br, longitude)
+
+
+def rotate_carrington_to_stonyhurst(
+    Br: np.ndarray,
+    longitude: np.ndarray,
+    central_meridian: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Roll to the nearest central-meridian column and retain its residual.
+
+    Both axes use degrees. Output centers are wrapped into ``[0, 360)``;
+    the first center may precede the periodic seam, e.g. 359.7, 0.7, 1.7.
+    """
+    if not np.isfinite(central_meridian):
+        raise ValueError("The Carrington central meridian must be finite.")
+    column, _ = closest_longitude_column(longitude, central_meridian)
+    return (
+        np.roll(Br, -column, axis=1),
+        (np.roll(longitude, -column) - central_meridian) % 360.0,
+    )
+
+
+def validate_matching_longitude_axes(
+    axes: list[np.ndarray],
+    paths: list[str],
+) -> list[int]:
+    """Return seam-alignment rolls for grids matching within 0.001 pixel.
+
+    Negligible center offsets are accepted against the first map's grid, with
+    no subpixel resampling. A center just below zero can sort into the last
+    column, so matching must include a periodic roll before comparing centers.
+    """
+    reference = axes[0]
+    step = 360.0 / reference.size
+    tolerance = max(1e-8, step * TEMPORAL_LONGITUDE_TOLERANCE_PIXELS)
+    shifts = [0]
+    for axis, path in zip(axes[1:], paths[1:]):
+        if axis.shape != reference.shape or not np.all(np.diff(axis) > 0):
+            raise RuntimeError(
+                "Temporal interpolation requires compatible physical Carrington "
+                f"longitude grids (centers, spacing, orientation and coverage): "
+                f"{paths[0]} and {path}."
+            )
+        column, _ = closest_longitude_column(axis, reference[0])
+        aligned = np.roll(axis, -column)
+        residual = (aligned - reference + 180.0) % 360.0 - 180.0
+        error = float(np.max(np.abs(residual)))
+        if not np.isfinite(error) or error > tolerance:
+            raise RuntimeError(
+                "Temporal interpolation requires compatible physical Carrington "
+                f"longitude grids: {paths[0]} and {path}; maximum offset "
+                f"{error / step:.6g} pixels exceeds "
+                f"{TEMPORAL_LONGITUDE_TOLERANCE_PIXELS:g} pixels."
+            )
+        shifts.append(-column)
+        if error > 1e-8:
+            logger.info(
+                "Accepting negligible longitude offset %.6g deg (%.6g pixels) "
+                "in %s; using the first stencil map's centers after roll %d.",
+                error, error / step, path, -column,
+            )
+    return shifts
 
 
 def extract_gong_longitude_shift(file_path: str) -> int:
@@ -146,7 +273,11 @@ def processed_longitude_axis(
     map_type: str,
     temporal: bool = False,
 ) -> np.ndarray:
-    """Return longitude centers matching the normalized magnetic-field columns."""
+    """Return the historical processing axis for compatibility callers.
+
+    Dynamic HMI origins were rounded by this API. Physical pipelines instead
+    carry the exact centers returned by ``read_carrington_map`` with the field.
+    """
     map_type = normalize_map_type(map_type)
     if map_type == "custom":
         inferred_map_type = infer_known_fits_map_type(file_path)
@@ -214,7 +345,7 @@ def resize_processed_longitude_axis(
     output_step = 360.0 / unique_longitudes
     start = longitude_original[0]
     if preserve_cell_edges and longitude_original.size > 1:
-        input_step = float(np.median(np.diff(longitude_original)))
+        input_step = float(np.median(np.diff(np.unwrap(longitude_original, period=360.0))))
         if not np.isfinite(input_step) or np.isclose(input_step, 0.0):
             raise ValueError("longitude_original must have a finite nonzero spacing.")
         start = start - input_step / 2.0 + output_step / 2.0
@@ -234,84 +365,6 @@ def closest_longitude_column(
     return index, float(residuals[index])
 
 
-def _apply_custom_stonyhurst_rotation(
-    Br: np.ndarray,
-    Br_linear: np.ndarray | None,
-    source_file: str,
-    rotation_date: datetime,
-    resize: bool,
-) -> tuple[np.ndarray, np.ndarray | None, float]:
-    """Rotate a header-described custom longitude grid into Stonyhurst."""
-    geometry = read_fits_longitude_axis(source_file)
-    if geometry.frame == "unknown":
-        raise ValueError(
-            "Cannot rotate the custom magnetogram to Stonyhurst because its "
-            f"longitude frame is ambiguous (CTYPE1={geometry.ctype1!r}). Use "
-            "the standard CRLN-* axis code for Carrington longitude or HGLN-* "
-            "for Stonyhurst longitude. The projection suffix (for example "
-            "'-CAR') does not identify the reference frame."
-        )
-
-    longitude = geometry.centers_degrees
-    if resize:
-        longitude = resize_processed_longitude_axis(
-            longitude,
-            Br.shape[1],
-            preserve_cell_edges=True,
-        )
-    if longitude.size != Br.shape[1]:
-        raise ValueError(
-            "The custom longitude axis does not match the processed Br columns."
-        )
-    if Br_linear is not None and Br_linear.shape != Br.shape:
-        raise ValueError("Br_linear must have the same shape as Br before rotation.")
-
-    if geometry.frame == "stonyhurst":
-        logger.info(
-            "Custom longitude axis is already Stonyhurst (%s=%s); no "
-            "Carrington rotation is applied.",
-            geometry.frame_source,
-            (
-                geometry.ctype1
-                if geometry.frame_source == "CTYPE1"
-                else geometry.frame_source
-            ),
-        )
-        return Br, Br_linear, 0.0
-
-    central_meridian = compute_carrington_central_meridian(rotation_date)
-    logger.info(
-        "Custom Carrington map uses the configured UTC time %s for "
-        "Stonyhurst zero: %.6f deg.",
-        rotation_date.isoformat(),
-        central_meridian,
-    )
-
-    # Phi is not returned by this public API. Preserve its first cell center:
-    # output phi[0] must sample source Carrington longitude L0 + phi[0].
-    target_longitude = (central_meridian + float(longitude[0])) % 360.0
-    zero_column, residual = closest_longitude_column(longitude, target_longitude)
-    logger.info(
-        "Custom Stonyhurst rotation uses longitude column %d; target source "
-        "longitude %.6f deg, grid residual %.6f deg.",
-        zero_column,
-        target_longitude,
-        residual,
-    )
-    Br = rotate_longitude_to_stonyhurst(
-        Br,
-        central_meridian,
-        zero_column=zero_column,
-    )
-    if Br_linear is not None:
-        Br_linear = rotate_longitude_to_stonyhurst(
-            Br_linear,
-            central_meridian,
-            zero_column=zero_column,
-        )
-    return Br, Br_linear, central_meridian
-
-
 def apply_configured_longitude_rotation(
     Br: np.ndarray,
     Br_linear: np.ndarray | None,
@@ -322,109 +375,50 @@ def apply_configured_longitude_rotation(
     rotate_to_stonyhurst: bool,
     effective_date: str | datetime | None = None,
     resize: bool = False,
-) -> tuple[np.ndarray, np.ndarray | None, float | None]:
-    """Apply the configured Carrington-to-Stonyhurst longitude rotation."""
-    map_type = normalize_map_type(map_type)
-    is_custom_input = map_type == "custom"
-    inferred_map_type = None
-    if not rotate_to_stonyhurst:
-        return Br, Br_linear, None
+    *,
+    Phi: np.ndarray | None = None,
+) -> tuple[np.ndarray, np.ndarray | None, np.ndarray, float | None]:
+    """Rotate a reader-normalized Carrington map together with its coordinates.
 
+    Physical readers must be requested whenever rotation is enabled. The
+    legacy no-rotation path returns the supplied arrays unchanged. WSO retains
+    its historical duplicate-endpoint treatment and is outside the physical
+    normalization contract.
+    """
+    if Phi is None:
+        raise ValueError(
+            "Phi is required: longitude rotation must return field and "
+            "coordinates together."
+        )
+    if not rotate_to_stonyhurst:
+        return Br, Br_linear, Phi, None
+    map_type = normalize_map_type(map_type)
     source_file = local_file[0] if isinstance(local_file, list) else local_file
-    if is_custom_input:
-        inferred_map_type = infer_known_fits_map_type(source_file)
-        if inferred_map_type is not None:
-            logger.info(
-                "Custom FITS identified as %s for longitude rotation.",
-                inferred_map_type,
-            )
-            map_type = inferred_map_type
-    interpolated = use_interpolation and (
-        is_gong_temporal_map_type(map_type)
-        or map_type in {"ADAPT", "HMI_hourly", "HMI_fdt"}
-    )
     rotation_date = (
         parse_iso_datetime(effective_date)
         if effective_date is not None
         else magnetogram_effective_date(
-            source_file,
-            "custom" if is_custom_input else map_type,
-            target_date,
-            interpolated=interpolated,
+            source_file, map_type, target_date,
+            interpolated=use_interpolation and isinstance(local_file, list),
         )
     )
-
-    if map_type == "custom":
-        return _apply_custom_stonyhurst_rotation(
-            Br,
-            Br_linear,
-            source_file,
-            rotation_date,
-            resize,
-        )
-
-    custom_fixed_carrington_product = (
-        is_custom_input
-        and inferred_map_type is not None
-        and (
-            inferred_map_type.startswith("HMI_")
-            or inferred_map_type == "ADAPT"
-        )
-    )
-    if interpolated or custom_fixed_carrington_product:
-        # Native HMI and fixed-grid ADAPT rotation is simply the Carrington
-        # central meridian at the effective map time. For a renamed custom
-        # FITS, compute it from the header-derived date directly: the legacy
-        # helper identifies these products from their filename.
-        rotation_angle = compute_carrington_central_meridian(rotation_date)
-    else:
-        rotation_angle, rotation_date = compute_rotation_angle(
-            source_file,
-            date_hmi=parse_iso_datetime(target_date).isoformat(),
-            map_type=map_type,
-            interpolated=False,
-            effective_date=rotation_date,
-        )
-
-    has_duplicate_endpoint = map_type.lower() == "wso"
-    longitude_original = processed_longitude_axis(
-        source_file,
-        map_type,
-        temporal=interpolated and is_gong_temporal_map_type(map_type),
-    )
-    if resize:
-        longitude = resize_processed_longitude_axis(
-            longitude_original,
-            Br.shape[1],
-            has_duplicate_endpoint=has_duplicate_endpoint,
-            preserve_cell_edges=map_type == "HMI_fdt",
-        )
-    else:
-        longitude = longitude_original
-
-    target_longitude = (
-        compute_carrington_central_meridian(rotation_date)
-        if is_gong_map_type(map_type)
-        else rotation_angle
-    )
-    zero_column, residual = closest_longitude_column(longitude, target_longitude)
-    logger.info(
-        "Stonyhurst zero uses longitude column %d with residual %.6f degrees.",
-        zero_column,
-        residual,
-    )
-
-    Br = rotate_longitude_to_stonyhurst(
-        Br,
-        rotation_angle,
-        has_duplicate_endpoint=has_duplicate_endpoint,
-        zero_column=zero_column,
-    )
+    angle = compute_carrington_central_meridian(rotation_date)
+    if Br_linear is not None and Br_linear.shape != Br.shape:
+        raise ValueError("Br_linear must have the same shape as Br before rotation.")
+    if map_type.lower() == "wso":
+        Br = rotate_longitude_to_stonyhurst(Br, angle, has_duplicate_endpoint=True)
+        if Br_linear is not None:
+            Br_linear = rotate_longitude_to_stonyhurst(
+                Br_linear, angle, has_duplicate_endpoint=True
+            )
+        return Br, Br_linear, Phi, angle
+    if Br.ndim != 2 or Phi.shape != Br.shape:
+        raise ValueError("Br and Phi must have the same 2D shape.")
+    if not np.allclose(Phi, Phi[:1], atol=1e-14, rtol=0):
+        raise ValueError("Phi must describe the same longitude centers in every Br row.")
+    longitude = np.degrees(Phi[0])
+    Br, output_longitude = rotate_carrington_to_stonyhurst(Br, longitude, angle)
     if Br_linear is not None:
-        Br_linear = rotate_longitude_to_stonyhurst(
-            Br_linear,
-            rotation_angle,
-            has_duplicate_endpoint=has_duplicate_endpoint,
-            zero_column=zero_column,
-        )
-    return Br, Br_linear, rotation_angle
+        Br_linear, _ = rotate_carrington_to_stonyhurst(Br_linear, longitude, angle)
+    Phi = np.broadcast_to(np.radians(output_longitude), Br.shape).copy()
+    return Br, Br_linear, Phi, angle

@@ -10,8 +10,8 @@ from pathlib import Path
 
 import requests
 import sunpy.coordinates.sun
-import sunpy.util.net
 from bs4 import BeautifulSoup
+from parfive import Downloader
 
 from coconut_tools.tools.logger_config import setup_logger
 
@@ -520,16 +520,33 @@ def select_interpolation_stencil(
     )
 
 
+def _download_remote_file(remote_url: str | None, output_dir: str) -> str:
+    """Download a map and report parfive failures with their source URL."""
+    if remote_url is None:
+        raise ValueError("Cannot download a magnetogram without a remote URL.")
+    logger.info("Downloading magnetogram from %s", remote_url)
+    results = Downloader.simple_download(
+        [remote_url],
+        path=output_dir,
+        overwrite=True,
+    )
+    if results.errors:
+        error = results.errors[0]
+        cause = error.exception if isinstance(error.exception, Exception) else None
+        raise RuntimeError(
+            f"Could not download magnetogram from {remote_url}: {error.exception}"
+        ) from cause
+    if not results:
+        raise RuntimeError(f"No file downloaded from {remote_url}.")
+    return os.fspath(results[0])
+
+
 def download_candidate(candidate: MagnetogramCandidate, output_dir: str) -> str:
     """Download one candidate if it is missing locally."""
     os.makedirs(output_dir, exist_ok=True)
     local_file = os.path.join(output_dir, candidate.name)
     if not os.path.exists(local_file):
-        local_file = sunpy.util.net.download_file(
-            candidate.remote_url,
-            directory=output_dir,
-            overwrite=True,
-        )
+        local_file = _download_remote_file(candidate.remote_url, output_dir)
         logger.info(f"Downloaded map: {local_file}")
     else:
         logger.info(f"Map already exists locally: {local_file}")
@@ -1032,7 +1049,9 @@ def try_download_hmi_sync_record(
         local_file = downloads.iloc[0] if hasattr(downloads, "iloc") else downloads[0]
         local_file = str(local_file)
 
-        if not local_file.lower().endswith((".fits", ".fits.gz")):
+        # DRMS appends a numeric suffix when a download already exists.
+        # Keep that returned path; ensure_hmi_sync_wcs validates the FITS content.
+        if not re.search(r"\.fits(?:\.gz|\.\d+)?$", local_file, re.IGNORECASE):
             raise RuntimeError(f"JSOC did not return a FITS file: {local_file}")
 
         local_file = ensure_hmi_sync_wcs(client, t_rec, local_file)
@@ -1149,10 +1168,10 @@ def generate_output_and_map_names(
         remote_file = candidate.remote_url
     elif map_type == "HMI_small":
         map_name = f"hmi.Synoptic_Mr_small.{cr_number}.fits"
-        remote_file = f"http://jsoc.stanford.edu/data/hmi/synoptic/{map_name}"
+        remote_file = f"https://jsoc1.stanford.edu/data/hmi/synoptic/{map_name}"
     elif map_type == "HMI_polfil":
         map_name = f"hmi.Synoptic_Mr_polfil.{cr_number}.fits"
-        remote_file = f"http://jsoc.stanford.edu/data/hmi/synoptic/{map_name}"
+        remote_file = f"https://jsoc1.stanford.edu/data/hmi/synoptic/{map_name}"
     elif map_type == "HMI_SYNC":
         local_file, map_name = download_hmi_sync_magnetogram(
             date_datetime,
@@ -1182,11 +1201,7 @@ def generate_output_and_map_names(
 
     if not os.path.exists(local_file):
         os.makedirs(output_dir, exist_ok=True)
-        local_file = sunpy.util.net.download_file(
-            remote_file,
-            directory=output_dir,
-            overwrite=True,
-        )
+        local_file = _download_remote_file(remote_file, output_dir)
         logger.info(f"Downloaded map: {local_file}")
     else:
         logger.info(f"Map already exists locally: {local_file}")

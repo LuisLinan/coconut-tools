@@ -176,6 +176,9 @@ def _longitude_frame(header: fits.Header) -> tuple[str, str]:
 def read_fits_longitude_axis(
     file_path: str,
     width: int | None = None,
+    *,
+    map_type: str = "custom",
+    preserve_centers: bool = False,
 ) -> FitsLongitudeAxis:
     """Decode and normalize a separable full-sphere FITS longitude axis.
 
@@ -183,9 +186,13 @@ def read_fits_longitude_axis(
     then the complete periodic grid is rolled so its smallest wrapped center
     is first.  Reference-frame identification is kept separate from this
     geometric normalization.
+
+    ``map_type`` selects the original JSOC synoptic image convention or an
+    ADAPT realization cube. ``preserve_centers`` disables legacy near-zero
+    snapping when an exact physical frame is requested.
     """
     image_shape, header = _first_image_shape_and_header(file_path)
-    if len(image_shape) != 2:
+    if len(image_shape) != 2 and map_type not in {"ADAPT", "HMI_fdt"}:
         raise ValueError("A custom magnetogram must contain one 2D FITS image.")
     image_width = int(image_shape[-1])
     width = image_width if width is None else int(width)
@@ -280,6 +287,21 @@ def read_fits_longitude_axis(
         longitude = np.degrees(longitude)
         longitude_step = np.degrees(longitude_step)
 
+    # JSOC updated synoptic frames encode decreasing Carrington *time*.
+    # Physical longitude is -time modulo 360; negate the reference value
+    # as well as the increment, without reversing the stored Br columns.
+    # LON_LAST labels the first stored column in these dynamic products.
+    # See JSOC-SDP/proj: mag/synop/apps/mrmlosdailysynframe_nrt.c.
+    if map_type in {"HMI_SYNC", "HMI_hourly"}:
+        if longitude_step < 0.0:
+            longitude = -longitude
+            longitude_step = -longitude_step
+    # Keep the existing static-chart convention outside this dynamic fix.
+    elif map_type in {"HMI_small", "HMI_polfil"}:
+        if longitude_step < 0.0:
+            longitude = longitude[::-1]
+            longitude_step = -longitude_step
+
     flip_columns = longitude_step < 0.0
     if flip_columns:
         longitude = longitude[::-1]
@@ -308,8 +330,9 @@ def read_fits_longitude_axis(
 
     wrapped = np.mod(longitude, 360.0)
     wrap_tolerance = max(1.0e-9, step_degrees * 1.0e-8)
-    wrapped[np.isclose(wrapped, 360.0, atol=wrap_tolerance, rtol=0.0)] = 0.0
-    wrapped[np.isclose(wrapped, 0.0, atol=wrap_tolerance, rtol=0.0)] = 0.0
+    if not preserve_centers:
+        wrapped[np.isclose(wrapped, 360.0, atol=wrap_tolerance, rtol=0.0)] = 0.0
+        wrapped[np.isclose(wrapped, 0.0, atol=wrap_tolerance, rtol=0.0)] = 0.0
     zero_column = int(np.argmin(wrapped))
     centers = np.degrees(np.unwrap(np.radians(np.roll(wrapped, -zero_column))))
     if centers.size > 1 and not np.all(np.diff(centers) > 0.0):

@@ -24,8 +24,11 @@ from coconut_tools.magnetogram.processing.longitude import (
     circular_shift_longitude,
     ensure_increasing_longitude,
     extract_gong_longitude_shift,
+    normalize_to_carrington,
+    read_carrington_map,
     resize_processed_longitude_axis,
     roll_hmi_dynamic_to_zero_longitude,
+    validate_matching_longitude_axes,
 )
 from coconut_tools.tools.logger_config import setup_logger
 from coconut_tools.tools.rotation_angle import increasing_longitude_axis
@@ -239,8 +242,9 @@ def _read_temporal_br_map_and_theta(
     file_path: str,
     map_type: str,
     adapt_map: int = 0,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Read one temporal FITS map together with its normalized latitude axis."""
+    carrington: bool = False,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
+    """Read one temporal field, latitude axis, and optional Carrington centers."""
     map_type = normalize_map_type(map_type)
     input_data = read_first_fits_image(file_path)
     theta, flip_rows = read_fits_theta_axis(file_path, map_type)
@@ -264,6 +268,10 @@ def _read_temporal_br_map_and_theta(
         Br = Br[::-1, :]
     Br = np.nan_to_num(Br)
 
+    if carrington:
+        Br_carrington, longitude = read_carrington_map(Br, file_path, map_type)
+        return Br_carrington, theta, longitude
+
     if map_type == "HMI_hourly":
         Br = roll_hmi_dynamic_to_zero_longitude(Br, file_path)
     else:
@@ -273,7 +281,7 @@ def _read_temporal_br_map_and_theta(
                 Br,
                 extract_gong_longitude_shift(file_path),
             )
-    return Br, theta
+    return Br, theta, None
 
 
 def read_temporal_br_map(
@@ -282,7 +290,7 @@ def read_temporal_br_map(
     adapt_map: int = 0,
 ) -> np.ndarray:
     """Read and normalize one FITS magnetogram used in interpolation."""
-    Br, _ = _read_temporal_br_map_and_theta(file_path, map_type, adapt_map)
+    Br, _, _ = _read_temporal_br_map_and_theta(file_path, map_type, adapt_map)
     return Br
 
 
@@ -329,13 +337,15 @@ def read_interpolated_magnetogram(
     adapt_map: int = 0,
     interpolation_order: int = 2,
     resize: bool = False,
+    carrington: bool = False,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Read, normalize, and temporally interpolate a four-map stencil."""
     map_type = normalize_map_type(map_type)
     resize = _as_bool(resize)
+    carrington = _as_bool(carrington)
     logger.info("Reading interpolation stencil")
     normalized_maps = [
-        _read_temporal_br_map_and_theta(path, map_type, adapt_map)
+        _read_temporal_br_map_and_theta(path, map_type, adapt_map, carrington=True)
         for path in local_files
     ]
     Br_maps = [item[0] for item in normalized_maps]
@@ -356,19 +366,19 @@ def read_interpolated_magnetogram(
             "Temporal interpolation requires identical physical latitude grids; "
             f"incompatible FITS files: {files}"
         )
-    if map_type == "HMI_fdt":
-        longitude_axes = [
-            validate_hmi_fdt_carrington_frame(path) for path in local_files
+    longitude_axes = [item[2] for item in normalized_maps]
+    longitude_shifts = validate_matching_longitude_axes(longitude_axes, local_files)
+    Br_maps = [
+        np.roll(Br, shift, axis=1)
+        for Br, shift in zip(Br_maps, longitude_shifts)
+    ]
+    if not carrington:
+        # Preserve the historical resampling seam and arithmetic exactly,
+        # after establishing that every source samples the same physical grid.
+        Br_maps = [
+            _read_temporal_br_map_and_theta(path, map_type, adapt_map)[0]
+            for path in local_files
         ]
-        reference_longitude = longitude_axes[0]
-        if any(
-            not np.allclose(longitude, reference_longitude, atol=1e-9, rtol=0.0)
-            for longitude in longitude_axes[1:]
-        ):
-            raise RuntimeError(
-                "HMI_fdt interpolation stencil does not share one fixed "
-                "Carrington longitude grid."
-            )
     Br_maps = [resize_magnetogram_if_requested(Br, resize) for Br in Br_maps]
     Br, Br_linear = interpolate_br_maps(Br_maps, selection, interpolation_order)
     theta = (
@@ -381,12 +391,23 @@ def read_interpolated_magnetogram(
         else reference_theta
     )
     phi = np.linspace(0.0, 2.0 * np.pi, Br.shape[1], endpoint=False)
+    if carrington:
+        longitude = resize_processed_longitude_axis(
+            longitude_axes[0], Br.shape[1], preserve_cell_edges=True
+        )
+        # Resizing can move the first center just across the periodic seam.
+        order = np.argsort(longitude % 360.0)
+        Br, longitude = normalize_to_carrington(Br, longitude)
+        Br_linear = Br_linear[:, order]
+        phi = np.radians(longitude)
     Theta, Phi = build_theta_phi(theta, phi)
     logger.info("End of reading interpolation stencil")
     return Br, Theta, Phi, Br_linear
 
 
-def read_magnetogram(file_path, map_type="custom", adapt_map=0, resize=False):
+def read_magnetogram(
+    file_path, map_type="custom", adapt_map=0, resize=False, carrington=False,
+):
     """Read one magnetogram and build its physical spherical grid.
 
     When ``map_type`` is omitted or ``None``, the file is treated as a generic
@@ -395,6 +416,7 @@ def read_magnetogram(file_path, map_type="custom", adapt_map=0, resize=False):
     """
     map_type = "custom" if map_type is None else normalize_map_type(map_type)
     resize = _as_bool(resize)
+    carrington = _as_bool(carrington)
     logger.info("Reading file")
 
     if map_type == "custom":
@@ -409,7 +431,34 @@ def read_magnetogram(file_path, map_type="custom", adapt_map=0, resize=False):
                 inferred_map_type,
                 adapt_map=adapt_map,
                 resize=resize,
+                carrington=carrington,
             )
+
+    if carrington:
+        if map_type.lower() == "wso":
+            raise ValueError("Physical Carrington normalization is not supported for WSO.")
+        if map_type == "HMI_fdt":
+            validate_hmi_fdt_carrington_frame(file_path)
+        input_data = read_first_fits_image(file_path)
+        Br_map = (
+            input_data[adapt_map] if map_type in _ADAPT_ENSEMBLE_MAP_TYPES else input_data
+        )
+        if Br_map.ndim != 2:
+            raise ValueError("A magnetogram must provide a single 2D field.")
+        theta, flip_rows = read_fits_theta_axis(
+            file_path, map_type,
+            target_size=RESIZED_MAGNETOGRAM_SHAPE[0] if resize else None,
+        )
+        if flip_rows:
+            Br_map = Br_map[::-1, :]
+        Br_map, longitude = read_carrington_map(Br_map, file_path, map_type)
+        Br_map = resize_magnetogram_if_requested(Br_map, resize)
+        longitude = resize_processed_longitude_axis(
+            longitude, Br_map.shape[1], preserve_cell_edges=True
+        )
+        Br_map, longitude = normalize_to_carrington(Br_map, longitude)
+        Theta, Phi = build_theta_phi(theta, np.radians(longitude))
+        return np.nan_to_num(Br_map), Theta, Phi
 
     if map_type == "custom":
         input_data = read_first_fits_image(file_path)

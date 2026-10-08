@@ -64,6 +64,7 @@ def _write_hmi_fdt_map(file_path, map_time, base_map):
     hdu.header["CRLNGEDG"] = 0.0
     hdu.header["CRPIX1"] = 2.5
     hdu.header["CRVAL1"] = 180.0
+    hdu.header.setdefault("CTYPE1", "CRLN-CAR")
     hdu.header["CDELT1"] = 90.0
     hdu.header["CRPIX2"] = 2.5
     hdu.header["CRVAL2"] = 0.0
@@ -244,6 +245,7 @@ def test_custom_gong_is_inferred_and_matches_explicit_gong_processing(
     hdu.header["CRPIX2"] = 2.5
     hdu.header["CRVAL1"] = 301.0
     hdu.header["CRVAL2"] = 0.0
+    hdu.header.setdefault("CTYPE1", "CRLN-CAR")
     hdu.header["CDELT1"] = 90.0
     hdu.header["CDELT2"] = 0.5
     hdu.header["MAPDATE"] = "2011-09-08"
@@ -273,7 +275,9 @@ def test_custom_gong_is_inferred_and_matches_explicit_gong_processing(
         "compute_carrington_central_meridian",
         lambda date: 181.0,
     )
-    rotated_gong, _, angle_gong = apply_configured_longitude_rotation(
+    Br_gong, _, Phi_gong = read_magnetogram(str(path), "GONG_mrzqs", carrington=True)
+    Br_custom, _, Phi_custom = read_magnetogram(str(path), carrington=True)
+    rotated_gong, _, rotated_phi, angle_gong = apply_configured_longitude_rotation(
         Br_gong,
         None,
         str(path),
@@ -282,8 +286,10 @@ def test_custom_gong_is_inferred_and_matches_explicit_gong_processing(
         use_interpolation=False,
         rotate_to_stonyhurst=True,
         effective_date=TARGET_DATE,
+        Phi=Phi_gong,
     )
-    rotated_custom, _, angle_custom = apply_configured_longitude_rotation(
+    Br_custom, _, Phi_custom = read_magnetogram(str(path), carrington=True)
+    rotated_custom, _, rotated_phi, angle_custom = apply_configured_longitude_rotation(
         Br_custom,
         None,
         str(path),
@@ -292,10 +298,12 @@ def test_custom_gong_is_inferred_and_matches_explicit_gong_processing(
         use_interpolation=False,
         rotate_to_stonyhurst=True,
         effective_date=TARGET_DATE,
+        Phi=Phi_custom,
     )
 
     np.testing.assert_array_equal(rotated_custom, rotated_gong)
     assert angle_custom == angle_gong
+
 
 
 def test_custom_jsoc_hmi_synoptic_matches_explicit_hmi_processing(
@@ -322,6 +330,7 @@ def test_custom_jsoc_hmi_synoptic_matches_explicit_hmi_processing(
     hdu.header["CTYPE2"] = "CRLT-CEA"
     hdu.header["CRVAL1"] = 90.0
     hdu.header["CRPIX1"] = 2.0
+    hdu.header.setdefault("CTYPE1", "CRLN-CAR")
     hdu.header["CDELT1"] = -90.0
     hdu.writeto(path)
 
@@ -352,7 +361,8 @@ def test_custom_jsoc_hmi_synoptic_matches_explicit_hmi_processing(
         "compute_carrington_central_meridian",
         lambda date: 90.0,
     )
-    rotated_custom, _, angle_custom = apply_configured_longitude_rotation(
+    Br_custom, _, Phi_custom = read_magnetogram(str(path), carrington=True)
+    rotated_custom, _, rotated_phi, angle_custom = apply_configured_longitude_rotation(
         Br_custom,
         None,
         str(path),
@@ -361,10 +371,12 @@ def test_custom_jsoc_hmi_synoptic_matches_explicit_hmi_processing(
         use_interpolation=False,
         rotate_to_stonyhurst=True,
         effective_date=TARGET_DATE,
+        Phi=Phi_custom,
     )
 
     np.testing.assert_array_equal(rotated_custom, np.roll(Br_custom, -1, axis=1))
     assert angle_custom == 90.0
+
 
 
 @pytest.mark.parametrize(
@@ -390,6 +402,7 @@ def test_custom_static_hmi_synoptic_is_identified_without_origin(
     hdu.header["CRPIX2"] = 1.5
     hdu.header["CRVAL1"] = 360.0
     hdu.header["CRVAL2"] = 0.0
+    hdu.header.setdefault("CTYPE1", "CRLN-CAR")
     hdu.header["CDELT1"] = -90.0
     hdu.header["CDELT2"] = 1.0
     hdu.header["T_OBS"] = "2026.04.29_07:08:43_TAI"
@@ -460,6 +473,7 @@ def test_custom_adapt_ensemble_is_identified_from_headers(
     hdu.header["CRPIX2"] = 1.5
     hdu.header["CRVAL1"] = 180.0
     hdu.header["CRVAL2"] = 0.0
+    hdu.header.setdefault("CTYPE1", "CRLN-CAR")
     hdu.header["CDELT1"] = 90.0
     hdu.header["CDELT2"] = 90.0
     hdu.writeto(path)
@@ -505,6 +519,7 @@ def _write_custom_frame_map(
     hdu.header["CUNIT1"] = "deg"
     hdu.header["CRPIX1"] = 1.0
     hdu.header["CRVAL1"] = longitude_start
+    hdu.header.setdefault("CTYPE1", "CRLN-CAR")
     hdu.header["CDELT1"] = 90.0
     hdu.header["CTYPE2"] = "HGLT-CAR"
     hdu.header["CUNIT2"] = "deg"
@@ -532,8 +547,8 @@ def test_custom_carrington_rotation_uses_config_date_not_header_longitude(
         lambda date: 90.25,
     )
 
-    Br, _, _ = read_magnetogram(str(path))
-    rotated, _, angle = apply_configured_longitude_rotation(
+    Br, _, Phi = read_magnetogram(str(path))
+    rotated, _, rotated_phi, angle = apply_configured_longitude_rotation(
         Br,
         None,
         str(path),
@@ -542,10 +557,12 @@ def test_custom_carrington_rotation_uses_config_date_not_header_longitude(
         use_interpolation=False,
         rotate_to_stonyhurst=True,
         effective_date=TARGET_DATE,
+        Phi=Phi,
     )
 
     np.testing.assert_array_equal(rotated, np.roll(Br, -1, axis=1))
     assert angle == pytest.approx(90.25)
+
 
 
 def test_custom_carrington_rotation_ignores_header_observer_for_config_date(
@@ -566,8 +583,8 @@ def test_custom_carrington_rotation_ignores_header_observer_for_config_date(
         lambda date: 90.0,
     )
 
-    Br, _, _ = read_magnetogram(str(path))
-    rotated, _, angle = apply_configured_longitude_rotation(
+    Br, _, Phi = read_magnetogram(str(path))
+    rotated, _, rotated_phi, angle = apply_configured_longitude_rotation(
         Br,
         None,
         str(path),
@@ -576,10 +593,12 @@ def test_custom_carrington_rotation_ignores_header_observer_for_config_date(
         use_interpolation=False,
         rotate_to_stonyhurst=True,
         effective_date=TARGET_DATE,
+        Phi=Phi,
     )
 
     np.testing.assert_array_equal(rotated, np.roll(Br, -1, axis=1))
     assert angle == pytest.approx(90.0)
+
 
 
 def test_custom_carrington_rotation_uses_effective_date_without_crln_obs(
@@ -601,8 +620,8 @@ def test_custom_carrington_rotation_uses_effective_date_without_crln_obs(
         "compute_carrington_central_meridian",
         fake_central_meridian,
     )
-    Br, _, _ = read_magnetogram(str(path))
-    rotated, _, angle = apply_configured_longitude_rotation(
+    Br, _, Phi = read_magnetogram(str(path))
+    rotated, _, rotated_phi, angle = apply_configured_longitude_rotation(
         Br,
         None,
         str(path),
@@ -611,6 +630,7 @@ def test_custom_carrington_rotation_uses_effective_date_without_crln_obs(
         use_interpolation=False,
         rotate_to_stonyhurst=True,
         effective_date=TARGET_DATE,
+        Phi=Phi,
     )
 
     np.testing.assert_array_equal(rotated, np.roll(Br, -2, axis=1))
@@ -618,32 +638,21 @@ def test_custom_carrington_rotation_uses_effective_date_without_crln_obs(
     assert dates == [TARGET_DATE]
 
 
-def test_custom_stonyhurst_axis_is_not_rotated_again(tmp_path, monkeypatch):
+
+def test_custom_stonyhurst_axis_is_converted_via_carrington(tmp_path, monkeypatch):
     from coconut_tools.magnetogram.processing import longitude
-
     path = tmp_path / "custom_stonyhurst.fits"
-    _write_custom_frame_map(path, ctype1="HGLN-CAR", longitude_start=-135.0)
-    monkeypatch.setattr(
-        longitude,
-        "compute_carrington_central_meridian",
-        lambda date: pytest.fail("A native Stonyhurst map needs no ephemeris roll"),
-    )
-
-    Br, _, Phi = read_magnetogram(str(path))
-    rotated, _, angle = apply_configured_longitude_rotation(
-        Br,
-        None,
-        str(path),
-        "custom",
-        TARGET_DATE,
-        use_interpolation=False,
-        rotate_to_stonyhurst=True,
-        effective_date=TARGET_DATE,
-    )
-
-    np.testing.assert_array_equal(rotated, Br)
-    np.testing.assert_allclose(np.degrees(Phi[0]), [45.0, 135.0, 225.0, 315.0])
-    assert angle == pytest.approx(0.0)
+    _write_custom_frame_map(path, ctype1="HGLN-CAR", longitude_start=-135., central_meridian=90.)
+    monkeypatch.setattr(longitude, "compute_carrington_central_meridian", lambda date:90.)
+    Br, _, Phi = read_magnetogram(str(path), carrington=True)
+    rotated, _, out_phi, angle = apply_configured_longitude_rotation(
+        Br, None, str(path), "custom", TARGET_DATE, False, True,
+        effective_date=TARGET_DATE, Phi=Phi)
+    assert angle == 90.
+    order = np.argsort(out_phi[0])
+    original, _, original_phi = read_magnetogram(str(path))
+    np.testing.assert_array_equal(rotated[:,order], original)
+    np.testing.assert_allclose(out_phi[0,order], original_phi[0])
 
 
 def test_custom_rotation_preserves_nonzero_first_longitude_center(
@@ -665,7 +674,7 @@ def test_custom_rotation_preserves_nonzero_first_longitude_center(
     )
 
     Br, _, Phi = read_magnetogram(str(path))
-    rotated, _, _ = apply_configured_longitude_rotation(
+    rotated, _, rotated_phi, _ = apply_configured_longitude_rotation(
         Br,
         None,
         str(path),
@@ -674,11 +683,14 @@ def test_custom_rotation_preserves_nonzero_first_longitude_center(
         use_interpolation=False,
         rotate_to_stonyhurst=True,
         effective_date=TARGET_DATE,
+        Phi=Phi,
     )
 
-    # Output phi[0]=45 deg samples source Carrington longitude L0+45=135 deg.
+    # The nearest column is 45 degrees; its -45 degree residual is retained.
     np.testing.assert_allclose(np.degrees(Phi[0]), [45.0, 135.0, 225.0, 315.0])
-    np.testing.assert_array_equal(rotated, np.roll(Br, -1, axis=1))
+    np.testing.assert_array_equal(rotated, Br)
+
+    np.testing.assert_allclose(np.degrees(rotated_phi[0]), [315.,45.,135.,225.])
 
 
 def test_custom_resized_rotation_uses_the_resized_physical_centers(
@@ -700,7 +712,7 @@ def test_custom_resized_rotation_uses_the_resized_physical_centers(
     )
 
     Br, _, Phi = read_magnetogram(str(path), resize=True)
-    rotated, _, _ = apply_configured_longitude_rotation(
+    rotated, _, rotated_phi, _ = apply_configured_longitude_rotation(
         Br,
         None,
         str(path),
@@ -710,31 +722,21 @@ def test_custom_resized_rotation_uses_the_resized_physical_centers(
         rotate_to_stonyhurst=True,
         effective_date=TARGET_DATE,
         resize=True,
+        Phi=Phi,
     )
 
     assert Br.shape == (360, 720)
     assert np.degrees(Phi[0, 0]) == pytest.approx(0.25)
-    np.testing.assert_array_equal(rotated, np.roll(Br, -180, axis=1))
+    np.testing.assert_array_equal(rotated, np.roll(Br, -179, axis=1))
+
 
 
 def test_custom_rotation_rejects_projection_suffix_as_frame_evidence(tmp_path):
     path = tmp_path / "custom_ambiguous_frame.fits"
     _write_custom_frame_map(path, ctype1="LON-CAR")
-
-    geometry = read_fits_longitude_axis(str(path))
-    assert geometry.frame == "unknown"
-    Br, _, _ = read_magnetogram(str(path))
-    with pytest.raises(ValueError, match="projection suffix.*does not identify"):
-        apply_configured_longitude_rotation(
-            Br,
-            None,
-            str(path),
-            "custom",
-            TARGET_DATE,
-            use_interpolation=False,
-            rotate_to_stonyhurst=True,
-            effective_date=TARGET_DATE,
-        )
+    assert read_fits_longitude_axis(str(path)).frame == "unknown"
+    with pytest.raises(ValueError, match="ambiguous longitude frame"):
+        read_magnetogram(str(path), carrington=True)
 
 
 def test_map_type_normalization_accepts_case_variants():
@@ -1073,6 +1075,7 @@ def test_hmi_hourly_reader_rolls_without_reflecting_hmi_longitude(
     hdu = fits.CompImageHDU(data=data)
     hdu.header["CRVAL1"] = crval1
     hdu.header["CRPIX1"] = crpix1
+    hdu.header.setdefault("CTYPE1", "CRLN-CAR")
     hdu.header["CDELT1"] = cdelt1
     hdu.writeto(file_path)
 
@@ -1102,6 +1105,7 @@ def test_hmi_sync_uses_jsoc_wcs_for_the_same_origin_roll(tmp_path):
     hdu = fits.CompImageHDU(data=data)
     hdu.header["CRVAL1"] = 0.0
     hdu.header["CRPIX1"] = 2.5
+    hdu.header.setdefault("CTYPE1", "CRLN-CAR")
     hdu.header["CDELT1"] = -90.0
     hdu.writeto(file_path)
 
@@ -1221,6 +1225,7 @@ def test_hmi_hourly_interpolation_aligns_each_wcs_and_uses_target_time(tmp_path)
         hdu = fits.CompImageHDU(data=native_data)
         hdu.header["CRVAL1"] = -90.0 * shift
         hdu.header["CRPIX1"] = 1.0
+        hdu.header.setdefault("CTYPE1", "CRLN-CAR")
         hdu.header["CDELT1"] = -90.0
         hdu.writeto(file_path)
         candidates.append(MagnetogramCandidate(name, date, "unused"))
@@ -1281,6 +1286,7 @@ def test_hmi_hourly_interpolation_resizes_aligned_maps_before_interpolation(
         hdu = fits.CompImageHDU(data=native_data)
         hdu.header["CRVAL1"] = -90.0 * index
         hdu.header["CRPIX1"] = 1.0
+        hdu.header.setdefault("CTYPE1", "CRLN-CAR")
         hdu.header["CDELT1"] = -90.0
         hdu.writeto(file_path)
         candidates.append(MagnetogramCandidate(name, date, "unused"))
@@ -1437,7 +1443,7 @@ def test_hmi_fdt_interpolation_resizes_normalized_carrington_cubes(
             "Longitude frames must be checked before temporal interpolation"
         ),
     )
-    with pytest.raises(RuntimeError, match="fixed Carrington longitude grid"):
+    with pytest.raises(RuntimeError, match="physical Carrington longitude grids"):
         read_interpolated_magnetogram(
             local_files,
             "HMI_fdt",
@@ -1473,8 +1479,9 @@ def test_interpolated_hmi_fdt_rotation_uses_target_time_and_carrington_axis(
     )
 
     Br = np.arange(16).reshape(2, 8)
+    Phi = np.tile(np.radians(np.arange(8)*45.+22.5), (2,1))
     Br_linear = Br + 10
-    Br_rotated, Br_linear_rotated, rotation_angle = apply_configured_longitude_rotation(
+    Br_rotated, Br_linear_rotated, rotated_phi, rotation_angle = apply_configured_longitude_rotation(
         Br,
         Br_linear,
         [str(source_file)] * 4,
@@ -1483,12 +1490,14 @@ def test_interpolated_hmi_fdt_rotation_uses_target_time_and_carrington_axis(
         use_interpolation=True,
         rotate_to_stonyhurst=True,
         resize=True,
+        Phi=Phi,
     )
 
     np.testing.assert_array_equal(Br_rotated, np.roll(Br, -1, axis=1))
     np.testing.assert_array_equal(Br_linear_rotated, np.roll(Br_linear, -1, axis=1))
     assert rotation_angle == pytest.approx(67.5)
     assert rotation_dates == [target]
+
 
 
 def test_single_hmi_fdt_rotation_uses_the_file_effective_time(
@@ -1537,6 +1546,7 @@ def test_local_rotation_helpers_use_the_expected_longitude_convention():
     hdu = fits.PrimaryHDU(data)
     hdu.header["CRPIX1"] = 1.0
     hdu.header["CRVAL1"] = 0.0
+    hdu.header.setdefault("CTYPE1", "CRLN-CAR")
     hdu.header["CDELT1"] = -1.0
     hdu.writeto(file_path, overwrite=True)
 
@@ -1576,54 +1586,23 @@ def test_resize_processed_longitude_axis_preserves_origin():
     assert resize_processed_longitude_axis(longitude_original, 4) is longitude_original
 
 
-def test_stonyhurst_rotation_uses_original_or_resized_longitude_axis(monkeypatch):
+def test_stonyhurst_rotation_uses_supplied_physical_longitude_axis(monkeypatch):
     from coconut_tools.magnetogram.processing import longitude
-
-    longitude_original = np.array([10.0, 100.0, 190.0, 280.0])
-    Br = np.arange(8).reshape(1, 8)
-
-    monkeypatch.setattr(
-        longitude,
-        "compute_rotation_angle",
-        lambda *args, **kwargs: (100.0, TARGET_DATE),
-    )
-    monkeypatch.setattr(
-        longitude,
-        "processed_longitude_axis",
-        lambda *args, **kwargs: longitude_original,
-    )
-
-    Br_original_axis, _, _ = apply_configured_longitude_rotation(
-        Br,
-        None,
-        "dummy_hmi.fits",
-        "HMI_small",
-        TARGET_DATE,
-        use_interpolation=False,
-        rotate_to_stonyhurst=True,
-        effective_date=TARGET_DATE,
-        resize=False,
-    )
-    Br_resized_axis, _, _ = apply_configured_longitude_rotation(
-        Br,
-        None,
-        "dummy_hmi.fits",
-        "HMI_small",
-        TARGET_DATE,
-        use_interpolation=False,
-        rotate_to_stonyhurst=True,
-        effective_date=TARGET_DATE,
-        resize=True,
-    )
-
-    np.testing.assert_array_equal(Br_original_axis, np.array([[1, 2, 3, 4, 5, 6, 7, 0]]))
-    np.testing.assert_array_equal(Br_resized_axis, np.array([[2, 3, 4, 5, 6, 7, 0, 1]]))
+    monkeypatch.setattr(longitude, "compute_carrington_central_meridian", lambda date:100.)
+    Br = np.arange(8)[None,:]
+    Phi = np.radians(10.+np.arange(8)*45.)[None,:]
+    rotated, _, out_phi, _ = apply_configured_longitude_rotation(
+        Br, None, "unused.fits", "HMI_small", TARGET_DATE, False, True,
+        effective_date=TARGET_DATE, Phi=Phi)
+    np.testing.assert_array_equal(rotated, np.roll(Br,-2,axis=1))
+    np.testing.assert_allclose(out_phi, np.radians(np.arange(8)*45.)[None,:])
 
 
 def test_interpolated_hmi_hourly_rotation_uses_resized_longitude_axis(monkeypatch):
     from coconut_tools.magnetogram.processing import longitude
 
     Br = np.arange(8).reshape(1, 8)
+    Phi = np.radians(np.arange(8)*45.)[None,:]
     Br_linear = Br + 10
 
     monkeypatch.setattr(
@@ -1637,7 +1616,7 @@ def test_interpolated_hmi_hourly_rotation_uses_resized_longitude_axis(monkeypatc
         lambda *args, **kwargs: np.array([0.0, 90.0, 180.0, 270.0]),
     )
 
-    Br_rotated, Br_linear_rotated, rotation_angle = apply_configured_longitude_rotation(
+    Br_rotated, Br_linear_rotated, rotated_phi, rotation_angle = apply_configured_longitude_rotation(
         Br,
         Br_linear,
         ["dummy_hmi_hourly.fits"] * 4,
@@ -1647,11 +1626,13 @@ def test_interpolated_hmi_hourly_rotation_uses_resized_longitude_axis(monkeypatc
         rotate_to_stonyhurst=True,
         effective_date=TARGET_DATE,
         resize=True,
+        Phi=Phi,
     )
 
     np.testing.assert_array_equal(Br_rotated, np.roll(Br, -2, axis=1))
     np.testing.assert_array_equal(Br_linear_rotated, np.roll(Br_linear, -2, axis=1))
     assert rotation_angle == pytest.approx(90.0)
+
 
 
 def test_read_magnetogram_can_resize_after_longitude_normalization(tmp_path, monkeypatch):
@@ -1660,6 +1641,7 @@ def test_read_magnetogram_can_resize_after_longitude_normalization(tmp_path, mon
     hdu = fits.PrimaryHDU(data)
     hdu.header["CRPIX1"] = 1.0
     hdu.header["CRVAL1"] = 0.0
+    hdu.header.setdefault("CTYPE1", "CRLN-CAR")
     hdu.header["CDELT1"] = -1.0
     hdu.writeto(file_path, overwrite=True)
 

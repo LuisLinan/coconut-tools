@@ -25,6 +25,7 @@ def _write_map(path, *, size=4, latitude_mode=None, cdelt2=0.5):
     hdu = fits.PrimaryHDU(data=data)
     hdu.header["CRPIX1"] = 1.0
     hdu.header["CRVAL1"] = 0.0
+    hdu.header.setdefault("CTYPE1", "CRLN-CAR")
     hdu.header["CDELT1"] = 90.0
     hdu.header["CRPIX2"] = size / 2.0 + 0.5
     hdu.header["CRVAL2"] = 0.0

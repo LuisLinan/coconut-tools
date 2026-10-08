@@ -1,0 +1,2705 @@
+{
+  "rows": [
+    {
+      "type": "GONG",
+      "file": "mrzqs260831t2214c2315_271.fits.gz",
+      "mode": "legacy",
+      "resize": false,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 271.5,
+      "final_frame": "legacy",
+      "final_phi0": 0.0,
+      "max_error_deg": null,
+      "result": "PASS"
+    },
+    {
+      "type": "GONG",
+      "file": "mrzqs260831t2214c2315_271.fits.gz",
+      "mode": "Carrington",
+      "resize": false,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 271.5,
+      "final_frame": "Carrington",
+      "final_phi0": 0.5,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "GONG",
+      "file": "mrzqs260831t2214c2315_271.fits.gz",
+      "mode": "Stonyhurst",
+      "resize": false,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 271.5,
+      "final_frame": "Stonyhurst",
+      "final_phi0": 0.09794003682696939,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "GONG",
+      "file": "mrzqs260831t2214c2315_271.fits.gz",
+      "mode": "legacy",
+      "resize": true,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 271.5,
+      "final_frame": "legacy",
+      "final_phi0": 0.0,
+      "max_error_deg": null,
+      "result": "PASS"
+    },
+    {
+      "type": "GONG",
+      "file": "mrzqs260831t2214c2315_271.fits.gz",
+      "mode": "Carrington",
+      "resize": true,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 271.5,
+      "final_frame": "Carrington",
+      "final_phi0": 0.25,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "GONG",
+      "file": "mrzqs260831t2214c2315_271.fits.gz",
+      "mode": "Stonyhurst",
+      "resize": true,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 271.5,
+      "final_frame": "Stonyhurst",
+      "final_phi0": 359.84794003682697,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "GONG_mrzqs",
+      "file": "mrzqs260831t2214c2315_271.fits.gz",
+      "mode": "legacy",
+      "resize": false,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 271.5,
+      "final_frame": "legacy",
+      "final_phi0": 0.0,
+      "max_error_deg": null,
+      "result": "PASS"
+    },
+    {
+      "type": "GONG_mrzqs",
+      "file": "mrzqs260831t2214c2315_271.fits.gz",
+      "mode": "Carrington",
+      "resize": false,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 271.5,
+      "final_frame": "Carrington",
+      "final_phi0": 0.5,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "GONG_mrzqs",
+      "file": "mrzqs260831t2214c2315_271.fits.gz",
+      "mode": "Stonyhurst",
+      "resize": false,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 271.5,
+      "final_frame": "Stonyhurst",
+      "final_phi0": 0.09794003682696939,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "GONG_mrzqs",
+      "file": "mrzqs260831t2214c2315_271.fits.gz",
+      "mode": "legacy",
+      "resize": true,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 271.5,
+      "final_frame": "legacy",
+      "final_phi0": 0.0,
+      "max_error_deg": null,
+      "result": "PASS"
+    },
+    {
+      "type": "GONG_mrzqs",
+      "file": "mrzqs260831t2214c2315_271.fits.gz",
+      "mode": "Carrington",
+      "resize": true,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 271.5,
+      "final_frame": "Carrington",
+      "final_phi0": 0.25,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "GONG_mrzqs",
+      "file": "mrzqs260831t2214c2315_271.fits.gz",
+      "mode": "Stonyhurst",
+      "resize": true,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 271.5,
+      "final_frame": "Stonyhurst",
+      "final_phi0": 359.84794003682697,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "GONG_mrbqs",
+      "file": "mrbqs260831t2214c2315_271.fits.gz",
+      "mode": "legacy",
+      "resize": false,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 271.5,
+      "final_frame": "legacy",
+      "final_phi0": 0.0,
+      "max_error_deg": null,
+      "result": "PASS"
+    },
+    {
+      "type": "GONG_mrbqs",
+      "file": "mrbqs260831t2214c2315_271.fits.gz",
+      "mode": "Carrington",
+      "resize": false,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 271.5,
+      "final_frame": "Carrington",
+      "final_phi0": 0.5,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "GONG_mrbqs",
+      "file": "mrbqs260831t2214c2315_271.fits.gz",
+      "mode": "Stonyhurst",
+      "resize": false,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 271.5,
+      "final_frame": "Stonyhurst",
+      "final_phi0": 0.09794003682696939,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "GONG_mrbqs",
+      "file": "mrbqs260831t2214c2315_271.fits.gz",
+      "mode": "legacy",
+      "resize": true,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 271.5,
+      "final_frame": "legacy",
+      "final_phi0": 0.0,
+      "max_error_deg": null,
+      "result": "PASS"
+    },
+    {
+      "type": "GONG_mrbqs",
+      "file": "mrbqs260831t2214c2315_271.fits.gz",
+      "mode": "Carrington",
+      "resize": true,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 271.5,
+      "final_frame": "Carrington",
+      "final_phi0": 0.25,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "GONG_mrbqs",
+      "file": "mrbqs260831t2214c2315_271.fits.gz",
+      "mode": "Stonyhurst",
+      "resize": true,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 271.5,
+      "final_frame": "Stonyhurst",
+      "final_phi0": 359.84794003682697,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "GONG_mrbqj",
+      "file": "mrbqj260831t2214c2315_271.fits.gz",
+      "mode": "legacy",
+      "resize": false,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 271.5,
+      "final_frame": "legacy",
+      "final_phi0": 0.0,
+      "max_error_deg": null,
+      "result": "PASS"
+    },
+    {
+      "type": "GONG_mrbqj",
+      "file": "mrbqj260831t2214c2315_271.fits.gz",
+      "mode": "Carrington",
+      "resize": false,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 271.5,
+      "final_frame": "Carrington",
+      "final_phi0": 0.5,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "GONG_mrbqj",
+      "file": "mrbqj260831t2214c2315_271.fits.gz",
+      "mode": "Stonyhurst",
+      "resize": false,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 271.5,
+      "final_frame": "Stonyhurst",
+      "final_phi0": 0.09794003682696939,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "GONG_mrbqj",
+      "file": "mrbqj260831t2214c2315_271.fits.gz",
+      "mode": "legacy",
+      "resize": true,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 271.5,
+      "final_frame": "legacy",
+      "final_phi0": 0.0,
+      "max_error_deg": null,
+      "result": "PASS"
+    },
+    {
+      "type": "GONG_mrbqj",
+      "file": "mrbqj260831t2214c2315_271.fits.gz",
+      "mode": "Carrington",
+      "resize": true,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 271.5,
+      "final_frame": "Carrington",
+      "final_phi0": 0.25,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "GONG_mrbqj",
+      "file": "mrbqj260831t2214c2315_271.fits.gz",
+      "mode": "Stonyhurst",
+      "resize": true,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 271.5,
+      "final_frame": "Stonyhurst",
+      "final_phi0": 359.84794003682697,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "GONG_mrmqs",
+      "file": "mrmqs260912t0933c2315_000.fits.gz",
+      "mode": "legacy",
+      "resize": false,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 0.5,
+      "final_frame": "legacy",
+      "final_phi0": 0.0,
+      "max_error_deg": null,
+      "result": "PASS"
+    },
+    {
+      "type": "GONG_mrmqs",
+      "file": "mrmqs260912t0933c2315_000.fits.gz",
+      "mode": "Carrington",
+      "resize": false,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 0.5,
+      "final_frame": "Carrington",
+      "final_phi0": 0.5,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "GONG_mrmqs",
+      "file": "mrmqs260912t0933c2315_000.fits.gz",
+      "mode": "Stonyhurst",
+      "resize": false,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 0.5,
+      "final_frame": "Stonyhurst",
+      "final_phi0": 359.59647460882906,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "GONG_mrmqs",
+      "file": "mrmqs260912t0933c2315_000.fits.gz",
+      "mode": "legacy",
+      "resize": true,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 0.5,
+      "final_frame": "legacy",
+      "final_phi0": 0.0,
+      "max_error_deg": null,
+      "result": "PASS"
+    },
+    {
+      "type": "GONG_mrmqs",
+      "file": "mrmqs260912t0933c2315_000.fits.gz",
+      "mode": "Carrington",
+      "resize": true,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 0.5,
+      "final_frame": "Carrington",
+      "final_phi0": 0.25,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "GONG_mrmqs",
+      "file": "mrmqs260912t0933c2315_000.fits.gz",
+      "mode": "Stonyhurst",
+      "resize": true,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 0.5,
+      "final_frame": "Stonyhurst",
+      "final_phi0": 359.846474608829,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "GONG_mrnqs",
+      "file": "mrnqs260912t0933c2315_000.fits.gz",
+      "mode": "legacy",
+      "resize": false,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 0.5,
+      "final_frame": "legacy",
+      "final_phi0": 0.0,
+      "max_error_deg": null,
+      "result": "PASS"
+    },
+    {
+      "type": "GONG_mrnqs",
+      "file": "mrnqs260912t0933c2315_000.fits.gz",
+      "mode": "Carrington",
+      "resize": false,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 0.5,
+      "final_frame": "Carrington",
+      "final_phi0": 0.5,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "GONG_mrnqs",
+      "file": "mrnqs260912t0933c2315_000.fits.gz",
+      "mode": "Stonyhurst",
+      "resize": false,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 0.5,
+      "final_frame": "Stonyhurst",
+      "final_phi0": 359.59647460882906,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "GONG_mrnqs",
+      "file": "mrnqs260912t0933c2315_000.fits.gz",
+      "mode": "legacy",
+      "resize": true,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 0.5,
+      "final_frame": "legacy",
+      "final_phi0": 0.0,
+      "max_error_deg": null,
+      "result": "PASS"
+    },
+    {
+      "type": "GONG_mrnqs",
+      "file": "mrnqs260912t0933c2315_000.fits.gz",
+      "mode": "Carrington",
+      "resize": true,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 0.5,
+      "final_frame": "Carrington",
+      "final_phi0": 0.25,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "GONG_mrnqs",
+      "file": "mrnqs260912t0933c2315_000.fits.gz",
+      "mode": "Stonyhurst",
+      "resize": true,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 0.5,
+      "final_frame": "Stonyhurst",
+      "final_phi0": 359.846474608829,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "ADAPT",
+      "file": "adapt40311_044012_202608312000_i00005600n1.fts.gz",
+      "mode": "legacy",
+      "resize": false,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 0.5,
+      "final_frame": "legacy",
+      "final_phi0": 0.0,
+      "max_error_deg": null,
+      "result": "PASS"
+    },
+    {
+      "type": "ADAPT",
+      "file": "adapt40311_044012_202608312000_i00005600n1.fts.gz",
+      "mode": "Carrington",
+      "resize": false,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 0.5,
+      "final_frame": "Carrington",
+      "final_phi0": 0.5,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "ADAPT",
+      "file": "adapt40311_044012_202608312000_i00005600n1.fts.gz",
+      "mode": "Stonyhurst",
+      "resize": false,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 0.5,
+      "final_frame": "Stonyhurst",
+      "final_phi0": 359.86869058762386,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "ADAPT",
+      "file": "adapt40311_044012_202608312000_i00005600n1.fts.gz",
+      "mode": "legacy",
+      "resize": true,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 0.5,
+      "final_frame": "legacy",
+      "final_phi0": 0.0,
+      "max_error_deg": null,
+      "result": "PASS"
+    },
+    {
+      "type": "ADAPT",
+      "file": "adapt40311_044012_202608312000_i00005600n1.fts.gz",
+      "mode": "Carrington",
+      "resize": true,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 0.5,
+      "final_frame": "Carrington",
+      "final_phi0": 0.25,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "ADAPT",
+      "file": "adapt40311_044012_202608312000_i00005600n1.fts.gz",
+      "mode": "Stonyhurst",
+      "resize": true,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 0.5,
+      "final_frame": "Stonyhurst",
+      "final_phi0": 0.11869058762380291,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "HMI_fdt",
+      "file": "adapt40i11_044012_202608310800_i00010000n1.fts.gz",
+      "mode": "legacy",
+      "resize": false,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 0.5,
+      "final_frame": "legacy",
+      "final_phi0": 0.0,
+      "max_error_deg": null,
+      "result": "PASS"
+    },
+    {
+      "type": "HMI_fdt",
+      "file": "adapt40i11_044012_202608310800_i00010000n1.fts.gz",
+      "mode": "Carrington",
+      "resize": false,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 0.5,
+      "final_frame": "Carrington",
+      "final_phi0": 0.5,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "HMI_fdt",
+      "file": "adapt40i11_044012_202608310800_i00010000n1.fts.gz",
+      "mode": "Stonyhurst",
+      "resize": false,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 0.5,
+      "final_frame": "Stonyhurst",
+      "final_phi0": 0.2636820824474171,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "HMI_fdt",
+      "file": "adapt40i11_044012_202608310800_i00010000n1.fts.gz",
+      "mode": "legacy",
+      "resize": true,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 0.5,
+      "final_frame": "legacy",
+      "final_phi0": 0.0,
+      "max_error_deg": null,
+      "result": "PASS"
+    },
+    {
+      "type": "HMI_fdt",
+      "file": "adapt40i11_044012_202608310800_i00010000n1.fts.gz",
+      "mode": "Carrington",
+      "resize": true,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 0.5,
+      "final_frame": "Carrington",
+      "final_phi0": 0.25,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "HMI_fdt",
+      "file": "adapt40i11_044012_202608310800_i00010000n1.fts.gz",
+      "mode": "Stonyhurst",
+      "resize": true,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 0.5,
+      "final_frame": "Stonyhurst",
+      "final_phi0": 0.013682082447417088,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "HMI_small",
+      "file": "hmi.Synoptic_Mr_small.2315.fits",
+      "mode": "legacy",
+      "resize": false,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 0.19999999995343387,
+      "final_frame": "legacy",
+      "final_phi0": 0.0,
+      "max_error_deg": null,
+      "result": "PASS"
+    },
+    {
+      "type": "HMI_small",
+      "file": "hmi.Synoptic_Mr_small.2315.fits",
+      "mode": "Carrington",
+      "resize": false,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 0.19999999995343387,
+      "final_frame": "Carrington",
+      "final_phi0": 0.19999999995343387,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "HMI_small",
+      "file": "hmi.Synoptic_Mr_small.2315.fits",
+      "mode": "Stonyhurst",
+      "resize": false,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 0.19999999995343387,
+      "final_frame": "Stonyhurst",
+      "final_phi0": 359.7703278143858,
+      "max_error_deg": 1.1368683772161603e-13,
+      "result": "PASS"
+    },
+    {
+      "type": "HMI_small",
+      "file": "hmi.Synoptic_Mr_small.2315.fits",
+      "mode": "legacy",
+      "resize": true,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 0.19999999995343387,
+      "final_frame": "legacy",
+      "final_phi0": 0.0,
+      "max_error_deg": null,
+      "result": "PASS"
+    },
+    {
+      "type": "HMI_small",
+      "file": "hmi.Synoptic_Mr_small.2315.fits",
+      "mode": "Carrington",
+      "resize": true,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 0.19999999995343387,
+      "final_frame": "Carrington",
+      "final_phi0": 0.19999999995343387,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "HMI_small",
+      "file": "hmi.Synoptic_Mr_small.2315.fits",
+      "mode": "Stonyhurst",
+      "resize": true,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 0.19999999995343387,
+      "final_frame": "Stonyhurst",
+      "final_phi0": 359.7703278143858,
+      "max_error_deg": 1.1368683772161603e-13,
+      "result": "PASS"
+    },
+    {
+      "type": "HMI_polfil",
+      "file": "hmi.Synoptic_Mr_polfil.2315.fits",
+      "mode": "legacy",
+      "resize": false,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 0.0,
+      "final_frame": "legacy",
+      "final_phi0": 0.0,
+      "max_error_deg": null,
+      "result": "PASS"
+    },
+    {
+      "type": "HMI_polfil",
+      "file": "hmi.Synoptic_Mr_polfil.2315.fits",
+      "mode": "Carrington",
+      "resize": false,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 0.0,
+      "final_frame": "Carrington",
+      "final_phi0": 0.0,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "HMI_polfil",
+      "file": "hmi.Synoptic_Mr_polfil.2315.fits",
+      "mode": "Stonyhurst",
+      "resize": false,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 0.0,
+      "final_frame": "Stonyhurst",
+      "final_phi0": 359.97032781445563,
+      "max_error_deg": 1.1368683772161603e-13,
+      "result": "PASS"
+    },
+    {
+      "type": "HMI_polfil",
+      "file": "hmi.Synoptic_Mr_polfil.2315.fits",
+      "mode": "legacy",
+      "resize": true,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 0.0,
+      "final_frame": "legacy",
+      "final_phi0": 0.0,
+      "max_error_deg": null,
+      "result": "PASS"
+    },
+    {
+      "type": "HMI_polfil",
+      "file": "hmi.Synoptic_Mr_polfil.2315.fits",
+      "mode": "Carrington",
+      "resize": true,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 0.0,
+      "final_frame": "Carrington",
+      "final_phi0": 0.20000000001164153,
+      "max_error_deg": 1.1709744285326451e-11,
+      "result": "PASS"
+    },
+    {
+      "type": "HMI_polfil",
+      "file": "hmi.Synoptic_Mr_polfil.2315.fits",
+      "mode": "Stonyhurst",
+      "resize": true,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 0.0,
+      "final_frame": "Stonyhurst",
+      "final_phi0": 359.770327814444,
+      "max_error_deg": 1.1766587704187259e-11,
+      "result": "PASS"
+    },
+    {
+      "type": "HMI_hourly",
+      "file": "hmi.synoptic_hourly_20260831_222400.fits",
+      "mode": "legacy",
+      "resize": false,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 88.80001200002152,
+      "final_frame": "legacy",
+      "final_phi0": 0.0,
+      "max_error_deg": null,
+      "result": "PASS"
+    },
+    {
+      "type": "HMI_hourly",
+      "file": "hmi.synoptic_hourly_20260831_222400.fits",
+      "mode": "Carrington",
+      "resize": false,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 88.80001200002152,
+      "final_frame": "Carrington",
+      "final_phi0": 1.1999974958598614e-05,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "HMI_hourly",
+      "file": "hmi.synoptic_hourly_20260831_222400.fits",
+      "mode": "Stonyhurst",
+      "resize": false,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 88.80001200002152,
+      "final_frame": "Stonyhurst",
+      "final_phi0": 359.98968686794666,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "HMI_hourly",
+      "file": "hmi.synoptic_hourly_20260831_222400.fits",
+      "mode": "legacy",
+      "resize": true,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 88.80001200002152,
+      "final_frame": "legacy",
+      "final_phi0": 0.0,
+      "max_error_deg": null,
+      "result": "PASS"
+    },
+    {
+      "type": "HMI_hourly",
+      "file": "hmi.synoptic_hourly_20260831_222400.fits",
+      "mode": "Carrington",
+      "resize": true,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 88.80001200002152,
+      "final_frame": "Carrington",
+      "final_phi0": 0.20001199998660016,
+      "max_error_deg": 1.1709744285326451e-11,
+      "result": "PASS"
+    },
+    {
+      "type": "HMI_hourly",
+      "file": "hmi.synoptic_hourly_20260831_222400.fits",
+      "mode": "Stonyhurst",
+      "resize": true,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 88.80001200002152,
+      "final_frame": "Stonyhurst",
+      "final_phi0": 359.88968686791173,
+      "max_error_deg": 1.1709744285326451e-11,
+      "result": "PASS"
+    },
+    {
+      "type": "HMI_SYNC",
+      "file": "hmi.mrdailysynframe_720s_nrt.20260901_002400_TAI.data.fits",
+      "mode": "legacy",
+      "resize": false,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 89.89998800004832,
+      "final_frame": "legacy",
+      "final_phi0": 0.0,
+      "max_error_deg": null,
+      "result": "PASS"
+    },
+    {
+      "type": "HMI_SYNC",
+      "file": "hmi.mrdailysynframe_720s_nrt.20260901_002400_TAI.data.fits",
+      "mode": "Carrington",
+      "resize": false,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 89.89998800004832,
+      "final_frame": "Carrington",
+      "final_phi0": 0.09998800000175834,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "HMI_SYNC",
+      "file": "hmi.mrdailysynframe_720s_nrt.20260901_002400_TAI.data.fits",
+      "mode": "Stonyhurst",
+      "resize": false,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 89.89998800004832,
+      "final_frame": "Stonyhurst",
+      "final_phi0": 359.9904786456679,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "HMI_SYNC",
+      "file": "hmi.mrdailysynframe_720s_nrt.20260901_002400_TAI.data.fits",
+      "mode": "legacy",
+      "resize": true,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 89.89998800004832,
+      "final_frame": "legacy",
+      "final_phi0": 0.0,
+      "max_error_deg": null,
+      "result": "PASS"
+    },
+    {
+      "type": "HMI_SYNC",
+      "file": "hmi.mrdailysynframe_720s_nrt.20260901_002400_TAI.data.fits",
+      "mode": "Carrington",
+      "resize": true,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 89.89998800004832,
+      "final_frame": "Carrington",
+      "final_phi0": 0.29998800001339987,
+      "max_error_deg": 1.1709744285326451e-11,
+      "result": "PASS"
+    },
+    {
+      "type": "HMI_SYNC",
+      "file": "hmi.mrdailysynframe_720s_nrt.20260901_002400_TAI.data.fits",
+      "mode": "Stonyhurst",
+      "resize": true,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 89.89998800004832,
+      "final_frame": "Stonyhurst",
+      "final_phi0": 0.0904786455864155,
+      "max_error_deg": 1.1709744285326451e-11,
+      "result": "PASS"
+    },
+    {
+      "type": "custom",
+      "file": "hmi.Synoptic_Mr_small.2315.fits",
+      "mode": "legacy",
+      "resize": false,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 0.19999999995343387,
+      "final_frame": "legacy",
+      "final_phi0": 0.0,
+      "max_error_deg": null,
+      "result": "PASS"
+    },
+    {
+      "type": "custom",
+      "file": "hmi.Synoptic_Mr_small.2315.fits",
+      "mode": "Carrington",
+      "resize": false,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 0.19999999995343387,
+      "final_frame": "Carrington",
+      "final_phi0": 0.19999999995343387,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "custom",
+      "file": "hmi.Synoptic_Mr_small.2315.fits",
+      "mode": "Stonyhurst",
+      "resize": false,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 0.19999999995343387,
+      "final_frame": "Stonyhurst",
+      "final_phi0": 359.7703278143858,
+      "max_error_deg": 1.1368683772161603e-13,
+      "result": "PASS"
+    },
+    {
+      "type": "custom",
+      "file": "hmi.Synoptic_Mr_small.2315.fits",
+      "mode": "legacy",
+      "resize": true,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 0.19999999995343387,
+      "final_frame": "legacy",
+      "final_phi0": 0.0,
+      "max_error_deg": null,
+      "result": "PASS"
+    },
+    {
+      "type": "custom",
+      "file": "hmi.Synoptic_Mr_small.2315.fits",
+      "mode": "Carrington",
+      "resize": true,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 0.19999999995343387,
+      "final_frame": "Carrington",
+      "final_phi0": 0.19999999995343387,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "custom",
+      "file": "hmi.Synoptic_Mr_small.2315.fits",
+      "mode": "Stonyhurst",
+      "resize": true,
+      "interpolation": false,
+      "original_frame": "Carrington",
+      "original_phi0": 0.19999999995343387,
+      "final_frame": "Stonyhurst",
+      "final_phi0": 359.7703278143858,
+      "max_error_deg": 1.1368683772161603e-13,
+      "result": "PASS"
+    },
+    {
+      "type": "GONG",
+      "file": "four-map stencil",
+      "mode": "Carrington",
+      "resize": false,
+      "interpolation": true,
+      "original_frame": "Carrington",
+      "original_phi0": 0.5,
+      "final_frame": "Carrington",
+      "final_phi0": 0.5,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "GONG",
+      "file": "four-map stencil",
+      "mode": "Stonyhurst",
+      "resize": false,
+      "interpolation": true,
+      "original_frame": "Carrington",
+      "original_phi0": 0.5,
+      "final_frame": "Stonyhurst",
+      "final_phi0": 0.07032781443234626,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "GONG",
+      "file": "four-map stencil",
+      "mode": "Carrington",
+      "resize": true,
+      "interpolation": true,
+      "original_frame": "Carrington",
+      "original_phi0": 0.5,
+      "final_frame": "Carrington",
+      "final_phi0": 0.25,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "GONG",
+      "file": "four-map stencil",
+      "mode": "Stonyhurst",
+      "resize": true,
+      "interpolation": true,
+      "original_frame": "Carrington",
+      "original_phi0": 0.5,
+      "final_frame": "Stonyhurst",
+      "final_phi0": 359.8203278144324,
+      "max_error_deg": 1.1368683772161603e-13,
+      "result": "PASS"
+    },
+    {
+      "type": "GONG_mrbqs",
+      "file": "four-map stencil",
+      "mode": "Carrington",
+      "resize": false,
+      "interpolation": true,
+      "original_frame": "Carrington",
+      "original_phi0": 0.5,
+      "final_frame": "Carrington",
+      "final_phi0": 0.5,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "GONG_mrbqs",
+      "file": "four-map stencil",
+      "mode": "Stonyhurst",
+      "resize": false,
+      "interpolation": true,
+      "original_frame": "Carrington",
+      "original_phi0": 0.5,
+      "final_frame": "Stonyhurst",
+      "final_phi0": 0.07032781443234626,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "GONG_mrbqs",
+      "file": "four-map stencil",
+      "mode": "Carrington",
+      "resize": true,
+      "interpolation": true,
+      "original_frame": "Carrington",
+      "original_phi0": 0.5,
+      "final_frame": "Carrington",
+      "final_phi0": 0.25,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "GONG_mrbqs",
+      "file": "four-map stencil",
+      "mode": "Stonyhurst",
+      "resize": true,
+      "interpolation": true,
+      "original_frame": "Carrington",
+      "original_phi0": 0.5,
+      "final_frame": "Stonyhurst",
+      "final_phi0": 359.8203278144324,
+      "max_error_deg": 1.1368683772161603e-13,
+      "result": "PASS"
+    },
+    {
+      "type": "GONG_mrbqj",
+      "file": "four-map stencil",
+      "mode": "Carrington",
+      "resize": false,
+      "interpolation": true,
+      "original_frame": "Carrington",
+      "original_phi0": 0.5,
+      "final_frame": "Carrington",
+      "final_phi0": 0.5,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "GONG_mrbqj",
+      "file": "four-map stencil",
+      "mode": "Stonyhurst",
+      "resize": false,
+      "interpolation": true,
+      "original_frame": "Carrington",
+      "original_phi0": 0.5,
+      "final_frame": "Stonyhurst",
+      "final_phi0": 0.07032781443234626,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "GONG_mrbqj",
+      "file": "four-map stencil",
+      "mode": "Carrington",
+      "resize": true,
+      "interpolation": true,
+      "original_frame": "Carrington",
+      "original_phi0": 0.5,
+      "final_frame": "Carrington",
+      "final_phi0": 0.25,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "GONG_mrbqj",
+      "file": "four-map stencil",
+      "mode": "Stonyhurst",
+      "resize": true,
+      "interpolation": true,
+      "original_frame": "Carrington",
+      "original_phi0": 0.5,
+      "final_frame": "Stonyhurst",
+      "final_phi0": 359.8203278144324,
+      "max_error_deg": 1.1368683772161603e-13,
+      "result": "PASS"
+    },
+    {
+      "type": "ADAPT",
+      "file": "four-map stencil",
+      "mode": "Carrington",
+      "resize": false,
+      "interpolation": true,
+      "original_frame": "Carrington",
+      "original_phi0": 0.5,
+      "final_frame": "Carrington",
+      "final_phi0": 0.5,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "ADAPT",
+      "file": "four-map stencil",
+      "mode": "Stonyhurst",
+      "resize": false,
+      "interpolation": true,
+      "original_frame": "Carrington",
+      "original_phi0": 0.5,
+      "final_frame": "Stonyhurst",
+      "final_phi0": 0.07032781443234626,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "ADAPT",
+      "file": "four-map stencil",
+      "mode": "Carrington",
+      "resize": true,
+      "interpolation": true,
+      "original_frame": "Carrington",
+      "original_phi0": 0.5,
+      "final_frame": "Carrington",
+      "final_phi0": 0.25,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "ADAPT",
+      "file": "four-map stencil",
+      "mode": "Stonyhurst",
+      "resize": true,
+      "interpolation": true,
+      "original_frame": "Carrington",
+      "original_phi0": 0.5,
+      "final_frame": "Stonyhurst",
+      "final_phi0": 359.8203278144324,
+      "max_error_deg": 1.1368683772161603e-13,
+      "result": "PASS"
+    },
+    {
+      "type": "HMI_fdt",
+      "file": "four-map stencil",
+      "mode": "Carrington",
+      "resize": false,
+      "interpolation": true,
+      "original_frame": "Carrington",
+      "original_phi0": 0.5,
+      "final_frame": "Carrington",
+      "final_phi0": 0.5,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "HMI_fdt",
+      "file": "four-map stencil",
+      "mode": "Stonyhurst",
+      "resize": false,
+      "interpolation": true,
+      "original_frame": "Carrington",
+      "original_phi0": 0.5,
+      "final_frame": "Stonyhurst",
+      "final_phi0": 0.07032781443234626,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "HMI_fdt",
+      "file": "four-map stencil",
+      "mode": "Carrington",
+      "resize": true,
+      "interpolation": true,
+      "original_frame": "Carrington",
+      "original_phi0": 0.5,
+      "final_frame": "Carrington",
+      "final_phi0": 0.25,
+      "max_error_deg": 5.684341886080802e-14,
+      "result": "PASS"
+    },
+    {
+      "type": "HMI_fdt",
+      "file": "four-map stencil",
+      "mode": "Stonyhurst",
+      "resize": true,
+      "interpolation": true,
+      "original_frame": "Carrington",
+      "original_phi0": 0.5,
+      "final_frame": "Stonyhurst",
+      "final_phi0": 359.8203278144324,
+      "max_error_deg": 1.1368683772161603e-13,
+      "result": "PASS"
+    }
+  ],
+  "diagnostics": [
+    {
+      "type": "GONG",
+      "resize": false,
+      "before": {
+        "area": 12.566358047988558,
+        "signed": 1.6831197255132202,
+        "unsigned": 62.24859839692587,
+        "positive": 31.965859061219547,
+        "negative": -30.282739335706324
+      },
+      "carrington": {
+        "area": 12.566358047988558,
+        "signed": 1.6831197255132218,
+        "unsigned": 62.248598396925864,
+        "positive": 31.965859061219547,
+        "negative": -30.282739335706324
+      },
+      "stonyhurst": {
+        "area": 12.566358047988555,
+        "signed": 1.6831197255132226,
+        "unsigned": 62.24859839692587,
+        "positive": 31.965859061219547,
+        "negative": -30.282739335706324
+      },
+      "resize_signed_delta": 1.5543122344752192e-15,
+      "resize_unsigned_delta": -7.105427357601002e-15
+    },
+    {
+      "type": "GONG",
+      "resize": true,
+      "before": {
+        "area": 12.566358047988558,
+        "signed": 1.6831197255132202,
+        "unsigned": 62.24859839692587,
+        "positive": 31.965859061219547,
+        "negative": -30.282739335706324
+      },
+      "carrington": {
+        "area": 12.566358047988555,
+        "signed": 1.6831197275903054,
+        "unsigned": 60.748329669279386,
+        "positive": 31.21572469843484,
+        "negative": -29.532604970844538
+      },
+      "stonyhurst": {
+        "area": 12.566358047988556,
+        "signed": 1.6831197275902976,
+        "unsigned": 60.74832966927941,
+        "positive": 31.21572469843485,
+        "negative": -29.532604970844552
+      },
+      "resize_signed_delta": 2.077085170526516e-09,
+      "resize_unsigned_delta": -1.5002687276464854
+    },
+    {
+      "type": "GONG",
+      "legacy_shift": 270,
+      "legacy_first": 1.5,
+      "canonical_first": 0.5
+    },
+    {
+      "type": "GONG_mrzqs",
+      "resize": false,
+      "before": {
+        "area": 12.566358047988558,
+        "signed": 1.6831197255132202,
+        "unsigned": 62.24859839692587,
+        "positive": 31.965859061219547,
+        "negative": -30.282739335706324
+      },
+      "carrington": {
+        "area": 12.566358047988558,
+        "signed": 1.6831197255132218,
+        "unsigned": 62.248598396925864,
+        "positive": 31.965859061219547,
+        "negative": -30.282739335706324
+      },
+      "stonyhurst": {
+        "area": 12.566358047988555,
+        "signed": 1.6831197255132226,
+        "unsigned": 62.24859839692587,
+        "positive": 31.965859061219547,
+        "negative": -30.282739335706324
+      },
+      "resize_signed_delta": 1.5543122344752192e-15,
+      "resize_unsigned_delta": -7.105427357601002e-15
+    },
+    {
+      "type": "GONG_mrzqs",
+      "resize": true,
+      "before": {
+        "area": 12.566358047988558,
+        "signed": 1.6831197255132202,
+        "unsigned": 62.24859839692587,
+        "positive": 31.965859061219547,
+        "negative": -30.282739335706324
+      },
+      "carrington": {
+        "area": 12.566358047988555,
+        "signed": 1.6831197275903054,
+        "unsigned": 60.748329669279386,
+        "positive": 31.21572469843484,
+        "negative": -29.532604970844538
+      },
+      "stonyhurst": {
+        "area": 12.566358047988556,
+        "signed": 1.6831197275902976,
+        "unsigned": 60.74832966927941,
+        "positive": 31.21572469843485,
+        "negative": -29.532604970844552
+      },
+      "resize_signed_delta": 2.077085170526516e-09,
+      "resize_unsigned_delta": -1.5002687276464854
+    },
+    {
+      "type": "GONG_mrzqs",
+      "legacy_shift": 270,
+      "legacy_first": 1.5,
+      "canonical_first": 0.5
+    },
+    {
+      "type": "GONG_mrbqs",
+      "resize": false,
+      "before": {
+        "area": 12.566358047988558,
+        "signed": -0.44028386815767884,
+        "unsigned": 62.412082773204,
+        "positive": 30.98589945252316,
+        "negative": -31.426183320680842
+      },
+      "carrington": {
+        "area": 12.566358047988558,
+        "signed": -0.44028386815767595,
+        "unsigned": 62.41208277320399,
+        "positive": 30.98589945252316,
+        "negative": -31.426183320680835
+      },
+      "stonyhurst": {
+        "area": 12.566358047988555,
+        "signed": -0.44028386815767595,
+        "unsigned": 62.412082773204,
+        "positive": 30.985899452523164,
+        "negative": -31.42618332068084
+      },
+      "resize_signed_delta": 2.886579864025407e-15,
+      "resize_unsigned_delta": -7.105427357601002e-15
+    },
+    {
+      "type": "GONG_mrbqs",
+      "resize": true,
+      "before": {
+        "area": 12.566358047988558,
+        "signed": -0.44028386815767884,
+        "unsigned": 62.412082773204,
+        "positive": 30.98589945252316,
+        "negative": -31.426183320680842
+      },
+      "carrington": {
+        "area": 12.566358047988555,
+        "signed": -0.4402838729823608,
+        "unsigned": 61.001526648503514,
+        "positive": 30.280621387760576,
+        "negative": -30.72090526074294
+      },
+      "stonyhurst": {
+        "area": 12.566358047988556,
+        "signed": -0.44028387298236993,
+        "unsigned": 61.001526648503535,
+        "positive": 30.280621387760583,
+        "negative": -30.720905260742953
+      },
+      "resize_signed_delta": -4.8246819872588276e-09,
+      "resize_unsigned_delta": -1.4105561247004843
+    },
+    {
+      "type": "GONG_mrbqs",
+      "legacy_shift": 270,
+      "legacy_first": 1.5,
+      "canonical_first": 0.5
+    },
+    {
+      "type": "GONG_mrbqj",
+      "resize": false,
+      "before": {
+        "area": 12.566358047988558,
+        "signed": 0.3191263102970088,
+        "unsigned": 66.12905748935455,
+        "positive": 33.22409189982578,
+        "negative": -32.90496558952877
+      },
+      "carrington": {
+        "area": 12.566358047988558,
+        "signed": 0.31912631029700966,
+        "unsigned": 66.12905748935455,
+        "positive": 33.22409189982578,
+        "negative": -32.90496558952877
+      },
+      "stonyhurst": {
+        "area": 12.566358047988555,
+        "signed": 0.3191263102970092,
+        "unsigned": 66.12905748935455,
+        "positive": 33.22409189982579,
+        "negative": -32.90496558952877
+      },
+      "resize_signed_delta": 8.881784197001252e-16,
+      "resize_unsigned_delta": 0.0
+    },
+    {
+      "type": "GONG_mrbqj",
+      "resize": true,
+      "before": {
+        "area": 12.566358047988558,
+        "signed": 0.3191263102970088,
+        "unsigned": 66.12905748935455,
+        "positive": 33.22409189982578,
+        "negative": -32.90496558952877
+      },
+      "carrington": {
+        "area": 12.566358047988555,
+        "signed": 0.31912631053399787,
+        "unsigned": 63.85211999585063,
+        "positive": 32.08562315319231,
+        "negative": -31.766496842658313
+      },
+      "stonyhurst": {
+        "area": 12.566358047988556,
+        "signed": 0.3191263105339881,
+        "unsigned": 63.85211999585066,
+        "positive": 32.08562315319232,
+        "negative": -31.76649684265833
+      },
+      "resize_signed_delta": 2.369890950149056e-10,
+      "resize_unsigned_delta": -2.2769374935039224
+    },
+    {
+      "type": "GONG_mrbqj",
+      "legacy_shift": 270,
+      "legacy_first": 1.5,
+      "canonical_first": 0.5
+    },
+    {
+      "type": "GONG_mrmqs",
+      "resize": false,
+      "before": {
+        "area": 12.566358047988558,
+        "signed": -0.6153299299045352,
+        "unsigned": 60.865224303883295,
+        "positive": 30.12494718698938,
+        "negative": -30.740277116893914
+      },
+      "carrington": {
+        "area": 12.566358047988558,
+        "signed": -0.615329929904536,
+        "unsigned": 60.865224303883295,
+        "positive": 30.12494718698938,
+        "negative": -30.740277116893918
+      },
+      "stonyhurst": {
+        "area": 12.566358047988558,
+        "signed": -0.6153299299045178,
+        "unsigned": 60.86522430388331,
+        "positive": 30.124947186989395,
+        "negative": -30.740277116893914
+      },
+      "resize_signed_delta": -8.881784197001252e-16,
+      "resize_unsigned_delta": 0.0
+    },
+    {
+      "type": "GONG_mrmqs",
+      "resize": true,
+      "before": {
+        "area": 12.566358047988558,
+        "signed": -0.6153299299045352,
+        "unsigned": 60.865224303883295,
+        "positive": 30.12494718698938,
+        "negative": -30.740277116893914
+      },
+      "carrington": {
+        "area": 12.566358047988555,
+        "signed": -0.6153299253884095,
+        "unsigned": 59.61637358284932,
+        "positive": 29.500521828730463,
+        "negative": -30.11585175411887
+      },
+      "stonyhurst": {
+        "area": 12.566358047988556,
+        "signed": -0.6153299253883968,
+        "unsigned": 59.61637358284933,
+        "positive": 29.500521828730463,
+        "negative": -30.115851754118864
+      },
+      "resize_signed_delta": 4.516125695630535e-09,
+      "resize_unsigned_delta": -1.2488507210339748
+    },
+    {
+      "type": "GONG_mrmqs",
+      "legacy_shift": -1,
+      "legacy_first": 1.5,
+      "canonical_first": 0.5
+    },
+    {
+      "type": "GONG_mrnqs",
+      "resize": false,
+      "before": {
+        "area": 12.566358047988558,
+        "signed": 1.3919844051763406,
+        "unsigned": 61.42212623771205,
+        "positive": 31.407055321444197,
+        "negative": -30.015070916267852
+      },
+      "carrington": {
+        "area": 12.566358047988558,
+        "signed": 1.3919844051763393,
+        "unsigned": 61.42212623771205,
+        "positive": 31.407055321444197,
+        "negative": -30.01507091626786
+      },
+      "stonyhurst": {
+        "area": 12.566358047988558,
+        "signed": 1.3919844051763577,
+        "unsigned": 61.42212623771207,
+        "positive": 31.40705532144421,
+        "negative": -30.015070916267856
+      },
+      "resize_signed_delta": -1.3322676295501878e-15,
+      "resize_unsigned_delta": 0.0
+    },
+    {
+      "type": "GONG_mrnqs",
+      "resize": true,
+      "before": {
+        "area": 12.566358047988558,
+        "signed": 1.3919844051763406,
+        "unsigned": 61.42212623771205,
+        "positive": 31.407055321444197,
+        "negative": -30.015070916267852
+      },
+      "carrington": {
+        "area": 12.566358047988555,
+        "signed": 1.3919844088138966,
+        "unsigned": 60.10125171391783,
+        "positive": 30.74661806136586,
+        "negative": -29.354633652551964
+      },
+      "stonyhurst": {
+        "area": 12.566358047988556,
+        "signed": 1.3919844088139102,
+        "unsigned": 60.10125171391783,
+        "positive": 30.746618061365872,
+        "negative": -29.35463365255196
+      },
+      "resize_signed_delta": 3.6375560341639357e-09,
+      "resize_unsigned_delta": -1.3208745237942168
+    },
+    {
+      "type": "GONG_mrnqs",
+      "legacy_shift": -1,
+      "legacy_first": 1.5,
+      "canonical_first": 0.5
+    },
+    {
+      "type": "ADAPT",
+      "resize": false,
+      "before": {
+        "area": 12.566370614359172,
+        "signed": 0.22345052302842028,
+        "unsigned": 108.17135951505338,
+        "positive": 54.1974050190409,
+        "negative": -53.97395449601248
+      },
+      "carrington": {
+        "area": 12.566370614359172,
+        "signed": 0.2234505230284194,
+        "unsigned": 108.17135951505338,
+        "positive": 54.1974050190409,
+        "negative": -53.97395449601248
+      },
+      "stonyhurst": {
+        "area": 12.566370614359172,
+        "signed": 0.22345052302842205,
+        "unsigned": 108.17135951505341,
+        "positive": 54.19740501904091,
+        "negative": -53.973954496012496
+      },
+      "resize_signed_delta": -8.881784197001252e-16,
+      "resize_unsigned_delta": 0.0
+    },
+    {
+      "type": "ADAPT",
+      "resize": true,
+      "before": {
+        "area": 12.566370614359172,
+        "signed": 0.22345052302842028,
+        "unsigned": 108.17135951505338,
+        "positive": 54.1974050190409,
+        "negative": -53.97395449601248
+      },
+      "carrington": {
+        "area": 12.566370614359172,
+        "signed": 0.22346547008538487,
+        "unsigned": 106.88527762136093,
+        "positive": 53.55437154572316,
+        "negative": -53.33090607563777
+      },
+      "stonyhurst": {
+        "area": 12.566370614359172,
+        "signed": 0.2234654700853813,
+        "unsigned": 106.88527762136096,
+        "positive": 53.55437154572316,
+        "negative": -53.330906075637785
+      },
+      "resize_signed_delta": 1.4947056964587091e-05,
+      "resize_unsigned_delta": -1.2860818936924545
+    },
+    {
+      "type": "HMI_fdt",
+      "resize": false,
+      "before": {
+        "area": 12.566370614359172,
+        "signed": 0.16341083970562575,
+        "unsigned": 92.0245692458416,
+        "positive": 46.09399004277361,
+        "negative": -45.93057920306799
+      },
+      "carrington": {
+        "area": 12.566370614359172,
+        "signed": 0.16341083970562664,
+        "unsigned": 92.0245692458416,
+        "positive": 46.09399004277361,
+        "negative": -45.93057920306799
+      },
+      "stonyhurst": {
+        "area": 12.566370614359172,
+        "signed": 0.16341083970563375,
+        "unsigned": 92.0245692458416,
+        "positive": 46.093990042773605,
+        "negative": -45.93057920306797
+      },
+      "resize_signed_delta": 8.881784197001252e-16,
+      "resize_unsigned_delta": 0.0
+    },
+    {
+      "type": "HMI_fdt",
+      "resize": true,
+      "before": {
+        "area": 12.566370614359172,
+        "signed": 0.16341083970562575,
+        "unsigned": 92.0245692458416,
+        "positive": 46.09399004277361,
+        "negative": -45.93057920306799
+      },
+      "carrington": {
+        "area": 12.566370614359172,
+        "signed": 0.16338458737752326,
+        "unsigned": 90.55949442406133,
+        "positive": 45.361439505719424,
+        "negative": -45.1980549183419
+      },
+      "stonyhurst": {
+        "area": 12.566370614359172,
+        "signed": 0.16338458737752326,
+        "unsigned": 90.55949442406131,
+        "positive": 45.36143950571942,
+        "negative": -45.1980549183419
+      },
+      "resize_signed_delta": -2.6252328102494005e-05,
+      "resize_unsigned_delta": -1.4650748217802771
+    },
+    {
+      "type": "HMI_small",
+      "resize": false,
+      "before": {
+        "area": 12.566370614359172,
+        "signed": -1.1936844983106834,
+        "unsigned": 97.70133609754807,
+        "positive": 48.253825799618696,
+        "negative": -49.44751029792938
+      },
+      "carrington": {
+        "area": 12.566370614359172,
+        "signed": -1.1936844983107118,
+        "unsigned": 97.70133609754805,
+        "positive": 48.253825799618674,
+        "negative": -49.447510297929384
+      },
+      "stonyhurst": {
+        "area": 12.566370614359172,
+        "signed": -1.193684498310706,
+        "unsigned": 97.70133609754802,
+        "positive": 48.25382579961865,
+        "negative": -49.44751029792937
+      },
+      "resize_signed_delta": -2.842170943040401e-14,
+      "resize_unsigned_delta": -1.4210854715202004e-14
+    },
+    {
+      "type": "HMI_small",
+      "resize": true,
+      "before": {
+        "area": 12.566370614359172,
+        "signed": -1.1936844983106834,
+        "unsigned": 97.70133609754807,
+        "positive": 48.253825799618696,
+        "negative": -49.44751029792938
+      },
+      "carrington": {
+        "area": 12.566370614359172,
+        "signed": -1.1936844983107118,
+        "unsigned": 97.70133609754805,
+        "positive": 48.253825799618674,
+        "negative": -49.447510297929384
+      },
+      "stonyhurst": {
+        "area": 12.566370614359172,
+        "signed": -1.193684498310706,
+        "unsigned": 97.70133609754802,
+        "positive": 48.25382579961865,
+        "negative": -49.44751029792937
+      },
+      "resize_signed_delta": -2.842170943040401e-14,
+      "resize_unsigned_delta": -1.4210854715202004e-14
+    },
+    {
+      "type": "HMI_polfil",
+      "resize": false,
+      "before": {
+        "area": 12.566370614359172,
+        "signed": -0.9197397920212529,
+        "unsigned": 100.1092475527297,
+        "positive": 49.594753880354226,
+        "negative": -50.51449367237548
+      },
+      "carrington": {
+        "area": 12.566370614359172,
+        "signed": -0.9197397920212638,
+        "unsigned": 100.10924755272971,
+        "positive": 49.59475388035422,
+        "negative": -50.51449367237549
+      },
+      "stonyhurst": {
+        "area": 12.566370614359172,
+        "signed": -0.91973979202123,
+        "unsigned": 100.10924755272978,
+        "positive": 49.594753880354276,
+        "negative": -50.5144936723755
+      },
+      "resize_signed_delta": -1.0880185641326534e-14,
+      "resize_unsigned_delta": 1.4210854715202004e-14
+    },
+    {
+      "type": "HMI_polfil",
+      "resize": true,
+      "before": {
+        "area": 12.566370614359172,
+        "signed": -0.9197397920212529,
+        "unsigned": 100.1092475527297,
+        "positive": 49.594753880354226,
+        "negative": -50.51449367237548
+      },
+      "carrington": {
+        "area": 12.566370614359172,
+        "signed": -0.9254775397156318,
+        "unsigned": 88.16233317264135,
+        "positive": 43.61842781646286,
+        "negative": -44.54390535617849
+      },
+      "stonyhurst": {
+        "area": 12.566370614359172,
+        "signed": -0.9254775397156503,
+        "unsigned": 88.1623331726413,
+        "positive": 43.61842781646281,
+        "negative": -44.54390535617846
+      },
+      "resize_signed_delta": -0.0057377476943789585,
+      "resize_unsigned_delta": -11.946914380088344
+    },
+    {
+      "type": "HMI_hourly",
+      "resize": false,
+      "before": {
+        "area": 12.566370614359172,
+        "signed": 0.236019989773133,
+        "unsigned": 110.21110470234646,
+        "positive": 55.22356234605979,
+        "negative": -54.98754235628666
+      },
+      "carrington": {
+        "area": 12.566370614359172,
+        "signed": 0.23601998977312966,
+        "unsigned": 110.21110470234646,
+        "positive": 55.2235623460598,
+        "negative": -54.98754235628667
+      },
+      "stonyhurst": {
+        "area": 12.566370614359172,
+        "signed": 0.23601998977316563,
+        "unsigned": 110.2111047023464,
+        "positive": 55.223562346059786,
+        "negative": -54.987542356286625
+      },
+      "resize_signed_delta": -3.3306690738754696e-15,
+      "resize_unsigned_delta": 0.0
+    },
+    {
+      "type": "HMI_hourly",
+      "resize": true,
+      "before": {
+        "area": 12.566370614359172,
+        "signed": 0.236019989773133,
+        "unsigned": 110.21110470234646,
+        "positive": 55.22356234605979,
+        "negative": -54.98754235628666
+      },
+      "carrington": {
+        "area": 12.566370614359172,
+        "signed": 0.25937747467023553,
+        "unsigned": 94.85400467329333,
+        "positive": 47.55669107398178,
+        "negative": -47.29731359931155
+      },
+      "stonyhurst": {
+        "area": 12.566370614359172,
+        "signed": 0.2593774746702635,
+        "unsigned": 94.8540046732933,
+        "positive": 47.55669107398178,
+        "negative": -47.29731359931152
+      },
+      "resize_signed_delta": 0.023357484897102543,
+      "resize_unsigned_delta": -15.357100029053129
+    },
+    {
+      "type": "HMI_SYNC",
+      "resize": false,
+      "before": {
+        "area": 12.566370614359172,
+        "signed": -0.10912531961079441,
+        "unsigned": 118.50385084636258,
+        "positive": 59.19736276337589,
+        "negative": -59.30648808298669
+      },
+      "carrington": {
+        "area": 12.566370614359172,
+        "signed": -0.1091253196107842,
+        "unsigned": 118.50385084636258,
+        "positive": 59.19736276337591,
+        "negative": -59.30648808298668
+      },
+      "stonyhurst": {
+        "area": 12.566370614359172,
+        "signed": -0.10912531961083527,
+        "unsigned": 118.50385084636252,
+        "positive": 59.19736276337585,
+        "negative": -59.306488082986675
+      },
+      "resize_signed_delta": 1.021405182655144e-14,
+      "resize_unsigned_delta": 0.0
+    },
+    {
+      "type": "HMI_SYNC",
+      "resize": true,
+      "before": {
+        "area": 12.566370614359172,
+        "signed": -0.10912531961079441,
+        "unsigned": 118.50385084636258,
+        "positive": 59.19736276337589,
+        "negative": -59.30648808298669
+      },
+      "carrington": {
+        "area": 12.566370614359174,
+        "signed": -0.1979804018814466,
+        "unsigned": 99.01518747905189,
+        "positive": 49.40860353858523,
+        "negative": -49.60658394046668
+      },
+      "stonyhurst": {
+        "area": 12.566370614359172,
+        "signed": -0.19798040188145882,
+        "unsigned": 99.01518747905189,
+        "positive": 49.40860353858521,
+        "negative": -49.60658394046668
+      },
+      "resize_signed_delta": -0.0888550822706522,
+      "resize_unsigned_delta": -19.488663367310693
+    },
+    {
+      "type": "custom",
+      "resize": false,
+      "before": {
+        "area": 12.566370614359172,
+        "signed": -1.1936844983106834,
+        "unsigned": 97.70133609754807,
+        "positive": 48.253825799618696,
+        "negative": -49.44751029792938
+      },
+      "carrington": {
+        "area": 12.566370614359172,
+        "signed": -1.1936844983107118,
+        "unsigned": 97.70133609754805,
+        "positive": 48.253825799618674,
+        "negative": -49.447510297929384
+      },
+      "stonyhurst": {
+        "area": 12.566370614359172,
+        "signed": -1.193684498310706,
+        "unsigned": 97.70133609754802,
+        "positive": 48.25382579961865,
+        "negative": -49.44751029792937
+      },
+      "resize_signed_delta": -2.842170943040401e-14,
+      "resize_unsigned_delta": -1.4210854715202004e-14
+    },
+    {
+      "type": "custom",
+      "resize": true,
+      "before": {
+        "area": 12.566370614359172,
+        "signed": -1.1936844983106834,
+        "unsigned": 97.70133609754807,
+        "positive": 48.253825799618696,
+        "negative": -49.44751029792938
+      },
+      "carrington": {
+        "area": 12.566370614359172,
+        "signed": -1.1936844983107118,
+        "unsigned": 97.70133609754805,
+        "positive": 48.253825799618674,
+        "negative": -49.447510297929384
+      },
+      "stonyhurst": {
+        "area": 12.566370614359172,
+        "signed": -1.193684498310706,
+        "unsigned": 97.70133609754802,
+        "positive": 48.25382579961865,
+        "negative": -49.44751029792937
+      },
+      "resize_signed_delta": -2.842170943040401e-14,
+      "resize_unsigned_delta": -1.4210854715202004e-14
+    }
+  ],
+  "stencils": [
+    {
+      "type": "GONG",
+      "headers": [
+        {
+          "file": "mrzqs260831t2214c2315_271.fits.gz",
+          "NAXIS1": 360,
+          "CRVAL1": 91,
+          "CRPIX1": 180.5,
+          "CDELT1": 1.0,
+          "first": 0.5,
+          "last": 359.5,
+          "step": 1.0
+        },
+        {
+          "file": "mrzqs260831t2314c2315_271.fits.gz",
+          "NAXIS1": 360,
+          "CRVAL1": 91,
+          "CRPIX1": 180.5,
+          "CDELT1": 1.0,
+          "first": 0.5,
+          "last": 359.5,
+          "step": 1.0
+        },
+        {
+          "file": "mrzqs260901t0014c2315_270.fits.gz",
+          "NAXIS1": 360,
+          "CRVAL1": 90,
+          "CRPIX1": 180.5,
+          "CDELT1": 1.0,
+          "first": 0.5,
+          "last": 359.5,
+          "step": 1.0
+        },
+        {
+          "file": "mrzqs260901t0114c2315_270.fits.gz",
+          "NAXIS1": 360,
+          "CRVAL1": 90,
+          "CRPIX1": 180.5,
+          "CDELT1": 1.0,
+          "first": 0.5,
+          "last": 359.5,
+          "step": 1.0
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "type": "GONG_mrbqs",
+      "headers": [
+        {
+          "file": "mrbqs260831t2214c2315_271.fits.gz",
+          "NAXIS1": 360,
+          "CRVAL1": 91,
+          "CRPIX1": 180.5,
+          "CDELT1": 1.0,
+          "first": 0.5,
+          "last": 359.5,
+          "step": 1.0
+        },
+        {
+          "file": "mrbqs260831t2314c2315_271.fits.gz",
+          "NAXIS1": 360,
+          "CRVAL1": 91,
+          "CRPIX1": 180.5,
+          "CDELT1": 1.0,
+          "first": 0.5,
+          "last": 359.5,
+          "step": 1.0
+        },
+        {
+          "file": "mrbqs260901t0014c2315_270.fits.gz",
+          "NAXIS1": 360,
+          "CRVAL1": 90,
+          "CRPIX1": 180.5,
+          "CDELT1": 1.0,
+          "first": 0.5,
+          "last": 359.5,
+          "step": 1.0
+        },
+        {
+          "file": "mrbqs260901t0114c2315_270.fits.gz",
+          "NAXIS1": 360,
+          "CRVAL1": 90,
+          "CRPIX1": 180.5,
+          "CDELT1": 1.0,
+          "first": 0.5,
+          "last": 359.5,
+          "step": 1.0
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "type": "GONG_mrbqj",
+      "headers": [
+        {
+          "file": "mrbqj260831t2214c2315_271.fits.gz",
+          "NAXIS1": 360,
+          "CRVAL1": 91,
+          "CRPIX1": 180.5,
+          "CDELT1": 1.0,
+          "first": 0.5,
+          "last": 359.5,
+          "step": 1.0
+        },
+        {
+          "file": "mrbqj260831t2314c2315_271.fits.gz",
+          "NAXIS1": 360,
+          "CRVAL1": 91,
+          "CRPIX1": 180.5,
+          "CDELT1": 1.0,
+          "first": 0.5,
+          "last": 359.5,
+          "step": 1.0
+        },
+        {
+          "file": "mrbqj260901t0014c2315_270.fits.gz",
+          "NAXIS1": 360,
+          "CRVAL1": 90,
+          "CRPIX1": 180.5,
+          "CDELT1": 1.0,
+          "first": 0.5,
+          "last": 359.5,
+          "step": 1.0
+        },
+        {
+          "file": "mrbqj260901t0114c2315_270.fits.gz",
+          "NAXIS1": 360,
+          "CRVAL1": 90,
+          "CRPIX1": 180.5,
+          "CDELT1": 1.0,
+          "first": 0.5,
+          "last": 359.5,
+          "step": 1.0
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "type": "ADAPT",
+      "headers": [
+        {
+          "file": "adapt40311_044012_202608312000_i00005600n1.fts.gz",
+          "NAXIS1": 360,
+          "CRVAL1": 180.0,
+          "CRPIX1": 180.5,
+          "CDELT1": 1.0,
+          "first": 0.5,
+          "last": 359.5,
+          "step": 1.0
+        },
+        {
+          "file": "adapt40311_044012_202608312200_i00005600n1.fts.gz",
+          "NAXIS1": 360,
+          "CRVAL1": 180.0,
+          "CRPIX1": 180.5,
+          "CDELT1": 1.0,
+          "first": 0.5,
+          "last": 359.5,
+          "step": 1.0
+        },
+        {
+          "file": "adapt40311_044012_202609010000_i00005600n1.fts.gz",
+          "NAXIS1": 360,
+          "CRVAL1": 180.0,
+          "CRPIX1": 180.5,
+          "CDELT1": 1.0,
+          "first": 0.5,
+          "last": 359.5,
+          "step": 1.0
+        },
+        {
+          "file": "adapt40311_044012_202609010200_i00005600n1.fts.gz",
+          "NAXIS1": 360,
+          "CRVAL1": 180.0,
+          "CRPIX1": 180.5,
+          "CDELT1": 1.0,
+          "first": 0.5,
+          "last": 359.5,
+          "step": 1.0
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "type": "HMI_fdt",
+      "headers": [
+        {
+          "file": "adapt40i11_044012_202608310800_i00010000n1.fts.gz",
+          "NAXIS1": 360,
+          "CRVAL1": 180.0,
+          "CRPIX1": 180.5,
+          "CDELT1": 1.0,
+          "first": 0.5,
+          "last": 359.5,
+          "step": 1.0
+        },
+        {
+          "file": "adapt40i11_044012_202608312000_i00010000n1.fts.gz",
+          "NAXIS1": 360,
+          "CRVAL1": 180.0,
+          "CRPIX1": 180.5,
+          "CDELT1": 1.0,
+          "first": 0.5,
+          "last": 359.5,
+          "step": 1.0
+        },
+        {
+          "file": "adapt40i11_044012_202609010800_i00010000n1.fts.gz",
+          "NAXIS1": 360,
+          "CRVAL1": 180.0,
+          "CRPIX1": 180.5,
+          "CDELT1": 1.0,
+          "first": 0.5,
+          "last": 359.5,
+          "step": 1.0
+        },
+        {
+          "file": "adapt40i11_044012_202609012000_i00010000n1.fts.gz",
+          "NAXIS1": 360,
+          "CRVAL1": 180.0,
+          "CRPIX1": 180.5,
+          "CDELT1": 1.0,
+          "first": 0.5,
+          "last": 359.5,
+          "step": 1.0
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "type": "HMI_hourly",
+      "headers": [
+        {
+          "file": "hmi.synoptic_hourly_20260831_222400.fits",
+          "NAXIS1": 3600,
+          "CRVAL1": 832948.800012,
+          "CRPIX1": 1800.0,
+          "CDELT1": -0.1,
+          "first": 1.1999974958598614e-05,
+          "last": 359.90001199999824,
+          "step": 0.09999999997671694
+        },
+        {
+          "file": "hmi.synoptic_hourly_20260831_232400.fits",
+          "NAXIS1": 3600,
+          "CRVAL1": 832949.399988,
+          "CRPIX1": 1800.0,
+          "CDELT1": -0.1,
+          "first": 0.09998800000175834,
+          "last": 359.99998800002504,
+          "step": 0.09999999997671694
+        },
+        {
+          "file": "hmi.synoptic_hourly_20260901_002400.fits",
+          "NAXIS1": 3600,
+          "CRVAL1": 832949.899988,
+          "CRPIX1": 1800.0,
+          "CDELT1": -0.1,
+          "first": 0.09998800000175834,
+          "last": 359.99998800002504,
+          "step": 0.09999999997671694
+        },
+        {
+          "file": "hmi.synoptic_hourly_20260901_012400.fits",
+          "NAXIS1": 3600,
+          "CRVAL1": 832950.499994,
+          "CRPIX1": 1800.0,
+          "CDELT1": -0.1,
+          "first": 0.09999399993102998,
+          "last": 359.9999939999543,
+          "step": 0.09999999997671694
+        }
+      ],
+      "result": "REJECTED",
+      "reason": "Temporal interpolation requires identical physical Carrington longitude grids (centers, spacing, orientation and coverage): tests\\_bigdata_cache\\longitude\\hmi.synoptic_hourly_20260831_222400.fits and tests\\_bigdata_cache\\longitude\\hmi.synoptic_hourly_20260831_232400.fits."
+    }
+  ],
+  "pipelines": [
+    {
+      "type": "GONG",
+      "pipeline": "sph_filtering",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\GONG_sph_filtering.dat"
+    },
+    {
+      "type": "GONG",
+      "pipeline": "gaussian_smoothing",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\GONG_gaussian_smoothing.dat"
+    },
+    {
+      "type": "GONG",
+      "pipeline": "NLD_implicit_method",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\GONG_NLD_implicit_method.dat"
+    },
+    {
+      "type": "GONG",
+      "pipeline": "Yaroslavsky_filter",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\GONG_Yaroslavsky_filter.dat"
+    },
+    {
+      "type": "GONG_mrzqs",
+      "pipeline": "sph_filtering",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\GONG_mrzqs_sph_filtering.dat"
+    },
+    {
+      "type": "GONG_mrzqs",
+      "pipeline": "gaussian_smoothing",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\GONG_mrzqs_gaussian_smoothing.dat"
+    },
+    {
+      "type": "GONG_mrzqs",
+      "pipeline": "NLD_implicit_method",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\GONG_mrzqs_NLD_implicit_method.dat"
+    },
+    {
+      "type": "GONG_mrzqs",
+      "pipeline": "Yaroslavsky_filter",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\GONG_mrzqs_Yaroslavsky_filter.dat"
+    },
+    {
+      "type": "GONG_mrbqs",
+      "pipeline": "sph_filtering",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\GONG_mrbqs_sph_filtering.dat"
+    },
+    {
+      "type": "GONG_mrbqs",
+      "pipeline": "gaussian_smoothing",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\GONG_mrbqs_gaussian_smoothing.dat"
+    },
+    {
+      "type": "GONG_mrbqs",
+      "pipeline": "NLD_implicit_method",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\GONG_mrbqs_NLD_implicit_method.dat"
+    },
+    {
+      "type": "GONG_mrbqs",
+      "pipeline": "Yaroslavsky_filter",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\GONG_mrbqs_Yaroslavsky_filter.dat"
+    },
+    {
+      "type": "GONG_mrbqj",
+      "pipeline": "sph_filtering",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\GONG_mrbqj_sph_filtering.dat"
+    },
+    {
+      "type": "GONG_mrbqj",
+      "pipeline": "gaussian_smoothing",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\GONG_mrbqj_gaussian_smoothing.dat"
+    },
+    {
+      "type": "GONG_mrbqj",
+      "pipeline": "NLD_implicit_method",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\GONG_mrbqj_NLD_implicit_method.dat"
+    },
+    {
+      "type": "GONG_mrbqj",
+      "pipeline": "Yaroslavsky_filter",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\GONG_mrbqj_Yaroslavsky_filter.dat"
+    },
+    {
+      "type": "GONG_mrmqs",
+      "pipeline": "sph_filtering",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\GONG_mrmqs_sph_filtering.dat"
+    },
+    {
+      "type": "GONG_mrmqs",
+      "pipeline": "gaussian_smoothing",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\GONG_mrmqs_gaussian_smoothing.dat"
+    },
+    {
+      "type": "GONG_mrmqs",
+      "pipeline": "NLD_implicit_method",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\GONG_mrmqs_NLD_implicit_method.dat"
+    },
+    {
+      "type": "GONG_mrmqs",
+      "pipeline": "Yaroslavsky_filter",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\GONG_mrmqs_Yaroslavsky_filter.dat"
+    },
+    {
+      "type": "GONG_mrnqs",
+      "pipeline": "sph_filtering",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\GONG_mrnqs_sph_filtering.dat"
+    },
+    {
+      "type": "GONG_mrnqs",
+      "pipeline": "gaussian_smoothing",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\GONG_mrnqs_gaussian_smoothing.dat"
+    },
+    {
+      "type": "GONG_mrnqs",
+      "pipeline": "NLD_implicit_method",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\GONG_mrnqs_NLD_implicit_method.dat"
+    },
+    {
+      "type": "GONG_mrnqs",
+      "pipeline": "Yaroslavsky_filter",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\GONG_mrnqs_Yaroslavsky_filter.dat"
+    },
+    {
+      "type": "ADAPT",
+      "pipeline": "sph_filtering",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\ADAPT_sph_filtering.dat"
+    },
+    {
+      "type": "ADAPT",
+      "pipeline": "gaussian_smoothing",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\ADAPT_gaussian_smoothing.dat"
+    },
+    {
+      "type": "ADAPT",
+      "pipeline": "NLD_implicit_method",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\ADAPT_NLD_implicit_method.dat"
+    },
+    {
+      "type": "ADAPT",
+      "pipeline": "Yaroslavsky_filter",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\ADAPT_Yaroslavsky_filter.dat"
+    },
+    {
+      "type": "HMI_fdt",
+      "pipeline": "sph_filtering",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\HMI_fdt_sph_filtering.dat"
+    },
+    {
+      "type": "HMI_fdt",
+      "pipeline": "gaussian_smoothing",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\HMI_fdt_gaussian_smoothing.dat"
+    },
+    {
+      "type": "HMI_fdt",
+      "pipeline": "NLD_implicit_method",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\HMI_fdt_NLD_implicit_method.dat"
+    },
+    {
+      "type": "HMI_fdt",
+      "pipeline": "Yaroslavsky_filter",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\HMI_fdt_Yaroslavsky_filter.dat"
+    },
+    {
+      "type": "HMI_small",
+      "pipeline": "sph_filtering",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\HMI_small_sph_filtering.dat"
+    },
+    {
+      "type": "HMI_small",
+      "pipeline": "gaussian_smoothing",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\HMI_small_gaussian_smoothing.dat"
+    },
+    {
+      "type": "HMI_small",
+      "pipeline": "NLD_implicit_method",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\HMI_small_NLD_implicit_method.dat"
+    },
+    {
+      "type": "HMI_small",
+      "pipeline": "Yaroslavsky_filter",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\HMI_small_Yaroslavsky_filter.dat"
+    },
+    {
+      "type": "HMI_polfil",
+      "pipeline": "sph_filtering",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\HMI_polfil_sph_filtering.dat"
+    },
+    {
+      "type": "HMI_polfil",
+      "pipeline": "gaussian_smoothing",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\HMI_polfil_gaussian_smoothing.dat"
+    },
+    {
+      "type": "HMI_polfil",
+      "pipeline": "NLD_implicit_method",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\HMI_polfil_NLD_implicit_method.dat"
+    },
+    {
+      "type": "HMI_polfil",
+      "pipeline": "Yaroslavsky_filter",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\HMI_polfil_Yaroslavsky_filter.dat"
+    },
+    {
+      "type": "HMI_hourly",
+      "pipeline": "sph_filtering",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\HMI_hourly_sph_filtering.dat"
+    },
+    {
+      "type": "HMI_hourly",
+      "pipeline": "gaussian_smoothing",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\HMI_hourly_gaussian_smoothing.dat"
+    },
+    {
+      "type": "HMI_hourly",
+      "pipeline": "NLD_implicit_method",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\HMI_hourly_NLD_implicit_method.dat"
+    },
+    {
+      "type": "HMI_hourly",
+      "pipeline": "Yaroslavsky_filter",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\HMI_hourly_Yaroslavsky_filter.dat"
+    },
+    {
+      "type": "HMI_SYNC",
+      "pipeline": "sph_filtering",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\HMI_SYNC_sph_filtering.dat"
+    },
+    {
+      "type": "HMI_SYNC",
+      "pipeline": "gaussian_smoothing",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\HMI_SYNC_gaussian_smoothing.dat"
+    },
+    {
+      "type": "HMI_SYNC",
+      "pipeline": "NLD_implicit_method",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\HMI_SYNC_NLD_implicit_method.dat"
+    },
+    {
+      "type": "HMI_SYNC",
+      "pipeline": "Yaroslavsky_filter",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\HMI_SYNC_Yaroslavsky_filter.dat"
+    },
+    {
+      "type": "custom",
+      "pipeline": "sph_filtering",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\map_custom_sph.dat"
+    },
+    {
+      "type": "custom",
+      "pipeline": "gaussian_smoothing",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\map_custom_Gaussian.dat"
+    },
+    {
+      "type": "custom",
+      "pipeline": "NLD_implicit_method",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\map_custom_NLD.dat"
+    },
+    {
+      "type": "custom",
+      "pipeline": "Yaroslavsky_filter",
+      "result": "PASS",
+      "file": "tests\\_bigdata_cache\\longitude\\pipeline_outputs\\map_custom_Yaroslavsky.dat"
+    }
+  ],
+  "resize_order_comparison": [
+    {
+      "type": "GONG",
+      "normalize_first_phi0": 0.25,
+      "resize_first_phi0": 0.25,
+      "phase_difference_deg": 0.0,
+      "max_field_difference_if_same_grid": 10.691848754882812
+    },
+    {
+      "type": "GONG_mrzqs",
+      "normalize_first_phi0": 0.25,
+      "resize_first_phi0": 0.25,
+      "phase_difference_deg": 0.0,
+      "max_field_difference_if_same_grid": 10.691848754882812
+    },
+    {
+      "type": "GONG_mrbqs",
+      "normalize_first_phi0": 0.25,
+      "resize_first_phi0": 0.25,
+      "phase_difference_deg": 0.0,
+      "max_field_difference_if_same_grid": 10.421562194824219
+    },
+    {
+      "type": "GONG_mrbqj",
+      "normalize_first_phi0": 0.25,
+      "resize_first_phi0": 0.25,
+      "phase_difference_deg": 0.0,
+      "max_field_difference_if_same_grid": 29.426223754882812
+    },
+    {
+      "type": "GONG_mrmqs",
+      "normalize_first_phi0": 0.25,
+      "resize_first_phi0": 0.25,
+      "phase_difference_deg": 0.0,
+      "max_field_difference_if_same_grid": 0.0
+    },
+    {
+      "type": "GONG_mrnqs",
+      "normalize_first_phi0": 0.25,
+      "resize_first_phi0": 0.25,
+      "phase_difference_deg": 0.0,
+      "max_field_difference_if_same_grid": 0.0
+    },
+    {
+      "type": "ADAPT",
+      "normalize_first_phi0": 0.25,
+      "resize_first_phi0": 0.25,
+      "phase_difference_deg": 0.0,
+      "max_field_difference_if_same_grid": 0.0
+    },
+    {
+      "type": "HMI_fdt",
+      "normalize_first_phi0": 0.25,
+      "resize_first_phi0": 0.25,
+      "phase_difference_deg": 0.0,
+      "max_field_difference_if_same_grid": 0.0
+    },
+    {
+      "type": "HMI_small",
+      "normalize_first_phi0": 0.19999999995343387,
+      "resize_first_phi0": 0.19999999995343387,
+      "phase_difference_deg": 0.0,
+      "max_field_difference_if_same_grid": 0.0
+    },
+    {
+      "type": "HMI_polfil",
+      "normalize_first_phi0": 0.20000000001164153,
+      "resize_first_phi0": 0.2,
+      "phase_difference_deg": 1.1641521080463235e-11,
+      "max_field_difference_if_same_grid": 0.0
+    },
+    {
+      "type": "HMI_hourly",
+      "normalize_first_phi0": 0.20001199998660016,
+      "resize_first_phi0": 1.200002151335866e-05,
+      "phase_difference_deg": 0.1999999999650868,
+      "max_field_difference_if_same_grid": null
+    },
+    {
+      "type": "HMI_SYNC",
+      "normalize_first_phi0": 0.29998800001339987,
+      "resize_first_phi0": 0.0999880000483131,
+      "phase_difference_deg": 0.19999999996508677,
+      "max_field_difference_if_same_grid": null
+    },
+    {
+      "type": "custom",
+      "normalize_first_phi0": 0.19999999995343387,
+      "resize_first_phi0": 0.19999999995343387,
+      "phase_difference_deg": 0.0,
+      "max_field_difference_if_same_grid": 0.0
+    }
+  ],
+  "status_note": "Historical snapshot: HMI_hourly/HMI_SYNC geometry and hourly rejection superseded by hmi_dynamic_longitude_validation.json and .md."
+}

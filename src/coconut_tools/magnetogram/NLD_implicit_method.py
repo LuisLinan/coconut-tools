@@ -148,6 +148,8 @@ def process_magnetogram_date(
     if custom_magnetogram is not None and requested_interpolation:
         logger.info("Temporal interpolation is disabled for a custom magnetogram.")
     rotate_to_stonyhurst = _as_bool(config.get("rotate_to_stonyhurst", True))
+    carrington = _as_bool(config.get("carrington", False))
+    physical_longitude = (carrington or rotate_to_stonyhurst) and map_type.lower() != "wso"
     flux_correction_method = config.get("flux_correction_method", "surface_mean")
     drms_email = config.get("drms_email", config.get("jsoc_email"))
     resize = _as_bool(config.get("resize", False))
@@ -176,6 +178,7 @@ def process_magnetogram_date(
             map_type,
             adapt_map,
             resize=resize,
+            carrington=physical_longitude,
         )
         Br_linear = None
         selection = None
@@ -195,6 +198,7 @@ def process_magnetogram_date(
             adapt_map=adapt_map,
             interpolation_order=interpolation_order,
             resize=resize,
+            carrington=physical_longitude,
         )
         local_file = local_files
     else:
@@ -205,7 +209,7 @@ def process_magnetogram_date(
             method_used=method_used,
             drms_email=drms_email,
         )
-        Br, Theta, Phi = read_magnetogram(local_file, map_type, adapt_map, resize=resize)
+        Br, Theta, Phi = read_magnetogram(local_file, map_type, adapt_map, resize=resize, carrington=physical_longitude)
         Br_linear = None
         selection = None
 
@@ -227,7 +231,7 @@ def process_magnetogram_date(
         target_date,
         interpolated=interpolated,
     )
-    Br, Br_linear, rotation_angle = apply_configured_longitude_rotation(
+    Br, Br_linear, Phi, rotation_angle = apply_configured_longitude_rotation(
         Br,
         Br_linear,
         local_file,
@@ -237,6 +241,7 @@ def process_magnetogram_date(
         rotate_to_stonyhurst,
         effective_date=effective_date,
         resize=resize,
+        Phi=Phi,
     )
 
     if _as_bool(config.get("flux_correct", False)):
@@ -366,6 +371,7 @@ if __name__ == "__main__":
         "show_map": True,
         "visu_type": "sinlat",
         "alpha": 3 * 10 ** (-6),
+        "carrington": False,
         "rotate_to_stonyhurst": True,
         "interpolation": False,
         "interpolation_order": 2,
@@ -410,6 +416,7 @@ if __name__ == "__main__":
         "show_map": True,
         "visu_type": "sinlat",
         "alpha": 3 * 10 ** (-6),
+        "carrington": False,
         "rotate_to_stonyhurst": True,
         "interpolation": False,
         "interpolation_order": 2,

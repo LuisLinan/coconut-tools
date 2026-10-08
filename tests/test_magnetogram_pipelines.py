@@ -138,7 +138,7 @@ def test_filtered_pipelines_apply_configured_amp_after_normalization(
     monkeypatch.setattr(
         module,
         "apply_configured_longitude_rotation",
-        lambda Br_in, Br_linear, *args, **kwargs: (Br_in, Br_linear, None),
+        lambda Br_in, Br_linear, *args, **kwargs: (Br_in, Br_linear, kwargs["Phi"], None),
     )
     monkeypatch.setattr(module, filter_name, lambda Br_in, *args, **kwargs: filter_result(Br_in))
     monkeypatch.setattr(
@@ -216,7 +216,7 @@ def test_sph_pipeline_uses_hmi_interpolation_at_requested_time(
         captured["use_interpolation"] = args[3]
         captured["effective_date"] = kwargs["effective_date"]
         captured["rotation_resize"] = kwargs["resize"]
-        return Br_in, Br_linear_in, None
+        return Br_in, Br_linear_in, kwargs["Phi"], None
 
     monkeypatch.setattr(
         sph_filtering,
@@ -297,7 +297,7 @@ def test_sph_pipeline_optionally_applies_gaussian_before_projection(
     monkeypatch.setattr(
         sph_filtering,
         "apply_configured_longitude_rotation",
-        lambda Br_in, Br_linear, *args, **kwargs: (Br_in, Br_linear, None),
+        lambda Br_in, Br_linear, *args, **kwargs: (Br_in, Br_linear, kwargs["Phi"], None),
     )
 
     def fake_gaussian(Br_in, phi_in, theta_in, template_size):
@@ -379,7 +379,7 @@ def test_custom_magnetogram_skips_download_and_interpolation(
     )
     monkeypatch.setattr(module, "read_interpolated_magnetogram", fail_acquisition)
 
-    def fake_read(path, map_type, adapt_map, resize=False):
+    def fake_read(path, map_type, adapt_map, resize=False, carrington=False):
         captured.update(
             {
                 "path": path,
@@ -394,7 +394,7 @@ def test_custom_magnetogram_skips_download_and_interpolation(
     monkeypatch.setattr(
         module,
         "apply_configured_longitude_rotation",
-        lambda Br_in, Br_linear, *args, **kwargs: (Br_in, Br_linear, None),
+        lambda Br_in, Br_linear, *args, **kwargs: (Br_in, Br_linear, kwargs["Phi"], None),
     )
     monkeypatch.setattr(
         module,
@@ -486,7 +486,7 @@ def test_filtered_pipelines_forward_resize_for_hmi_interpolation(
     def fake_rotation(Br_in, Br_linear_in, *args, **kwargs):
         captured["use_interpolation"] = args[3]
         captured["rotation_resize"] = kwargs["resize"]
-        return Br_in, Br_linear_in, 42.0
+        return Br_in, Br_linear_in, kwargs["Phi"], 42.0
 
     monkeypatch.setattr(module, "apply_configured_longitude_rotation", fake_rotation)
     monkeypatch.setattr(module, filter_name, lambda Br_in, *args, **kwargs: filter_result(Br_in))
@@ -609,7 +609,7 @@ def test_real_gong_single_magnetogram_filters_and_outputs():
     assert output_name == str(workdir / "map_gong_sph.dat")
     _assert_artifact(Path(local_file))
 
-    Br, Theta, Phi = read_magnetogram(local_file, MAP_TYPE)
+    Br, Theta, Phi = read_magnetogram(local_file, MAP_TYPE, carrington=True)
     assert Br.ndim == 2
     assert Br.shape == Theta.shape == Phi.shape
     assert np.isfinite(Br).all()
@@ -617,7 +617,7 @@ def test_real_gong_single_magnetogram_filters_and_outputs():
     effective_date = magnetogram_effective_date(local_file, MAP_TYPE, DATE)
     assert effective_date == magnetogram_display_date(local_file, MAP_TYPE, DATE)
 
-    Br, _, rotation_angle = apply_configured_longitude_rotation(
+    Br, _, Phi, rotation_angle = apply_configured_longitude_rotation(
         Br,
         None,
         local_file,
@@ -626,6 +626,7 @@ def test_real_gong_single_magnetogram_filters_and_outputs():
         use_interpolation=False,
         rotate_to_stonyhurst=True,
         effective_date=effective_date,
+        Phi=Phi,
     )
     assert rotation_angle is not None
 
@@ -672,6 +673,7 @@ def test_real_gong_temporal_interpolation_filters_and_outputs():
         MAP_TYPE,
         selection,
         interpolation_order=2,
+        carrington=True,
     )
     assert Br.shape == Theta.shape == Phi.shape == Br_linear.shape
     assert np.isfinite(Br).all()
@@ -682,7 +684,7 @@ def test_real_gong_temporal_interpolation_filters_and_outputs():
         interpolated=True,
     ) == datetime.fromisoformat(DATE)
 
-    Br, Br_linear, rotation_angle = apply_configured_longitude_rotation(
+    Br, Br_linear, Phi, rotation_angle = apply_configured_longitude_rotation(
         Br,
         Br_linear,
         local_files,
@@ -691,6 +693,7 @@ def test_real_gong_temporal_interpolation_filters_and_outputs():
         use_interpolation=True,
         rotate_to_stonyhurst=True,
         effective_date=DATE,
+        Phi=Phi,
     )
     assert Br_linear.shape == Br.shape
     assert rotation_angle is not None

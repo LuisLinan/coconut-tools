@@ -242,18 +242,18 @@ reader.
 
 ### Longitude normalization
 
-- Ordinary FITS products are reordered to increasing longitude when the FITS
-  direction requires it.
-- Dynamic HMI products are rolled so Carrington longitude zero is first.
-- Temporal GONG maps additionally apply the filename-encoded circular shift.
-- `NaN` and infinite field values are replaced through `numpy.nan_to_num`.
+Physical modes decode the product's native centers and permute Br and those
+centers together into Carrington order before resizing. Dynamic HMI uses its
+signed WCS with the original JSOC image convention; GONG uses its physical WCS
+centers. The filename roll and zero-origin reconstruction remain confined to
+legacy output. Non-finite field values are replaced through numpy.nan_to_num.
 
 ### Temporal interpolation
 
 Every map in the four-map stencil is normalized before interpolation. The code
-rejects inconsistent array shapes and physical theta axes rather than silently
-remapping them. HMI-FDT additionally requires the same complete, fixed
-Carrington longitude grid in all four files.
+rejects inconsistent array shapes, physical theta axes, and physical Carrington
+longitude axes rather than silently remapping them. This validation applies
+to every temporal product, including legacy output.
 
 - `interpolation_order=1`: linear interpolation between `before` and `after`;
 - `interpolation_order=2`: cubic Hermite interpolation using centered time
@@ -263,31 +263,28 @@ The temporal reader returns both `Br` (the selected interpolation result) and
 `Br_linear`. `Br_linear` is retained for diagnostics/metadata and is rotated
 with `Br`, but the spherical-harmonic projection uses `Br`.
 
-## Stage 4: effective time and Stonyhurst rotation
+## Stage 4: physical longitude frame
 
-`magnetogram_effective_date` defines the time physically represented by the
-map:
+When either `carrington=True` or `rotate_to_stonyhurst=True`, readers normalize
+native columns to their physical Carrington centers before resizing. Both
+Stonyhurst configurations follow the same path. `carrington` defaults to `False`;
+with both flags false the legacy field and coordinates are preserved.
 
-- an interpolated map represents the requested target time;
-- a custom map uses `config["date"]`;
-- non-interpolated GONG, ADAPT, HMI-SYNC, HMI-hourly, and HMI-FDT maps use the
-  observation time encoded in their filename;
-- HMI small, HMI polar-filled, and WSO use the target time by convention.
+The rotation helper consumes the reader's `Phi` and returns
+`Br, Br_linear, Phi, rotation_angle`. It rolls to the nearest Carrington central
+meridian column and subtracts the exact meridian from the centers. Output `Phi`
+is wrapped into `[0, 2*pi)` and retains the fractional residual, including a
+possible seam such as `359.7, 0.7, ...` degrees. It never forces the first center
+to zero. WSO retains its historical treatment and is excluded from this contract.
 
-If `rotate_to_stonyhurst=True`, `apply_configured_longitude_rotation` computes
-the Carrington central meridian at the effective time, finds the closest actual
-longitude column, and circularly rolls `Br`. The same roll is applied to
-`Br_linear`. WSO is handled with its duplicate `0/360 deg` endpoint preserved.
+Custom Stonyhurst maps first convert to Carrington using source observer
+metadata or the source FITS date; missing conversion metadata raises an error.
+The final rotation uses the configured effective time. Unknown frames are rejected.
 
-For custom FITS input, the reference frame comes from `CTYPE1`, not from the
-filename. A Carrington axis uses the ephemeris value at `config["date"]`;
-native `HGLN-*` axes require no Carrington-to-Stonyhurst roll. The target
-source column includes the first physical `phi` center, so a centered grid
-such as `0.05, 0.15, ...` remains geometrically consistent after rotation.
-
-The numeric `phi` array remains the standard output axis. The frame change is
-encoded by reordering the field columns so that the field at the Stonyhurst
-zero meridian occupies the zero-longitude column.
+Temporal interpolation validates the full physical Carrington grids of all four
+maps before combining columns. Different fractional centers are rejected even
+in legacy output mode. See [the longitude validation report](../../../docs/longitude_validation.md)
+for product conventions, operation order, compatibility, and measured fluxes.
 
 ## Stage 5: optional net-flux correction
 
@@ -391,6 +388,7 @@ the harmonic filter.
 | `interpolation` | product-dependent | Enable four-map temporal interpolation |
 | `interpolation_order` | `2` | `1` for linear, `2` for cubic Hermite; `Interp_order` is a legacy alias |
 | `resize` | `False` | Resample the field to `360 x 720` while preserving latitude bounds |
+| `carrington` | `False` | Return physical Carrington centers when rotation is disabled |
 | `rotate_to_stonyhurst` | `True` | Roll field columns into the Stonyhurst frame |
 | `flux_correct` | `False` | Apply an area-aware net-flux correction before SPH |
 | `flux_correction_method` | `surface_mean` | `surface_mean` or `polarity_scaling` |

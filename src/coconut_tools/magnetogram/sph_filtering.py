@@ -83,6 +83,8 @@ def process_magnetogram_date(
     if custom_magnetogram is not None and requested_interpolation:
         logger.info("Temporal interpolation is disabled for a custom magnetogram.")
     rotate_to_stonyhurst = _as_bool(config.get("rotate_to_stonyhurst", True))
+    carrington = _as_bool(config.get("carrington", False))
+    physical_longitude = (carrington or rotate_to_stonyhurst) and map_type.lower() != "wso"
     flux_correction_method = config.get("flux_correction_method", "surface_mean")
     drms_email = config.get("drms_email", config.get("jsoc_email"))
     resize = _as_bool(config.get("resize", False))
@@ -106,6 +108,7 @@ def process_magnetogram_date(
             map_type,
             adapt_map,
             resize=resize,
+            carrington=physical_longitude,
         )
         Br_linear = None
         selection = None
@@ -127,6 +130,7 @@ def process_magnetogram_date(
             adapt_map=adapt_map,
             interpolation_order=interpolation_order,
             resize=resize,
+            carrington=physical_longitude,
         )
         local_file = local_files
     else:
@@ -142,6 +146,7 @@ def process_magnetogram_date(
             map_type,
             adapt_map,
             resize=resize,
+            carrington=physical_longitude,
         )
         Br_linear = None
         selection = None
@@ -165,7 +170,7 @@ def process_magnetogram_date(
         interpolated=interpolated,
     )
 
-    Br, Br_linear, rotation_angle = apply_configured_longitude_rotation(
+    Br, Br_linear, Phi, rotation_angle = apply_configured_longitude_rotation(
         Br,
         Br_linear,
         local_file,
@@ -175,6 +180,7 @@ def process_magnetogram_date(
         rotate_to_stonyhurst,
         effective_date=effective_date,
         resize=resize,
+        Phi=Phi,
     )
 
     if _as_bool(config.get("flux_correct", False)):
@@ -300,6 +306,8 @@ if __name__ == "__main__":
     label = "sph_filtering_with_very"
     output_dir = os.path.join(base_output_dir, label)
     figure_output_dir = os.path.join(base_output_dir, "images")
+    r"""
+    Example configuration for testing the spherical-harmonic magnetogram pipeline.
 
     config = {
         "date": "2011-09-09T01:47:05",
@@ -310,6 +318,7 @@ if __name__ == "__main__":
         "show_map": True,
         "visu_type": "sinlat",
         "alpha": 3 * 10 ** (-6),
+        "carrington": False,
         "rotate_to_stonyhurst": False,
         "interpolation": False,
         "interpolation_order": 2,
@@ -325,3 +334,63 @@ if __name__ == "__main__":
         "drms_email": "luis.linan@kuleuven.be",
     }
     process_config(config, method_used="sph")
+    """
+
+    # Apply the spherical-harmonic filter to every supported non-custom, non-WSO map.
+    reference_output_dir = r"C:\Users\luisl\Desktop\testmagnetogram\test_all\carrington"
+    map_types = (
+        "HMI_SYNC",
+        "HMI_hourly",
+        "ADAPT",
+        "HMI_polfil",
+        "HMI_small",
+        "HMI_fdt",
+        "GONG",
+        "GONG_mrbqj",
+        "GONG_mrbqs",
+        "GONG_mrmqs",
+        "GONG_mrnqs",
+        "GONG_mrzqs",
+    )
+    completed_map_types = []
+    failed_map_types = []
+    for map_type in map_types:
+        config = {
+            "date": "2026-09-01T00:00:00",
+            "map_type": map_type,
+            "lmax": 20,
+            "write_map": False,
+            "show_map": True,
+            "resize": True,
+            "carrington": True,
+            "rotate_to_stonyhurst": True,
+            "interpolation": False,
+            "gaussian_filtering": False,
+            "output_dir": reference_output_dir,
+            "download_dir": reference_output_dir,
+            "output_path_fig": os.path.join(
+                reference_output_dir,
+            ),
+            "drms_email": "luis.linan@kuleuven.be",
+        }
+        logger.info("Processing reference magnetogram: %s", map_type)
+        try:
+            process_config(config, method_used="sph")
+        except Exception:
+            failed_map_types.append(map_type)
+            logger.exception(
+                "Reference processing failed for %s at %s; continuing with the other map types.",
+                map_type,
+                config["date"],
+            )
+        else:
+            completed_map_types.append(map_type)
+
+    logger.info(
+        "Reference processing finished: %d/%d map types completed. Successful types: %s",
+        len(completed_map_types),
+        len(map_types),
+        ", ".join(completed_map_types) or "none",
+    )
+    if failed_map_types:
+        logger.warning("Failed map types: %s", ", ".join(failed_map_types))

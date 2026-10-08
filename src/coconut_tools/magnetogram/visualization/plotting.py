@@ -158,6 +158,11 @@ def plot_maps(
 
     latitude = 90.0 - 180.0 * theta / np.pi
     longitude = 180.0 * phi / np.pi
+    if np.any(np.diff(longitude) < 0.0):
+        # Keep the physical residual while displaying a continuous seam.
+        longitude = np.degrees(np.unwrap(phi))
+        if longitude[0] > 180.0:
+            longitude = longitude - 360.0
     vmax1 = _symmetric_color_limit(Br)
     vmax2 = _symmetric_color_limit(Br_mode)
 

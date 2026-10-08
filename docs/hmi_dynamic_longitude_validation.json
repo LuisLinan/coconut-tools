@@ -1,0 +1,228 @@
+{
+  "files": [
+    {
+      "product": "HMI_hourly",
+      "file": "hmi.synoptic_hourly_20260831_222400.fits",
+      "metadata": {
+        "TELESCOP": "SDO/HMI",
+        "CONTENT": "Update Synoptic MAP (Mr)",
+        "CTYPE1": "CRLN-CEA",
+        "CUNIT1": "deg",
+        "CUNIT2": "deg",
+        "CRPIX1": 1800.0,
+        "CRVAL1": 832948.800012,
+        "CDELT1": -0.1,
+        "LON_FRST": 832768.800012,
+        "LON_LAST": 833128.700012
+      },
+      "sunpy_synoptic_match": false,
+      "reversed_wcs_first": 88.80001200002152,
+      "abs_cdelt_first": 88.90001199999824,
+      "physical_first": 271.2999879999552,
+      "endpoint_error_deg": 0.0,
+      "comparisons": [
+        {
+          "resize": false,
+          "stonyhurst_equals_pre_refactor": true,
+          "max_abs_field_difference": 0.0
+        },
+        {
+          "resize": true,
+          "stonyhurst_equals_pre_refactor": false,
+          "max_abs_field_difference": 838.1365254760287,
+          "physical_center_difference_from_pre_refactor_deg": -0.40000000002328306
+        }
+      ]
+    },
+    {
+      "product": "HMI_hourly",
+      "file": "hmi.synoptic_hourly_20260831_232400.fits",
+      "metadata": {
+        "TELESCOP": "SDO/HMI",
+        "CONTENT": "Update Synoptic MAP (Mr)",
+        "CTYPE1": "CRLN-CEA",
+        "CUNIT1": "deg",
+        "CUNIT2": "deg",
+        "CRPIX1": 1800.0,
+        "CRVAL1": 832949.399988,
+        "CDELT1": -0.1,
+        "LON_FRST": 832769.399988,
+        "LON_LAST": 833129.299988
+      },
+      "sunpy_synoptic_match": false,
+      "reversed_wcs_first": 89.39998800004832,
+      "abs_cdelt_first": 89.49998800002504,
+      "physical_first": 270.7000119999284,
+      "endpoint_error_deg": 1.1641532182693481e-10,
+      "comparisons": [
+        {
+          "resize": false,
+          "stonyhurst_equals_pre_refactor": true,
+          "max_abs_field_difference": 0.0
+        },
+        {
+          "resize": true,
+          "stonyhurst_equals_pre_refactor": false,
+          "max_abs_field_difference": 987.623545224657,
+          "physical_center_difference_from_pre_refactor_deg": -0.5
+        }
+      ]
+    },
+    {
+      "product": "HMI_hourly",
+      "file": "hmi.synoptic_hourly_20260901_002400.fits",
+      "metadata": {
+        "TELESCOP": "SDO/HMI",
+        "CONTENT": "Update Synoptic MAP (Mr)",
+        "CTYPE1": "CRLN-CEA",
+        "CUNIT1": "deg",
+        "CUNIT2": "deg",
+        "CRPIX1": 1800.0,
+        "CRVAL1": 832949.899988,
+        "CDELT1": -0.1,
+        "LON_FRST": 832769.899988,
+        "LON_LAST": 833129.799988
+      },
+      "sunpy_synoptic_match": false,
+      "reversed_wcs_first": 89.89998800004832,
+      "abs_cdelt_first": 89.99998800002504,
+      "physical_first": 270.2000119999284,
+      "endpoint_error_deg": 1.1641532182693481e-10,
+      "comparisons": [
+        {
+          "resize": false,
+          "stonyhurst_equals_pre_refactor": true,
+          "max_abs_field_difference": 0.0
+        },
+        {
+          "resize": true,
+          "stonyhurst_equals_pre_refactor": true,
+          "max_abs_field_difference": 0.0,
+          "physical_center_difference_from_pre_refactor_deg": 0.0
+        }
+      ]
+    },
+    {
+      "product": "HMI_hourly",
+      "file": "hmi.synoptic_hourly_20260901_012400.fits",
+      "metadata": {
+        "TELESCOP": "SDO/HMI",
+        "CONTENT": "Update Synoptic MAP (Mr)",
+        "CTYPE1": "CRLN-CEA",
+        "CUNIT1": "deg",
+        "CUNIT2": "deg",
+        "CRPIX1": 1800.0,
+        "CRVAL1": 832950.499994,
+        "CDELT1": -0.1,
+        "LON_FRST": 832770.499994,
+        "LON_LAST": 833130.399994
+      },
+      "sunpy_synoptic_match": false,
+      "reversed_wcs_first": 90.49999399995431,
+      "abs_cdelt_first": 90.59999399993103,
+      "physical_first": 269.6000060000224,
+      "endpoint_error_deg": 0.0,
+      "comparisons": [
+        {
+          "resize": false,
+          "stonyhurst_equals_pre_refactor": true,
+          "max_abs_field_difference": 0.0
+        },
+        {
+          "resize": true,
+          "stonyhurst_equals_pre_refactor": true,
+          "max_abs_field_difference": 0.0,
+          "physical_center_difference_from_pre_refactor_deg": 0.0
+        }
+      ]
+    },
+    {
+      "product": "HMI_SYNC",
+      "file": "hmi.mrdailysynframe_720s_nrt.20260901_002400_TAI.data.fits",
+      "metadata": {
+        "TELESCOP": "SDO/HMI",
+        "CONTENT": "Update Synoptic MAP (Mr)",
+        "CTYPE1": "CRLN-CEA",
+        "CUNIT1": "degree",
+        "CUNIT2": "sin(deg)",
+        "CRPIX1": 1800.0,
+        "CRVAL1": 832949.899988,
+        "CDELT1": -0.1,
+        "LON_FRST": 832769.899987793,
+        "LON_LAST": 833129.799987793
+      },
+      "sunpy_synoptic_match": false,
+      "reversed_wcs_first": 89.89998800004832,
+      "abs_cdelt_first": 89.99998800002504,
+      "physical_first": 270.2000119999284,
+      "endpoint_error_deg": 2.0710285753011703e-07,
+      "comparisons": [
+        {
+          "resize": false,
+          "stonyhurst_equals_pre_refactor": true,
+          "max_abs_field_difference": 0.0
+        },
+        {
+          "resize": true,
+          "stonyhurst_equals_pre_refactor": true,
+          "max_abs_field_difference": 0.0,
+          "physical_center_difference_from_pre_refactor_deg": 0.0
+        }
+      ]
+    }
+  ],
+  "feature_shifts": [
+    {
+      "before": "hmi.synoptic_hourly_20260831_222400.fits",
+      "after": "hmi.synoptic_hourly_20260831_232400.fits",
+      "best_shift_columns": 6,
+      "mse": 0.002653538183128782,
+      "neighbor_mse": [
+        219.12006955069324,
+        219.43992842691705
+      ]
+    },
+    {
+      "before": "hmi.synoptic_hourly_20260831_232400.fits",
+      "after": "hmi.synoptic_hourly_20260901_002400.fits",
+      "best_shift_columns": 5,
+      "mse": 0.0027034834051743147,
+      "neighbor_mse": [
+        219.75009475386182,
+        219.8730521590347
+      ]
+    },
+    {
+      "before": "hmi.synoptic_hourly_20260901_002400.fits",
+      "after": "hmi.synoptic_hourly_20260901_012400.fits",
+      "best_shift_columns": 6,
+      "mse": 0.002803681026349844,
+      "neighbor_mse": [
+        220.60441035863246,
+        220.83652811748772
+      ]
+    }
+  ],
+  "interpolation": [
+    {
+      "resize": false,
+      "carrington": false,
+      "result": "PASS"
+    },
+    {
+      "resize": false,
+      "carrington": true,
+      "result": "PASS"
+    },
+    {
+      "resize": true,
+      "carrington": false,
+      "result": "PASS"
+    },
+    {
+      "resize": true,
+      "carrington": true,
+      "result": "PASS"
+    }
+  ]
+}

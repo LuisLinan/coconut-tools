@@ -211,31 +211,33 @@ No pole center is manufactured. `resize=True` resamples the map to `360 x 720`
 and rebuilds theta centers while retaining the original physical outer cell
 edges in the native coordinate.
 
-Longitude columns are made increasing, HMI dynamic products are rolled to
-Carrington zero, and temporal GONG maps receive their filename-encoded circular
-shift. Non-finite field values are replaced with finite values.
+Physical longitude modes use the common Carrington normalization before
+resizing, carrying the exact centers with Br. Historical product rolls remain
+only in legacy output. Every temporal stencil must have matching physical
+Carrington and latitude grids before interpolation.
 
-## Stage 4: time and longitude frame
+## Stage 4: physical longitude frame
 
-The effective time is the requested time for interpolated and custom maps. For most
-non-interpolated temporal products it is parsed from the selected filename;
-HMI small, HMI polar-filled, and WSO use the target time by convention.
+When either `carrington=True` or `rotate_to_stonyhurst=True`, readers normalize
+native columns to their physical Carrington centers before resizing. Both
+Stonyhurst configurations follow the same path. `carrington` defaults to `False`;
+with both flags false the legacy field and coordinates are preserved.
 
-When `rotate_to_stonyhurst=True`,
-`processing.longitude.apply_configured_longitude_rotation`:
+The rotation helper consumes the reader's `Phi` and returns
+`Br, Br_linear, Phi, rotation_angle`. It rolls to the nearest Carrington central
+meridian column and subtracts the exact meridian from the centers. Output `Phi`
+is wrapped into `[0, 2*pi)` and retains the fractional residual, including a
+possible seam such as `359.7, 0.7, ...` degrees. It never forces the first center
+to zero. WSO retains its historical treatment and is excluded from this contract.
 
-1. obtains the Carrington central meridian at the effective time;
-2. reconstructs the longitude centers in the same column order as `Br`;
-3. finds the nearest actual column to the required zero meridian;
-4. circularly rolls `Br` and, when present, `Br_linear`.
+Custom Stonyhurst maps first convert to Carrington using source observer
+metadata or the source FITS date; missing conversion metadata raises an error.
+The final rotation uses the configured effective time. Unknown frames are rejected.
 
-For a custom Carrington FITS, the central meridian is computed at the explicit
-configured date. A native custom `HGLN-*` map is left unchanged. The actual normalized cell centers are used,
-including a nonzero first center and the resized grid when applicable.
-
-The theta grid is unchanged. The standard output `phi` coordinates also remain
-unchanged; the frame transformation is represented by the field-column roll.
-WSO keeps its duplicate longitude endpoint consistent.
+Temporal interpolation validates the full physical Carrington grids of all four
+maps before combining columns. Different fractional centers are rejected even
+in legacy output mode. See [the longitude validation report](../../../docs/longitude_validation.md)
+for product conventions, operation order, compatibility, and measured fluxes.
 
 ## Stage 5: optional physical flux balancing
 
@@ -362,6 +364,7 @@ uses robust symmetric color limits based on the 99th absolute percentile.
 | `interpolation` | product-dependent | Enable supported four-map interpolation |
 | `interpolation_order` | `2` | `1` linear or `2` cubic Hermite; `Interp_order` is accepted |
 | `resize` | `False` | Resample to `360 x 720` while preserving latitude bounds |
+| `carrington` | `False` | Return physical Carrington centers when rotation is disabled |
 | `rotate_to_stonyhurst` | `True` | Roll field columns into the Stonyhurst frame |
 | `flux_correct` | `False` | Balance integrated flux before NLD |
 | `flux_correction_method` | `surface_mean` | `surface_mean` or `polarity_scaling` |
