@@ -22,6 +22,7 @@ GONG_SYNCHRONIC_FILE_IDS = {"mrzqs", "mrbqs", "mrbqj"}
 GONG_DIACHRONIC_FILE_IDS = {"mrmqs", "mrnqs"}
 GONG_FILE_IDS = GONG_SYNCHRONIC_FILE_IDS | GONG_DIACHRONIC_FILE_IDS
 HMI_SYNC_SERIES = "hmi.Mrdailysynframe_720s_nrt"
+HMI_SYNC_DEFINITIVE_SERIES = "hmi.Mrdailysynframe_720s"
 HMI_HOURLY_SERIES = "hmi.mrdailysynframe_polfil_720s_nrt"
 HMI_HOURLY_SEGMENT = "Mr_polfil"
 HMI_FDT_REMOTE_DIR = "https://gong.nso.edu/adapt/maps/hmi-fdtl/"
@@ -927,13 +928,15 @@ def find_hmi_sync_candidates(
     client,
     date_datetime: datetime,
     half_window_hours: int = 12,
+    *,
+    series_name: str = HMI_SYNC_SERIES,
 ) -> list[tuple[str, datetime]]:
     """Return available HMI_SYNC metadata records sorted by distance to the target date."""
     start_datetime = date_datetime - timedelta(hours=half_window_hours)
     duration_hours = 2 * half_window_hours
 
     start_jsoc = start_datetime.strftime("%Y.%m.%d_%H:%M:%S_TAI")
-    recordset = f"{HMI_SYNC_SERIES}[{start_jsoc}/{duration_hours}h]"
+    recordset = f"{series_name}[{start_jsoc}/{duration_hours}h]"
 
     logger.info(f"Searching available HMI_SYNC records: {recordset}")
 
@@ -974,11 +977,13 @@ def ensure_hmi_sync_wcs(
     client,
     t_rec: str,
     local_file: str,
+    *,
+    series_name: str = HMI_SYNC_SERIES,
 ) -> str:
     """Attach authoritative JSOC longitude WCS metadata to an HMI_SYNC FITS."""
     from astropy.io import fits
 
-    series = f"{HMI_SYNC_SERIES}[{t_rec}]"
+    series = f"{series_name}[{t_rec}]"
     wcs_keys = ("CRVAL1", "CRPIX1", "CDELT1", "CTYPE1", "CUNIT1")
     metadata = client.query(series, key=",".join(wcs_keys))
     if metadata.empty:
@@ -1035,9 +1040,11 @@ def try_download_hmi_sync_record(
     client,
     t_rec: str,
     output_dir: str,
+    *,
+    series_name: str = HMI_SYNC_SERIES,
 ) -> tuple[str, str] | None:
     """Try to download one HMI_SYNC record. Return None if the data file is unavailable."""
-    series = f"{HMI_SYNC_SERIES}[{t_rec}]"
+    series = f"{series_name}[{t_rec}]"
 
     logger.info(f"Requesting JSOC series: {series}")
 
@@ -1046,6 +1053,13 @@ def try_download_hmi_sync_record(
         downloaded_files = export.download(output_dir)
 
         downloads = downloaded_files.download
+        if len(downloads) == 0:
+            logger.warning(
+                "HMI_SYNC record found but data file unavailable: %s "
+                "(JSOC export returned no files)",
+                series,
+            )
+            return None
         local_file = downloads.iloc[0] if hasattr(downloads, "iloc") else downloads[0]
         local_file = str(local_file)
 
@@ -1054,7 +1068,9 @@ def try_download_hmi_sync_record(
         if not re.search(r"\.fits(?:\.gz|\.\d+)?$", local_file, re.IGNORECASE):
             raise RuntimeError(f"JSOC did not return a FITS file: {local_file}")
 
-        local_file = ensure_hmi_sync_wcs(client, t_rec, local_file)
+        local_file = ensure_hmi_sync_wcs(
+            client, t_rec, local_file, series_name=series_name
+        )
         map_name = Path(local_file).name
 
         logger.info(f"Downloaded map: {local_file}")
@@ -1063,7 +1079,11 @@ def try_download_hmi_sync_record(
 
     except Exception as exc:
         if is_jsoc_unavailable_error(exc):
-            logger.warning(f"HMI_SYNC record found but data file unavailable: {t_rec}")
+            logger.warning(
+                "HMI_SYNC record found but data file unavailable: %s (%s)",
+                series,
+                exc,
+            )
             return None
 
         raise
@@ -1074,7 +1094,7 @@ def download_hmi_sync_magnetogram(
     output_dir: str,
     drms_email: str | None,
 ) -> tuple[str, str]:
-    """Download the nearest downloadable HMI_SYNC magnetogram through JSOC DRMS."""
+    """Download a daily map, preferring definitive over NRT in each time window."""
     if not drms_email:
         raise ValueError("HMI_SYNC requires a DRMS email in config['drms_email'].")
 
@@ -1085,53 +1105,67 @@ def download_hmi_sync_magnetogram(
     client = drms.Client(email=drms_email)
 
     tried_records = set()
+    series_names = (HMI_SYNC_DEFINITIVE_SERIES, HMI_SYNC_SERIES)
 
     for half_window_hours in (12, 24, 48, 72):
-        candidates = find_hmi_sync_candidates(
-            client=client,
-            date_datetime=date_datetime,
-            half_window_hours=half_window_hours,
-        )
-
-        if not candidates:
-            logger.warning(
-                f"No HMI_SYNC metadata records found within +/- {half_window_hours} h "
-                f"around {date_datetime}."
+        for series_name in series_names:
+            candidates = find_hmi_sync_candidates(
+                client=client,
+                date_datetime=date_datetime,
+                half_window_hours=half_window_hours,
+                series_name=series_name,
             )
-            continue
 
-        logger.info(f"Requested date: {date_datetime}")
-        logger.info(
-            f"Nearest HMI_SYNC metadata record: {candidates[0][0]} "
-            f"at {candidates[0][1]}"
-        )
-
-        for t_rec, candidate_datetime in candidates:
-            if t_rec in tried_records:
+            if not candidates:
+                logger.info(
+                    "No HMI_SYNC metadata records in %s within +/- %s h around %s.",
+                    series_name,
+                    half_window_hours,
+                    date_datetime,
+                )
                 continue
 
-            tried_records.add(t_rec)
-
-            delta_minutes = abs(candidate_datetime - date_datetime).total_seconds() / 60.0
-
+            logger.info(f"Requested date: {date_datetime}")
             logger.info(
-                f"Trying HMI_SYNC record {t_rec} "
-                f"with time difference {delta_minutes:.1f} min"
+                "Nearest HMI_SYNC metadata record in %s: %s at %s",
+                series_name,
+                candidates[0][0],
+                candidates[0][1],
             )
 
-            result = try_download_hmi_sync_record(
-                client=client,
-                t_rec=t_rec,
-                output_dir=output_dir,
-            )
+            for t_rec, candidate_datetime in candidates:
+                record = (series_name, t_rec)
+                if record in tried_records:
+                    continue
 
-            if result is not None:
-                return result
+                tried_records.add(record)
+
+                delta_minutes = abs(candidate_datetime - date_datetime).total_seconds() / 60.0
+
+                logger.info(
+                    "Trying HMI_SYNC record %s[%s] with time difference %.1f min",
+                    series_name,
+                    t_rec,
+                    delta_minutes,
+                )
+
+                result = try_download_hmi_sync_record(
+                    client=client,
+                    t_rec=t_rec,
+                    output_dir=output_dir,
+                    series_name=series_name,
+                )
+
+                if result is not None:
+                    return result
 
     raise RuntimeError(
-        f"No downloadable HMI_SYNC magnetogram found around {date_datetime}. "
-        f"Metadata records exist, but the nearest data files may be offline on JSOC. "
-        f"JSOC suggests contacting jsoc@sun.stanford.edu for offline files."
+        f"No downloadable HMI_SYNC magnetogram found in {', '.join(series_names)} "
+        f"within +/- 72 h of {date_datetime}. "
+        f"Tried {len(tried_records)} distinct metadata records. "
+        "The data files may be offline or no longer available on JSOC; "
+        "metadata availability does not guarantee file availability. "
+        "See the preceding warnings for the JSOC errors."
     )
 
 

@@ -303,39 +303,36 @@ def process_config(
 if __name__ == "__main__":
 
     base_output_dir = r"C:\Users\luisl\Desktop\testmagnetogram\test"
-    label = "sph_filtering_with_very"
+    label = "sph_filtering_jose_v2"
     output_dir = os.path.join(base_output_dir, label)
     figure_output_dir = os.path.join(base_output_dir, "images")
-    r"""
-    Example configuration for testing the spherical-harmonic magnetogram pipeline.
 
     config = {
-        "date": "2011-09-09T01:47:05",
-        "custom_magnetogram": r"C:\Users\luisl\Desktop\testmagnetogram\ai_magnetogram\AI_synopt_20260801_162400_TAI.fits",
-        "lmax": 50,
+        "date": "2018-03-18T00:00:00",
+        "custom_magnetogram": None,
+        "lmax": 20,
         "amp": 1,
         "write_map": False,
         "show_map": True,
         "visu_type": "sinlat",
         "alpha": 3 * 10 ** (-6),
-        "carrington": False,
+        "carrington": True,
         "rotate_to_stonyhurst": False,
         "interpolation": False,
         "interpolation_order": 2,
         "resize": True,
-        "gaussian_filtering": True,
+        "gaussian_filtering": False,
         "template_size": 55,
         "flux_correct": False,
         "flux_correction_method": "surface_mean",
-        "map_type": "hmi_hourly",
+        "map_type": "hmi_sync",
         "output_dir": output_dir,
         "download_dir": output_dir,
         "output_path_fig": os.path.join(figure_output_dir, f"{label}.png"),
         "drms_email": "luis.linan@kuleuven.be",
     }
     process_config(config, method_used="sph")
-    """
-
+    r"""
     # Apply the spherical-harmonic filter to every supported non-custom, non-WSO map.
     reference_output_dir = r"C:\Users\luisl\Desktop\testmagnetogram\test_all\carrington"
     map_types = (
@@ -394,3 +391,4 @@ if __name__ == "__main__":
     )
     if failed_map_types:
         logger.warning("Failed map types: %s", ", ".join(failed_map_types))
+    """

@@ -61,6 +61,13 @@ To process one magnetogram, provide ``date`` and omit ``total_hours``:
 HMI_SYNC Example
 ----------------
 ``HMI_SYNC`` downloads ``hmi.Mrdailysynframe_720s`` maps through JSOC DRMS.
+Within each search window it tries the definitive daily series first, then
+``hmi.Mrdailysynframe_720s_nrt`` if no definitive map can be downloaded.
+The windows expand from +/- 12 hours to +/- 72 hours; candidates in each
+series are tried in order of distance to the requested date. The download
+and longitude WCS metadata always come from the same series and record.
+JSOC may retain metadata after the corresponding FITS files become
+unavailable; warnings include the original JSOC error in that case.
 Provide the JSOC email address in the configuration:
 
 .. code-block:: python
