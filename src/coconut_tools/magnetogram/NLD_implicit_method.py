@@ -14,30 +14,19 @@ import os
 
 import numpy as np
 import scipy.ndimage
-from coconut_tools.magnetogram.io.downloads import (
-    build_output_name,
-    build_processing_dates,
-    generate_output_and_interpolation_map_names,
-    generate_output_and_map_names,
-    is_gong_temporal_map_type,
-    magnetogram_effective_date,
-    magnetogram_display_date,
-    normalize_map_type,
-    parse_iso_datetime,
-    resolve_figure_path,
-)
-from coconut_tools.magnetogram.filters.nonlinear_diffusion import nonlinearDiffusionFilter
+
 from coconut_tools.magnetogram.core.config import _as_bool
-from coconut_tools.magnetogram.io.readers import (
-    read_interpolated_magnetogram,
-    read_magnetogram,
+from coconut_tools.magnetogram.filters.gaussian_filter import geodesic_gaussian_filtering
+from coconut_tools.magnetogram.filters.nonlinear_diffusion import (
+    SPHERICAL_DEFAULT_STEPS,
+    nonlinearDiffusionFilter,
+    spherical_nonlinear_diffusion,
 )
-from coconut_tools.magnetogram.io.writers import write_bc_file
-from coconut_tools.magnetogram.processing.flux_balance import correct_net_flux
-from coconut_tools.magnetogram.processing.longitude import (
-    apply_configured_longitude_rotation,
+from coconut_tools.magnetogram.processing.pipeline import (
+    FilterStep,
+    run_config,
+    run_magnetogram_pipeline,
 )
-from coconut_tools.magnetogram.visualization.plotting import plot_maps
 from coconut_tools.tools.logger_config import setup_logger
 
 logger = setup_logger(__name__)
@@ -90,227 +79,194 @@ def filter_radial_field(
     return Br_filtered, timestep
 
 
+_LEGACY_NLD_KEYS = ("tau", "gaussian_sigma", "dx_override", "dy_override")
+_SPHERICAL_NLD_KEYS = ("gaussian_sigma_deg", "lambda_g_per_deg")
+
+
+def resolve_nld_settings(config: dict[str, Any]) -> dict[str, Any]:
+    """Select the NLD mode and its parameters from a configuration.
+
+    ``diffusion_length_deg`` selects the spherical (physical) filter; the
+    legacy pixel keys ``tau``, ``gaussian_sigma``, ``dx_override`` and
+    ``dy_override`` are then rejected. Without it, the legacy pixel filter is
+    used exactly as before and the spherical keys are rejected.
+
+    Returns:
+        Dict with ``mode`` (``"spherical"`` or ``"legacy"``) and the keyword
+        arguments of the corresponding filter function.
+
+    Raises:
+        ValueError: On mixed legacy/spherical keys, or a missing
+            ``gaussian_sigma_deg`` while the spherical pre-smoothing is on.
+    """
+    configured_iterations = config.get("iterations")
+    apply_gaussian = _as_bool(config.get("apply_gaussian", True))
+    diffusion_length_deg = config.get("diffusion_length_deg")
+    if diffusion_length_deg is not None:
+        mixed = [key for key in _LEGACY_NLD_KEYS if config.get(key) is not None]
+        if mixed:
+            raise ValueError(
+                "diffusion_length_deg selects the spherical NLD; remove the legacy "
+                f"pixel keys {mixed} (tau is derived from the diffusion length)."
+            )
+        gaussian_sigma_deg = config.get("gaussian_sigma_deg")
+        if apply_gaussian and gaussian_sigma_deg is None:
+            raise ValueError(
+                "Spherical NLD with apply_gaussian=True needs gaussian_sigma_deg "
+                "(pre-smoothing width in degrees), or set apply_gaussian=False."
+            )
+        return {
+            "mode": "spherical",
+            "diffusion_length_deg": float(diffusion_length_deg),
+            # Number of AOS time steps; the spherical default only applies to
+            # this new mode (legacy keeps 7).
+            "iterations": int(
+                SPHERICAL_DEFAULT_STEPS
+                if configured_iterations is None
+                else configured_iterations
+            ),
+            "apply_gaussian": apply_gaussian,
+            "gaussian_sigma_deg": gaussian_sigma_deg,
+            "lambda_g_per_deg": config.get("lambda_g_per_deg"),
+        }
+    mixed = [key for key in _SPHERICAL_NLD_KEYS if config.get(key) is not None]
+    if mixed:
+        raise ValueError(
+            f"{mixed} only apply to the spherical NLD; set diffusion_length_deg "
+            "to use it."
+        )
+    return {
+        "mode": "legacy",
+        "iterations": 7 if configured_iterations is None else configured_iterations,
+        "apply_gaussian": apply_gaussian,
+        "gaussian_sigma": config.get("gaussian_sigma", 1.0),
+        "dx_override": config.get("dx_override", 1.0),
+        "dy_override": config.get("dy_override", 1.0),
+        "tau": config.get("tau", 5),
+    }
+
+
+def filter_radial_field_spherical(
+    Br: np.ndarray,
+    phi: np.ndarray,
+    theta: np.ndarray,
+    diffusion_length_deg: float,
+    iterations: int = SPHERICAL_DEFAULT_STEPS,
+    apply_gaussian: bool = True,
+    gaussian_sigma_deg: float | None = None,
+    lambda_g_per_deg: float | None = None,
+) -> tuple[np.ndarray, dict]:
+    """Physical NLD: great-circle Gaussian pre-smoothing + spherical diffusion.
+
+    Args:
+        Br (np.ndarray): 2D radial field.
+        phi (np.ndarray): 1D uniform longitude centres (radians).
+        theta (np.ndarray): 1D colatitude centres (radians), north to south.
+        diffusion_length_deg (float): Diffusion length in degrees.
+        iterations (int): Number of AOS time steps (default 28).
+        apply_gaussian (bool): Apply the great-circle Gaussian first.
+        gaussian_sigma_deg (float | None): Pre-smoothing width in degrees.
+        lambda_g_per_deg (float | None): Contrast threshold in G/deg, or None
+            for the automatic area-weighted MAD estimate.
+
+    Returns:
+        tuple[np.ndarray, dict]: Filtered field and solver information
+        (``lambda_g_per_deg``, ``lambda_source``, ``tau_rad2``, ``steps``,
+        ``scheme``...).
+    """
+    logger.info("Begin spherical NLD filtering")
+    if apply_gaussian:
+        Br = geodesic_gaussian_filtering(Br, phi, theta, gaussian_sigma_deg)
+    filtered, info = spherical_nonlinear_diffusion(
+        Br, phi, theta, diffusion_length_deg, iterations, lambda_g_per_deg
+    )
+    logger.info("End spherical NLD filtering")
+    return filtered, info
+
+
+def _apply_nld(
+    Br: np.ndarray,
+    Theta: np.ndarray,
+    Phi: np.ndarray,
+    settings: dict[str, Any],
+) -> tuple[np.ndarray, dict[str, Any]]:
+    """Nonlinear-diffusion step of the shared pipeline (legacy or spherical)."""
+    parameters = {k: v for k, v in settings.items() if k != "mode"}
+    if settings["mode"] == "spherical":
+        filtered, nld_info = filter_radial_field_spherical(
+            Br, Phi[0, :], Theta[:, 0], **parameters
+        )
+        timestep = nld_info["tau_rad2"]
+    else:
+        filtered, timestep = filter_radial_field(
+            Br, Phi[0, :], Theta[:, 0], **parameters
+        )
+        nld_info = None
+    return filtered, {
+        "timestep": timestep,
+        "nld_mode": settings["mode"],
+        "nld_info": nld_info,
+    }
+
+
+NLD_STEP = FilterStep(resolve_settings=resolve_nld_settings, apply=_apply_nld)
+"""Nonlinear-diffusion step for ``processing.pipeline.run_magnetogram_pipeline``."""
+
+
 def process_magnetogram_date(
     config: dict[str, Any],
     target_date,
     method_used: str = "NLD",
     output_path_fig: str | None = None,
+    unique_names: bool = False,
 ) -> dict[str, Any]:
     """Process one target time with the nonlinear diffusion pipeline.
 
-    The function downloads or reuses a magnetogram, optionally interpolates a
-    four-map stencil, computes and logs the effective magnetogram time,
-    optionally rotates to Stonyhurst, optionally balances net flux, applies the
-    nonlinear diffusion filter, writes the boundary file, and optionally saves
-    a diagnostic figure.
+    Runs the shared pipeline (``processing.pipeline.run_magnetogram_pipeline``):
+    read or interpolate the magnetogram, effective time, optional Stonyhurst
+    rotation, optional net-flux correction (``flux_correction_stage``),
+    nonlinear diffusion, ``/2.2 * amp``, boundary file and optional figure.
 
     Args:
-        config (dict[str, Any]): Processing configuration. Common keys are
-            ``map_type``, ``output_dir``, ``download_dir``, ``r_st``,
-            ``amp``, ``adapt_map``, ``write_map``, ``show_map``, ``visu_type``,
-            ``interpolation_order``, ``interpolation``, ``resize``,
-            ``rotate_to_stonyhurst``, ``flux_correct``,
-            ``flux_correction_method``, ``drms_email`` or ``jsoc_email``,
-            ``tau``, ``iterations``, ``apply_gaussian``, ``gaussian_sigma``,
-            ``dx_override``, and ``dy_override``.
+        config (dict[str, Any]): Processing configuration: the common keys of
+            ``run_magnetogram_pipeline`` plus ``iterations`` and
+            ``apply_gaussian``; legacy pixel mode: ``tau``, ``gaussian_sigma``,
+            ``dx_override``, ``dy_override``; spherical mode (selected by
+            ``diffusion_length_deg``): ``gaussian_sigma_deg`` and optional
+            ``lambda_g_per_deg``.
         target_date: Requested processing time.
         method_used (str): Method label used in output filenames.
-        output_path_fig (str | None): Explicit diagnostic figure path. If
-            omitted, the figure name is built from the effective time.
+        output_path_fig (str | None): Figure file or directory, resolved with
+            ``resolve_figure_path`` at the effective time. If omitted, the
+            figure name is built from the effective time.
+        unique_names (bool): Append the effective time to the ``.dat`` and
+            figure names; set by ``process_config`` when several dates are
+            processed so a time series does not overwrite its outputs.
 
     Returns:
         dict[str, Any]: Processing metadata, including target ``date``,
         ``effective_date``, output paths, selected local file or interpolation
-        stencil, optional ``Br_linear``, final diffusion timestep, and rotation
-        angle.
+        stencil, optional ``Br_linear``, final diffusion timestep (pixel units
+        in legacy mode, rad^2 in spherical mode), ``nld_mode``, ``nld_info``
+        (spherical mode: lambda and solver details), rotation angle and
+        ``flux_correction_stage``.
     """
-    custom_magnetogram = config.get("custom_magnetogram")
-    map_type = (
-        "custom"
-        if custom_magnetogram is not None
-        else normalize_map_type(config["map_type"])
-    )
-    if custom_magnetogram is not None:
-        custom_magnetogram = os.fspath(custom_magnetogram)
-    output_dir = config.get("output_dir", "../")
-    download_dir = config.get("download_dir", output_dir)
-    r_st = config.get("r_st", 1.0)
-    amp = config.get("amp", 1)
-    adapt_map = config.get("adapt_map", 6)
-    write_map = _as_bool(config.get("write_map", True))
-    show_map = _as_bool(config.get("show_map", True))
-    visu_type = config.get("visu_type", "sinlat")
-    interpolation_order = config.get("interpolation_order", config.get("Interp_order", 2))
-    requested_interpolation = _as_bool(
-        config.get("interpolation", is_gong_temporal_map_type(map_type) or map_type == "ADAPT")
-    )
-    use_interpolation = requested_interpolation and custom_magnetogram is None
-    if custom_magnetogram is not None and requested_interpolation:
-        logger.info("Temporal interpolation is disabled for a custom magnetogram.")
-    rotate_to_stonyhurst = _as_bool(config.get("rotate_to_stonyhurst", True))
-    carrington = _as_bool(config.get("carrington", False))
-    physical_longitude = (carrington or rotate_to_stonyhurst) and map_type.lower() != "wso"
-    flux_correction_method = config.get("flux_correction_method", "surface_mean")
-    drms_email = config.get("drms_email", config.get("jsoc_email"))
-    resize = _as_bool(config.get("resize", False))
-
-    tau = config.get("tau", 5)
-    iterations = config.get("iterations", 7)
-    apply_gaussian = _as_bool(config.get("apply_gaussian", True))
-    gaussian_sigma = config.get("gaussian_sigma", 1.0)
-    dx_override = config.get("dx_override", 1.0)
-    dy_override = config.get("dy_override", 1.0)
-
-    interpolated = use_interpolation and (
-        is_gong_temporal_map_type(map_type)
-        or map_type in {"ADAPT", "HMI_hourly", "HMI_fdt"}
-    )
-
-    if custom_magnetogram is not None:
-        output_name = build_output_name(
-            map_type,
-            output_dir,
-            method_used=method_used,
-        )
-        local_file = custom_magnetogram
-        Br, Theta, Phi = read_magnetogram(
-            local_file,
-            map_type,
-            adapt_map,
-            resize=resize,
-            carrington=physical_longitude,
-        )
-        Br_linear = None
-        selection = None
-    elif interpolated:
-        output_name, local_files, selection = generate_output_and_interpolation_map_names(
-            target_date,
-            map_type,
-            output_dir,
-            method_used=method_used,
-            download_dir=download_dir,
-            drms_email=drms_email,
-        )
-        Br, Theta, Phi, Br_linear = read_interpolated_magnetogram(
-            local_files,
-            map_type,
-            selection,
-            adapt_map=adapt_map,
-            interpolation_order=interpolation_order,
-            resize=resize,
-            carrington=physical_longitude,
-        )
-        local_file = local_files
-    else:
-        output_name, local_file = generate_output_and_map_names(
-            target_date,
-            map_type,
-            output_dir,
-            method_used=method_used,
-            drms_email=drms_email,
-        )
-        Br, Theta, Phi = read_magnetogram(local_file, map_type, adapt_map, resize=resize, carrington=physical_longitude)
-        Br_linear = None
-        selection = None
-
-    source_file = local_file[0] if isinstance(local_file, list) else local_file
-    effective_date = magnetogram_effective_date(
-        source_file,
-        map_type,
+    return run_magnetogram_pipeline(
+        config,
         target_date,
-        interpolated=interpolated,
+        NLD_STEP,
+        method_used=method_used,
+        output_path_fig=output_path_fig,
+        unique_names=unique_names,
     )
-    logger.info(
-        "Magnetogram timing: target_time: %s, effective_time: %s",
-        parse_iso_datetime(target_date).isoformat(),
-        effective_date.isoformat(),
-    )
-    figure_date = magnetogram_display_date(
-        source_file,
-        map_type,
-        target_date,
-        interpolated=interpolated,
-    )
-    Br, Br_linear, Phi, rotation_angle = apply_configured_longitude_rotation(
-        Br,
-        Br_linear,
-        local_file,
-        map_type,
-        target_date,
-        use_interpolation,
-        rotate_to_stonyhurst,
-        effective_date=effective_date,
-        resize=resize,
-        Phi=Phi,
-    )
-
-    if _as_bool(config.get("flux_correct", False)):
-        Br = correct_net_flux(
-            Br,
-            Theta[:, 0],
-            Phi[0, :],
-            method=flux_correction_method,
-        )
-
-    Br_filtered, timestep = filter_radial_field(
-        Br,
-        Phi[0, :],
-        Theta[:, 0],
-        iterations=iterations,
-        apply_gaussian=apply_gaussian,
-        gaussian_sigma=gaussian_sigma,
-        dx_override=dx_override,
-        dy_override=dy_override,
-        tau=tau,
-    )
-
-    Br_filtered = Br_filtered / 2.2
-    Br_filtered *= amp
-
-    if write_map:
-        write_bc_file(output_name, Br_filtered, Theta[:, 0], Phi[0, :], r_st)
-
-    if show_map:
-        figure_path = resolve_figure_path(
-            output_path_fig,
-            output_dir,
-            map_type,
-            effective_date,
-        )
-        plot_maps(
-            Br,
-            Br_filtered,
-            Theta[:, 0],
-            Phi[0, :],
-            map_type,
-            visu_type,
-            output_path=figure_path,
-            date=figure_date,
-        )
-    else:
-        figure_path = None
-
-    return {
-        "date": parse_iso_datetime(target_date),
-        "effective_date": effective_date,
-        "magnetogram_date": figure_date,
-        "output_name": output_name,
-        "local_file": local_file,
-        "figure_path": figure_path,
-        "selection": selection,
-        "Br_linear": Br_linear,
-        "timestep": timestep,
-        "rotation_angle": rotation_angle,
-    }
 
 
 def process_config(config: dict[str, Any], method_used: str = "NLD") -> list[dict[str, Any]]:
     """Process all target times described by one nonlinear diffusion config.
 
-    With only ``date`` set, one target time is processed. With
-    ``cadence_hours`` and ``total_hours``, the function builds a time sequence
-    and processes each target independently. When ``output_path_fig`` is omitted
-    each figure is named from the effective magnetogram time.
+    See ``processing.pipeline.run_config``: one target, or a time series with
+    ``cadence_hours`` and ``total_hours`` whose outputs receive the effective
+    magnetogram time.
 
     Args:
         config (dict[str, Any]): Processing configuration.
@@ -319,40 +275,7 @@ def process_config(config: dict[str, Any], method_used: str = "NLD") -> list[dic
     Returns:
         list[dict[str, Any]]: Per-date processing results.
     """
-    target_dates = build_processing_dates(
-        config["date"],
-        cadence_hours=config.get("cadence_hours", config.get("candence")),
-        total_hours=config.get("total_hours"),
-    )
-    output_path_fig = config.get("output_path_fig")
-    use_unique_figures = len(target_dates) > 1
-    figure_map_type = (
-        "custom"
-        if config.get("custom_magnetogram") is not None
-        else config["map_type"]
-    )
-    results = []
-    for target_date in target_dates:
-        figure_path = (
-            resolve_figure_path(
-                output_path_fig,
-                config.get("output_dir", "../"),
-                figure_map_type,
-                target_date,
-                use_unique_name=use_unique_figures,
-            )
-            if output_path_fig
-            else None
-        )
-        results.append(
-            process_magnetogram_date(
-                config,
-                target_date,
-                method_used=method_used,
-                output_path_fig=figure_path,
-            )
-        )
-    return results
+    return run_config(config, process_magnetogram_date, method_used)
 
 
 if __name__ == "__main__":
@@ -378,6 +301,7 @@ if __name__ == "__main__":
         "resize": False,
         "flux_correct": False,
         "flux_correction_method": "surface_mean", #surface_mean' or 'polarity_scaling'
+        "flux_correction_stage": "after",  # "after" (default) or "before"
         "map_type": "hmi_polfil",
         "output_dir": output_dir,
         "download_dir": output_dir,
@@ -386,7 +310,13 @@ if __name__ == "__main__":
         "apply_gaussian": True,
         "gaussian_sigma": 1.0,
         "tau": 25,
-        "iterations": 7
+        "iterations": 7,
+        # Spherical (physical) NLD: set diffusion_length_deg and remove "tau",
+        # "gaussian_sigma", "dx_override" and "dy_override" (pixel keys).
+        # "diffusion_length_deg": 2.0,  # diffusion length L in degrees (1 deg ~ 12.15 Mm)
+        # "gaussian_sigma_deg": 0.5,    # geodesic pre-smoothing width in degrees (needed if apply_gaussian=True)
+        # "lambda_g_per_deg": None,     # contrast threshold in G/deg; None = automatic area-weighted MAD
+        # "iterations": 28,             # AOS steps (accuracy only: ~1 % error with 28)
         }]
 
     # for time evolving add : cadence_hours and total_hours to the config dictionary, e.g.:
@@ -423,6 +353,7 @@ if __name__ == "__main__":
         "resize": False,
         "flux_correct": False,
         "flux_correction_method": "surface_mean", #surface_mean' or 'polarity_scaling'
+        "flux_correction_stage": "after",  # "after" (default) or "before"
         "map_type": "hmi_polfil",
         "output_dir": output_dir,
         "download_dir": output_dir,

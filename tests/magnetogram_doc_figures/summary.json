@@ -1,0 +1,1322 @@
+{
+  "date": "2026-09-01T00:00:00",
+  "cache": "C:\\Users\\luisl\\Documents\\Travail\\coconut-tools\\tests\\_bigdata_cache\\longitude",
+  "groups": {
+    "resize_gong": {
+      "title": "GONG: native grid vs resize",
+      "runs": {
+        "native": {
+          "elapsed_s": 2.93,
+          "metadata": {
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:14:00"
+          },
+          "config": {
+            "map_type": "GONG_mrzqs",
+            "resize": false
+          },
+          "flux_imbalance_percent": 2.6354
+        },
+        "resized": {
+          "elapsed_s": 0.4,
+          "metadata": {
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:14:00"
+          },
+          "config": {
+            "map_type": "GONG_mrzqs",
+            "resize": true
+          },
+          "flux_imbalance_percent": 2.6354
+        }
+      },
+      "comparison": "figures/resize_gong/comparison.png"
+    },
+    "resize_hmi": {
+      "title": "HMI: native grid vs resize",
+      "runs": {
+        "native": {
+          "elapsed_s": 3.25,
+          "metadata": {
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "resize": false
+          },
+          "flux_imbalance_percent": -0.9187
+        },
+        "resized": {
+          "elapsed_s": 0.92,
+          "metadata": {
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "resize": true
+          },
+          "flux_imbalance_percent": -1.0013
+        }
+      },
+      "comparison": "figures/resize_hmi/comparison.png"
+    },
+    "interpolation_gong_mrzqs": {
+      "title": "GONG_mrzqs: temporal interpolation between two maps",
+      "runs": {
+        "single": {
+          "elapsed_s": 2.63,
+          "metadata": {
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:14:00"
+          },
+          "config": {
+            "map_type": "GONG_mrzqs",
+            "interpolation": false
+          },
+          "flux_imbalance_percent": 2.6354
+        },
+        "interpolated": {
+          "elapsed_s": 3.08,
+          "metadata": {
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-08-31 23:44:00"
+          },
+          "config": {
+            "map_type": "GONG_mrzqs",
+            "interpolation": true,
+            "date": "2026-08-31T23:44:00"
+          },
+          "flux_imbalance_percent": 2.6626
+        },
+        "map_before": {
+          "elapsed_s": 0.42,
+          "metadata": {
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-08-31 23:14:00"
+          },
+          "config": {
+            "map_type": "GONG_mrzqs",
+            "interpolation": false,
+            "date": "2026-08-31T23:14:00"
+          },
+          "flux_imbalance_percent": 2.6774
+        },
+        "map_after": {
+          "elapsed_s": 1.14,
+          "metadata": {
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:14:00"
+          },
+          "config": {
+            "map_type": "GONG_mrzqs",
+            "interpolation": false,
+            "date": "2026-09-01T00:14:00"
+          },
+          "flux_imbalance_percent": 2.6354
+        }
+      },
+      "comparison": "figures/interpolation_gong_mrzqs/comparison.png"
+    },
+    "interpolation_hmi_hourly": {
+      "title": "HMI_hourly: temporal interpolation between two maps",
+      "runs": {
+        "single": {
+          "elapsed_s": 3.02,
+          "metadata": {
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:24:00"
+          },
+          "config": {
+            "map_type": "HMI_hourly",
+            "interpolation": false
+          },
+          "flux_imbalance_percent": 0.0374
+        },
+        "interpolated": {
+          "elapsed_s": 8.57,
+          "metadata": {
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-08-31 23:54:00"
+          },
+          "config": {
+            "map_type": "HMI_hourly",
+            "interpolation": true,
+            "date": "2026-08-31T23:54:00"
+          },
+          "flux_imbalance_percent": 0.1176
+        },
+        "map_before": {
+          "elapsed_s": 3.81,
+          "metadata": {
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-08-31 23:24:00"
+          },
+          "config": {
+            "map_type": "HMI_hourly",
+            "interpolation": false,
+            "date": "2026-08-31T23:24:00"
+          },
+          "flux_imbalance_percent": 0.1914
+        },
+        "map_after": {
+          "elapsed_s": 3.04,
+          "metadata": {
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:24:00"
+          },
+          "config": {
+            "map_type": "HMI_hourly",
+            "interpolation": false,
+            "date": "2026-09-01T00:24:00"
+          },
+          "flux_imbalance_percent": 0.0374
+        }
+      },
+      "comparison": "figures/interpolation_hmi_hourly/comparison.png"
+    },
+    "interpolation_adapt": {
+      "title": "ADAPT: temporal interpolation between two maps",
+      "runs": {
+        "single": {
+          "elapsed_s": 5.63,
+          "metadata": {
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "map_type": "ADAPT",
+            "interpolation": false
+          },
+          "flux_imbalance_percent": -0.0632
+        },
+        "interpolated": {
+          "elapsed_s": 7.01,
+          "metadata": {
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-08-31 23:00:00"
+          },
+          "config": {
+            "map_type": "ADAPT",
+            "interpolation": true,
+            "date": "2026-08-31T23:00:00"
+          },
+          "flux_imbalance_percent": -0.0462
+        },
+        "map_before": {
+          "elapsed_s": 1.52,
+          "metadata": {
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-08-31 22:00:00"
+          },
+          "config": {
+            "map_type": "ADAPT",
+            "interpolation": false,
+            "date": "2026-08-31T22:00:00"
+          },
+          "flux_imbalance_percent": 0.0001
+        },
+        "map_after": {
+          "elapsed_s": 1.11,
+          "metadata": {
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "map_type": "ADAPT",
+            "interpolation": false,
+            "date": "2026-09-01T00:00:00"
+          },
+          "flux_imbalance_percent": -0.0632
+        }
+      },
+      "comparison": "figures/interpolation_adapt/comparison.png"
+    },
+    "longitude_frame": {
+      "title": "Longitude frame: native file, Carrington, Stonyhurst",
+      "runs": {
+        "carrington": {
+          "elapsed_s": 0.37,
+          "metadata": {
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:14:00"
+          },
+          "config": {
+            "map_type": "GONG_mrzqs",
+            "resize": false
+          },
+          "flux_imbalance_percent": 2.6354
+        },
+        "stonyhurst": {
+          "elapsed_s": 0.34,
+          "metadata": {
+            "rotation_angle": 330.3012438476759,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:14:00"
+          },
+          "config": {
+            "map_type": "GONG_mrzqs",
+            "resize": false,
+            "rotate_to_stonyhurst": true
+          },
+          "flux_imbalance_percent": 2.6354
+        },
+        "native": {
+          "elapsed_s": 2.71,
+          "metadata": {
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:14:00"
+          },
+          "config": {
+            "map_type": "GONG_mrzqs",
+            "resize": false
+          },
+          "flux_imbalance_percent": 2.6354
+        }
+      },
+      "comparison": "figures/longitude_frame/comparison.png"
+    },
+    "adapt_realizations": {
+      "title": "ADAPT realizations",
+      "runs": {
+        "adapt_0": {
+          "elapsed_s": 0.73,
+          "metadata": {
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "map_type": "ADAPT",
+            "adapt_map": 0
+          },
+          "flux_imbalance_percent": -0.139
+        },
+        "adapt_6": {
+          "elapsed_s": 0.7,
+          "metadata": {
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "map_type": "ADAPT",
+            "adapt_map": 6
+          },
+          "flux_imbalance_percent": -0.0632
+        },
+        "adapt_11": {
+          "elapsed_s": 0.81,
+          "metadata": {
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "map_type": "ADAPT",
+            "adapt_map": 11
+          },
+          "flux_imbalance_percent": -0.1655
+        }
+      },
+      "comparison": "figures/adapt_realizations/comparison.png"
+    },
+    "products": {
+      "title": "Products at the same time",
+      "runs": {
+        "hmi_polfil": {
+          "elapsed_s": 1.05,
+          "metadata": {
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "map_type": "HMI_polfil"
+          },
+          "flux_imbalance_percent": -1.0013
+        },
+        "hmi_small": {
+          "elapsed_s": 0.4,
+          "metadata": {
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "map_type": "HMI_small"
+          },
+          "flux_imbalance_percent": -1.2218
+        },
+        "hmi_hourly": {
+          "elapsed_s": 2.76,
+          "metadata": {
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:24:00"
+          },
+          "config": {
+            "map_type": "HMI_hourly"
+          },
+          "flux_imbalance_percent": 0.0374
+        },
+        "gong_mrzqs": {
+          "elapsed_s": 0.4,
+          "metadata": {
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:14:00"
+          },
+          "config": {
+            "map_type": "GONG_mrzqs"
+          },
+          "flux_imbalance_percent": 2.6354
+        },
+        "gong_mrbqs": {
+          "elapsed_s": 2.84,
+          "metadata": {
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:14:00"
+          },
+          "config": {
+            "map_type": "GONG_mrbqs"
+          },
+          "flux_imbalance_percent": -0.7623
+        },
+        "adapt": {
+          "elapsed_s": 0.74,
+          "metadata": {
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "map_type": "ADAPT"
+          },
+          "flux_imbalance_percent": -0.0632
+        }
+      },
+      "comparison": "figures/products/comparison.png"
+    },
+    "flux_correction": {
+      "title": "Net-flux correction (method and stage)",
+      "runs": {
+        "none": {
+          "elapsed_s": 1.91,
+          "metadata": {
+            "yaroslavsky_mode": "spherical",
+            "yaroslavsky_info": {
+              "h_gauss": 100.0,
+              "h_source": "config",
+              "radius_deg": 4.0
+            },
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "radius_deg": 4.0,
+            "h_gauss": 100.0
+          },
+          "flux_imbalance_percent": -1.0444
+        },
+        "mean_before": {
+          "elapsed_s": 1.94,
+          "metadata": {
+            "yaroslavsky_mode": "spherical",
+            "yaroslavsky_info": {
+              "h_gauss": 100.0,
+              "h_source": "config",
+              "radius_deg": 4.0
+            },
+            "rotation_angle": null,
+            "flux_correction_stage": "before",
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "radius_deg": 4.0,
+            "h_gauss": 100.0,
+            "flux_correct": true,
+            "flux_correction_method": "surface_mean",
+            "flux_correction_stage": "before"
+          },
+          "flux_imbalance_percent": 0.797
+        },
+        "mean_after": {
+          "elapsed_s": 1.93,
+          "metadata": {
+            "yaroslavsky_mode": "spherical",
+            "yaroslavsky_info": {
+              "h_gauss": 100.0,
+              "h_source": "config",
+              "radius_deg": 4.0
+            },
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "radius_deg": 4.0,
+            "h_gauss": 100.0,
+            "flux_correct": true,
+            "flux_correction_method": "surface_mean",
+            "flux_correction_stage": "after"
+          },
+          "flux_imbalance_percent": -0.0
+        },
+        "polarity_after": {
+          "elapsed_s": 2.06,
+          "metadata": {
+            "yaroslavsky_mode": "spherical",
+            "yaroslavsky_info": {
+              "h_gauss": 100.0,
+              "h_source": "config",
+              "radius_deg": 4.0
+            },
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "radius_deg": 4.0,
+            "h_gauss": 100.0,
+            "flux_correct": true,
+            "flux_correction_method": "polarity_scaling",
+            "flux_correction_stage": "after"
+          },
+          "flux_imbalance_percent": 0.0
+        },
+        "polarity_before": {
+          "elapsed_s": 1.88,
+          "metadata": {
+            "yaroslavsky_mode": "spherical",
+            "yaroslavsky_info": {
+              "h_gauss": 100.0,
+              "h_source": "config",
+              "radius_deg": 4.0
+            },
+            "rotation_angle": null,
+            "flux_correction_stage": "before",
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "radius_deg": 4.0,
+            "h_gauss": 100.0,
+            "flux_correct": true,
+            "flux_correction_method": "polarity_scaling",
+            "flux_correction_stage": "before"
+          },
+          "flux_imbalance_percent": 0.4975
+        }
+      },
+      "comparison": "figures/flux_correction/comparison.png"
+    },
+    "sph_lmax": {
+      "title": "Spherical harmonics: impact of lmax",
+      "runs": {
+        "lmax_10": {
+          "elapsed_s": 1.07,
+          "metadata": {
+            "rotation_angle": null,
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "lmax": 10,
+            "alpha": 0
+          },
+          "flux_imbalance_percent": 0.0022
+        },
+        "lmax_20": {
+          "elapsed_s": 1.15,
+          "metadata": {
+            "rotation_angle": null,
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "lmax": 20,
+            "alpha": 0
+          },
+          "flux_imbalance_percent": 0.0058
+        },
+        "lmax_40": {
+          "elapsed_s": 1.14,
+          "metadata": {
+            "rotation_angle": null,
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "lmax": 40,
+            "alpha": 0
+          },
+          "flux_imbalance_percent": -0.0034
+        },
+        "lmax_80": {
+          "elapsed_s": 2.57,
+          "metadata": {
+            "rotation_angle": null,
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "lmax": 80,
+            "alpha": 0
+          },
+          "flux_imbalance_percent": -0.0164
+        }
+      },
+      "comparison": "figures/sph_lmax/comparison.png"
+    },
+    "sph_alpha": {
+      "title": "Spherical harmonics: impact of alpha",
+      "runs": {
+        "alpha_0": {
+          "elapsed_s": 1.36,
+          "metadata": {
+            "rotation_angle": null,
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "lmax": 40,
+            "alpha": 0.0
+          },
+          "flux_imbalance_percent": -0.0034
+        },
+        "alpha_3e-06": {
+          "elapsed_s": 1.54,
+          "metadata": {
+            "rotation_angle": null,
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "lmax": 40,
+            "alpha": 3e-06
+          },
+          "flux_imbalance_percent": -0.0
+        },
+        "alpha_3e-05": {
+          "elapsed_s": 1.25,
+          "metadata": {
+            "rotation_angle": null,
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "lmax": 40,
+            "alpha": 3e-05
+          },
+          "flux_imbalance_percent": 0.0008
+        },
+        "alpha_0.0003": {
+          "elapsed_s": 1.34,
+          "metadata": {
+            "rotation_angle": null,
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "lmax": 40,
+            "alpha": 0.0003
+          },
+          "flux_imbalance_percent": 0.0006
+        }
+      },
+      "comparison": "figures/sph_alpha/comparison.png"
+    },
+    "sph_gaussian_prefilter": {
+      "title": "Spherical harmonics: Gaussian pre-filter",
+      "runs": {
+        "off": {
+          "elapsed_s": 1.36,
+          "metadata": {
+            "rotation_angle": null,
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "lmax": 40
+          },
+          "flux_imbalance_percent": -0.0034
+        },
+        "legacy": {
+          "elapsed_s": 1.81,
+          "metadata": {
+            "rotation_angle": null,
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "lmax": 40,
+            "gaussian_filtering": true,
+            "template_size": 9
+          },
+          "flux_imbalance_percent": -0.0025
+        },
+        "physical": {
+          "elapsed_s": 1.65,
+          "metadata": {
+            "rotation_angle": null,
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "lmax": 40,
+            "gaussian_filtering": true,
+            "sigma_deg": 2.0
+          },
+          "flux_imbalance_percent": -0.0027
+        }
+      },
+      "comparison": "figures/sph_gaussian_prefilter/comparison.png"
+    },
+    "gaussian_old_vs_new": {
+      "title": "Gaussian: legacy pixel template vs physical width",
+      "runs": {
+        "legacy_ts9": {
+          "elapsed_s": 1.75,
+          "metadata": {
+            "template_size": 9,
+            "sigma_deg": null,
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "template_size": 9
+          },
+          "flux_imbalance_percent": -1.3143
+        },
+        "legacy_ts35": {
+          "elapsed_s": 7.2,
+          "metadata": {
+            "template_size": 35,
+            "sigma_deg": null,
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "template_size": 35
+          },
+          "flux_imbalance_percent": -1.6798
+        },
+        "physical_2deg": {
+          "elapsed_s": 1.73,
+          "metadata": {
+            "template_size": null,
+            "sigma_deg": 2.0,
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "sigma_deg": 2.0
+          },
+          "flux_imbalance_percent": -1.6425
+        }
+      },
+      "comparison": "figures/gaussian_old_vs_new/comparison.png"
+    },
+    "gaussian_grid_dependence": {
+      "title": "Gaussian: grid dependence (legacy vs physical)",
+      "runs": {
+        "legacy_gong": {
+          "elapsed_s": 0.57,
+          "metadata": {
+            "template_size": 9,
+            "sigma_deg": null,
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:14:00"
+          },
+          "config": {
+            "map_type": "GONG_mrzqs",
+            "resize": false,
+            "template_size": 9
+          },
+          "flux_imbalance_percent": 2.9838
+        },
+        "legacy_hmi": {
+          "elapsed_s": 1.41,
+          "metadata": {
+            "template_size": 9,
+            "sigma_deg": null,
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "template_size": 9
+          },
+          "flux_imbalance_percent": -1.3143
+        },
+        "physical_gong": {
+          "elapsed_s": 0.67,
+          "metadata": {
+            "template_size": null,
+            "sigma_deg": 2.0,
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:14:00"
+          },
+          "config": {
+            "map_type": "GONG_mrzqs",
+            "resize": false,
+            "sigma_deg": 2.0
+          },
+          "flux_imbalance_percent": 3.2453
+        },
+        "physical_hmi": {
+          "elapsed_s": 1.63,
+          "metadata": {
+            "template_size": null,
+            "sigma_deg": 2.0,
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "sigma_deg": 2.0
+          },
+          "flux_imbalance_percent": -1.6425
+        }
+      },
+      "comparison": "figures/gaussian_grid_dependence/comparison.png"
+    },
+    "gaussian_sigma": {
+      "title": "Gaussian: impact of sigma_deg",
+      "runs": {
+        "sigma_1": {
+          "elapsed_s": 1.54,
+          "metadata": {
+            "template_size": null,
+            "sigma_deg": 1.0,
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "sigma_deg": 1.0
+          },
+          "flux_imbalance_percent": -1.4328
+        },
+        "sigma_2": {
+          "elapsed_s": 1.75,
+          "metadata": {
+            "template_size": null,
+            "sigma_deg": 2.0,
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "sigma_deg": 2.0
+          },
+          "flux_imbalance_percent": -1.6425
+        },
+        "sigma_4": {
+          "elapsed_s": 2.14,
+          "metadata": {
+            "template_size": null,
+            "sigma_deg": 4.0,
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "sigma_deg": 4.0
+          },
+          "flux_imbalance_percent": -2.0859
+        },
+        "sigma_8": {
+          "elapsed_s": 2.77,
+          "metadata": {
+            "template_size": null,
+            "sigma_deg": 8.0,
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "sigma_deg": 8.0
+          },
+          "flux_imbalance_percent": -3.197
+        }
+      },
+      "comparison": "figures/gaussian_sigma/comparison.png"
+    },
+    "nld_old_vs_new": {
+      "title": "NLD: legacy pixel solver vs spherical solver",
+      "runs": {
+        "legacy_tau5_it7": {
+          "elapsed_s": 27.75,
+          "metadata": {
+            "nld_mode": "legacy",
+            "nld_info": null,
+            "timestep": 5,
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "tau": 5,
+            "iterations": 7,
+            "gaussian_sigma": 1.0
+          },
+          "flux_imbalance_percent": -1.6643
+        },
+        "legacy_tau25_it7": {
+          "elapsed_s": 28.82,
+          "metadata": {
+            "nld_mode": "legacy",
+            "nld_info": null,
+            "timestep": 25,
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "tau": 25,
+            "iterations": 7,
+            "gaussian_sigma": 1.0
+          },
+          "flux_imbalance_percent": -2.5316
+        },
+        "spherical": {
+          "elapsed_s": 2.59,
+          "metadata": {
+            "nld_mode": "spherical",
+            "nld_info": {
+              "lambda_g_per_deg": 1.3358988688403675,
+              "lambda_source": "auto",
+              "tau_rad2": 2.175838712762204e-05,
+              "total_time_rad2": 0.0006092348395734171,
+              "steps": 28,
+              "scheme": "AOS"
+            },
+            "timestep": 2.175838712762204e-05,
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "diffusion_length_deg": 2.0,
+            "gaussian_sigma_deg": 1.0
+          },
+          "flux_imbalance_percent": -1.5277
+        }
+      },
+      "comparison": "figures/nld_old_vs_new/comparison.png"
+    },
+    "nld_length": {
+      "title": "NLD (spherical): impact of diffusion_length_deg",
+      "runs": {
+        "L_1": {
+          "elapsed_s": 2.89,
+          "metadata": {
+            "nld_mode": "spherical",
+            "nld_info": {
+              "lambda_g_per_deg": 1.3358988688403675,
+              "lambda_source": "auto",
+              "tau_rad2": 5.43959678190551e-06,
+              "total_time_rad2": 0.00015230870989335428,
+              "steps": 28,
+              "scheme": "AOS"
+            },
+            "timestep": 5.43959678190551e-06,
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "diffusion_length_deg": 1.0,
+            "gaussian_sigma_deg": 1.0
+          },
+          "flux_imbalance_percent": -1.4671
+        },
+        "L_2": {
+          "elapsed_s": 2.77,
+          "metadata": {
+            "nld_mode": "spherical",
+            "nld_info": {
+              "lambda_g_per_deg": 1.3358988688403675,
+              "lambda_source": "auto",
+              "tau_rad2": 2.175838712762204e-05,
+              "total_time_rad2": 0.0006092348395734171,
+              "steps": 28,
+              "scheme": "AOS"
+            },
+            "timestep": 2.175838712762204e-05,
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "diffusion_length_deg": 2.0,
+            "gaussian_sigma_deg": 1.0
+          },
+          "flux_imbalance_percent": -1.5277
+        },
+        "L_4": {
+          "elapsed_s": 2.58,
+          "metadata": {
+            "nld_mode": "spherical",
+            "nld_info": {
+              "lambda_g_per_deg": 1.3358988688403675,
+              "lambda_source": "auto",
+              "tau_rad2": 8.703354851048816e-05,
+              "total_time_rad2": 0.0024369393582936686,
+              "steps": 28,
+              "scheme": "AOS"
+            },
+            "timestep": 8.703354851048816e-05,
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "diffusion_length_deg": 4.0,
+            "gaussian_sigma_deg": 1.0
+          },
+          "flux_imbalance_percent": -1.6906
+        }
+      },
+      "comparison": "figures/nld_length/comparison.png"
+    },
+    "nld_lambda": {
+      "title": "NLD (spherical): impact of lambda",
+      "runs": {
+        "auto": {
+          "elapsed_s": 2.89,
+          "metadata": {
+            "nld_mode": "spherical",
+            "nld_info": {
+              "lambda_g_per_deg": 1.3358988688403675,
+              "lambda_source": "auto",
+              "tau_rad2": 2.175838712762204e-05,
+              "total_time_rad2": 0.0006092348395734171,
+              "steps": 28,
+              "scheme": "AOS"
+            },
+            "timestep": 2.175838712762204e-05,
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "diffusion_length_deg": 2.0,
+            "gaussian_sigma_deg": 1.0
+          },
+          "flux_imbalance_percent": -1.5277
+        },
+        "lambda_1": {
+          "elapsed_s": 2.43,
+          "metadata": {
+            "nld_mode": "spherical",
+            "nld_info": {
+              "lambda_g_per_deg": 1.0,
+              "lambda_source": "config",
+              "tau_rad2": 2.175838712762204e-05,
+              "total_time_rad2": 0.0006092348395734171,
+              "steps": 28,
+              "scheme": "AOS"
+            },
+            "timestep": 2.175838712762204e-05,
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "diffusion_length_deg": 2.0,
+            "gaussian_sigma_deg": 1.0,
+            "lambda_g_per_deg": 1.0
+          },
+          "flux_imbalance_percent": -1.5158
+        },
+        "lambda_100": {
+          "elapsed_s": 2.53,
+          "metadata": {
+            "nld_mode": "spherical",
+            "nld_info": {
+              "lambda_g_per_deg": 100.0,
+              "lambda_source": "config",
+              "tau_rad2": 2.175838712762204e-05,
+              "total_time_rad2": 0.0006092348395734171,
+              "steps": 28,
+              "scheme": "AOS"
+            },
+            "timestep": 2.175838712762204e-05,
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "diffusion_length_deg": 2.0,
+            "gaussian_sigma_deg": 1.0,
+            "lambda_g_per_deg": 100.0
+          },
+          "flux_imbalance_percent": -1.6903
+        }
+      },
+      "comparison": "figures/nld_lambda/comparison.png"
+    },
+    "yaroslavsky_old_vs_new": {
+      "title": "Yaroslavsky: legacy pixel filter vs spherical filter",
+      "runs": {
+        "legacy": {
+          "elapsed_s": 10.14,
+          "metadata": {
+            "yaroslavsky_mode": "legacy",
+            "yaroslavsky_info": null,
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:14:00"
+          },
+          "config": {
+            "map_type": "GONG_mrzqs",
+            "resize": false,
+            "alpha": 1.4,
+            "Rn": 3,
+            "sig": 1.0
+          },
+          "flux_imbalance_percent": 2.9019
+        },
+        "spherical": {
+          "elapsed_s": 0.46,
+          "metadata": {
+            "yaroslavsky_mode": "spherical",
+            "yaroslavsky_info": {
+              "h_gauss": 2.7952619393571005,
+              "h_source": "auto",
+              "radius_deg": 2.0
+            },
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:14:00"
+          },
+          "config": {
+            "map_type": "GONG_mrzqs",
+            "resize": false,
+            "radius_deg": 2.0,
+            "sig_deg": 1.0
+          },
+          "flux_imbalance_percent": 2.9163
+        }
+      },
+      "comparison": "figures/yaroslavsky_old_vs_new/comparison.png"
+    },
+    "yaroslavsky_radius": {
+      "title": "Yaroslavsky (spherical): impact of radius_deg",
+      "runs": {
+        "r_1": {
+          "elapsed_s": 1.36,
+          "metadata": {
+            "yaroslavsky_mode": "spherical",
+            "yaroslavsky_info": {
+              "h_gauss": 20.0,
+              "h_source": "config",
+              "radius_deg": 1.0
+            },
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "radius_deg": 1.0,
+            "h_gauss": 20.0
+          },
+          "flux_imbalance_percent": -1.094
+        },
+        "r_2": {
+          "elapsed_s": 1.74,
+          "metadata": {
+            "yaroslavsky_mode": "spherical",
+            "yaroslavsky_info": {
+              "h_gauss": 20.0,
+              "h_source": "config",
+              "radius_deg": 2.0
+            },
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "radius_deg": 2.0,
+            "h_gauss": 20.0
+          },
+          "flux_imbalance_percent": -1.1639
+        },
+        "r_4": {
+          "elapsed_s": 2.45,
+          "metadata": {
+            "yaroslavsky_mode": "spherical",
+            "yaroslavsky_info": {
+              "h_gauss": 20.0,
+              "h_source": "config",
+              "radius_deg": 4.0
+            },
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "radius_deg": 4.0,
+            "h_gauss": 20.0
+          },
+          "flux_imbalance_percent": -1.3027
+        }
+      },
+      "comparison": "figures/yaroslavsky_radius/comparison.png"
+    },
+    "yaroslavsky_h": {
+      "title": "Yaroslavsky (spherical): impact of h_gauss",
+      "runs": {
+        "auto": {
+          "elapsed_s": 1.5,
+          "metadata": {
+            "yaroslavsky_mode": "spherical",
+            "yaroslavsky_info": {
+              "h_gauss": 3.4841100000007086,
+              "h_source": "auto",
+              "radius_deg": 2.0
+            },
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "radius_deg": 2.0
+          },
+          "flux_imbalance_percent": -1.0632
+        },
+        "h_5": {
+          "elapsed_s": 1.26,
+          "metadata": {
+            "yaroslavsky_mode": "spherical",
+            "yaroslavsky_info": {
+              "h_gauss": 5.0,
+              "h_source": "config",
+              "radius_deg": 2.0
+            },
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "radius_deg": 2.0,
+            "h_gauss": 5.0
+          },
+          "flux_imbalance_percent": -1.075
+        },
+        "h_100": {
+          "elapsed_s": 1.41,
+          "metadata": {
+            "yaroslavsky_mode": "spherical",
+            "yaroslavsky_info": {
+              "h_gauss": 100.0,
+              "h_source": "config",
+              "radius_deg": 2.0
+            },
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "radius_deg": 2.0,
+            "h_gauss": 100.0
+          },
+          "flux_imbalance_percent": -1.1293
+        }
+      },
+      "comparison": "figures/yaroslavsky_h/comparison.png"
+    },
+    "methods": {
+      "title": "Comparison of the filters",
+      "runs": {
+        "sph": {
+          "elapsed_s": 0.99,
+          "metadata": {
+            "rotation_angle": null,
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "lmax": 20,
+            "flux_correct": true
+          },
+          "flux_imbalance_percent": 0.0058
+        },
+        "gaussian": {
+          "elapsed_s": 1.41,
+          "metadata": {
+            "template_size": null,
+            "sigma_deg": 2.0,
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "sigma_deg": 2.0,
+            "flux_correct": true
+          },
+          "flux_imbalance_percent": -0.0
+        },
+        "nld": {
+          "elapsed_s": 2.83,
+          "metadata": {
+            "nld_mode": "spherical",
+            "nld_info": {
+              "lambda_g_per_deg": 1.3358988688403675,
+              "lambda_source": "auto",
+              "tau_rad2": 2.175838712762204e-05,
+              "total_time_rad2": 0.0006092348395734171,
+              "steps": 28,
+              "scheme": "AOS"
+            },
+            "timestep": 2.175838712762204e-05,
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "diffusion_length_deg": 2.0,
+            "gaussian_sigma_deg": 1.0,
+            "flux_correct": true
+          },
+          "flux_imbalance_percent": -0.0
+        },
+        "yaroslavsky": {
+          "elapsed_s": 1.74,
+          "metadata": {
+            "yaroslavsky_mode": "spherical",
+            "yaroslavsky_info": {
+              "h_gauss": 3.291597795400482,
+              "h_source": "auto",
+              "radius_deg": 2.0
+            },
+            "rotation_angle": null,
+            "flux_correction_stage": "after",
+            "effective_date": "2026-09-01 00:00:00"
+          },
+          "config": {
+            "radius_deg": 2.0,
+            "sig_deg": 1.0,
+            "flux_correct": true
+          },
+          "flux_imbalance_percent": 0.0
+        }
+      },
+      "comparison": "figures/methods/comparison.png"
+    }
+  }
+}

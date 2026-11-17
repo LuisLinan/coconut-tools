@@ -1,11 +1,13 @@
 """Read, normalize, resize, and temporally interpolate magnetogram products."""
 
+import os
 import numpy as np
 from astropy.io import fits
 from scipy import interpolate
 
 from coconut_tools.magnetogram.core.config import _as_bool
 from coconut_tools.magnetogram.core.coordinates import (
+    _theta_coordinate,
     _validate_theta_axis,
     build_theta_phi,
     fits_latitude_axis,
@@ -41,24 +43,179 @@ _HMI_DYNAMIC_MAP_TYPES = {"HMI_SYNC", "HMI_hourly"}
 _ADAPT_ENSEMBLE_MAP_TYPES = {"ADAPT", "HMI_fdt"}
 
 
+def _overlap_weights(
+    input_edges: np.ndarray,
+    output_edges: np.ndarray,
+    measure=None,
+) -> np.ndarray:
+    """Return the row-normalized overlap matrix between two 1D cell partitions.
+
+    Args:
+        input_edges: Increasing input cell edges, length ``n_in + 1``.
+        output_edges: Increasing output cell edges, length ``n_out + 1``,
+            spanning the same interval as ``input_edges``.
+        measure: Optional increasing function mapping the edge coordinate to
+            the measure used for weighting (e.g. ``-cos(theta)`` for solid
+            angle). ``None`` weights by overlap length in the edge coordinate.
+
+    Returns:
+        ``(n_out, n_in)`` matrix whose rows sum to one: entry ``(i, k)`` is the
+        fraction of output cell ``i`` covered by input cell ``k``.
+    """
+    lower = np.maximum(output_edges[:-1, None], input_edges[None, :-1])
+    upper = np.minimum(output_edges[1:, None], input_edges[None, 1:])
+    overlaps = upper > lower
+    if measure is None:
+        weights = np.where(overlaps, upper - lower, 0.0)
+    else:
+        weights = np.where(overlaps, measure(upper) - measure(lower), 0.0)
+    row_sums = weights.sum(axis=1, keepdims=True)
+    if np.any(row_sums <= 0.0):
+        raise ValueError("Resized cells must overlap the input grid.")
+    return weights / row_sums
+
+
+def _resized_regular_longitude(
+    n_phi_native: int,
+    n_phi_out: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return the column order and longitude centers of a resized regular map.
+
+    On the non-Carrington paths the native columns are labelled with centers
+    ``linspace(0, 2*pi, n_phi_native, endpoint=False)``. The resize maps the
+    first native cell edge to the first output edge, so the output centers
+    are shifted by half an output pixel minus half a native pixel (e.g.
+    +0.2 deg for HMI 0.1 deg -> 0.5 deg, -0.25 deg for GONG 1 deg -> 0.5 deg),
+    exactly as ``resize_processed_longitude_axis(..., preserve_cell_edges=True)``
+    does on the Carrington path. Centers are wrapped to ``[0, 2*pi)``; the
+    returned order sorts the resized columns accordingly (a pure relabelling,
+    no resampling).
+
+    Returns:
+        ``(order, phi)``: column permutation to apply to the resized field and
+        the sorted longitude centers in radians.
+    """
+    if n_phi_native == n_phi_out:
+        return (
+            np.arange(n_phi_out),
+            np.linspace(0.0, 2.0 * np.pi, n_phi_out, endpoint=False),
+        )
+    native = np.linspace(0.0, 360.0, n_phi_native, endpoint=False)
+    longitude = resize_processed_longitude_axis(
+        native, n_phi_out, preserve_cell_edges=True
+    ) % 360.0
+    order = np.argsort(longitude, kind="stable")
+    return order, np.radians(longitude[order])
+
+
 def resize_magnetogram_if_requested(
     Br_data: np.ndarray,
     enabled: bool,
+    theta: np.ndarray | None = None,
+    theta_coordinate: str | None = None,
 ) -> np.ndarray:
-    """Resize a Br map to the standard 360x720 grid when requested."""
+    """Resize a Br map to the standard 360x720 grid when requested.
+
+    The resize is a first-order conservative remap: every output pixel is the
+    solid-angle-weighted mean of the input pixels it overlaps (the field is
+    assumed constant inside each input pixel). The surface integral of ``Br``
+    (net and signed flux per region) is therefore preserved and no extra
+    smoothing is applied, unlike image interpolation with anti-aliasing.
+
+    The geometry is unchanged with respect to the former ``skimage`` resize:
+    both axes map the first input edge to the first output edge and the last
+    to the last. In colatitude, output cells are uniform in the native
+    coordinate (sine latitude or latitude) between the native outer edges,
+    exactly as ``_resample_theta_centers`` builds the returned ``Theta``; in
+    longitude, output cells are uniform between the input edges, as assumed by
+    ``resize_processed_longitude_axis``. Column order (Carrington, Stonyhurst,
+    rolls, flips) is preserved because the remap is applied afterwards.
+
+    Missing values (NaN) are counted as zero field, which is how the pipeline
+    already treats them at native resolution (``np.nan_to_num``).
+
+    Args:
+        Br_data: 2D field with rows ordered north to south (increasing
+            colatitude), as produced by the readers.
+        enabled: When false, ``Br_data`` is returned unchanged.
+        theta: Native colatitude centers (radians) of the rows of
+            ``Br_data``. When omitted, rows are assumed to be equal-area
+            (uniform in sine latitude) and a warning is logged.
+        theta_coordinate: ``"sine"`` or ``"latitude"``, the coordinate in
+            which ``theta`` is uniform. Inferred from ``theta`` when omitted.
+
+    Returns:
+        The resized field with shape ``RESIZED_MAGNETOGRAM_SHAPE``.
+    """
     if not enabled:
         return Br_data
 
-    from skimage.transform import resize as resize_image
+    Br = np.nan_to_num(np.asarray(Br_data, dtype=float))
+    if Br.ndim != 2:
+        raise ValueError("Only 2D magnetograms can be resized.")
+    n_theta_in, n_phi_in = Br.shape
+    n_theta_out, n_phi_out = RESIZED_MAGNETOGRAM_SHAPE
 
-    return resize_image(
-        Br_data,
-        RESIZED_MAGNETOGRAM_SHAPE,
-        preserve_range=True,
-        mode="edge",
-        clip=False,
-        anti_aliasing=True,
+    if theta is None:
+        logger.warning(
+            "No colatitude axis given for the resize; assuming equal-area "
+            "(uniform sine-latitude) rows."
+        )
+        theta_weights = _overlap_weights(
+            np.arange(n_theta_in + 1, dtype=float),
+            np.linspace(0.0, n_theta_in, n_theta_out + 1),
+        )
+    else:
+        theta = np.asarray(theta, dtype=float)
+        if theta.shape != (n_theta_in,):
+            raise ValueError("theta must match the number of magnetogram rows.")
+        if theta_coordinate is None:
+            theta_coordinate = _theta_coordinate(theta)
+        edges = theta_cell_edges(theta, coordinate=theta_coordinate)
+        if theta_coordinate == "sine":
+            # Edge coordinate u = -cos(theta): uniform on sine grids and
+            # directly proportional to solid angle.
+            input_edges = -np.cos(edges)
+            measure = None
+        else:
+            # Edge coordinate u = theta; solid angle measured by -cos(theta).
+            input_edges = edges
+            measure = lambda u: -np.cos(u)  # noqa: E731
+        output_edges = np.linspace(input_edges[0], input_edges[-1], n_theta_out + 1)
+        theta_weights = _overlap_weights(input_edges, output_edges, measure)
+
+    # Longitude pixels are uniform, so solid angle is proportional to the
+    # overlap length in pixel units.
+    phi_weights = _overlap_weights(
+        np.arange(n_phi_in + 1, dtype=float),
+        np.linspace(0.0, n_phi_in, n_phi_out + 1),
     )
+    return theta_weights @ Br @ phi_weights.T
+
+
+def warn_nan_pixels(Br: np.ndarray, file_path, map_type: str) -> int:
+    """Log a warning when a field contains NaN (missing) pixels.
+
+    The readers count NaN pixels as 0 G (``np.nan_to_num``), as EUHFORIA does
+    (``euhforia.magnetogram.hmi.read``): HMI maps without polar filling have
+    NaN polar caps that would otherwise propagate to the whole solution. This
+    function only reports them; it does not change the data.
+
+    Returns:
+        The number of NaN pixels.
+    """
+    count = int(np.count_nonzero(np.isnan(Br)))
+    if count:
+        logger.warning(
+            "%s: %d NaN pixels (%.2f %% of the map) in %s set to 0 G "
+            "(missing data, e.g. unfilled polar caps; a polar-filled product "
+            "is preferable).",
+            map_type,
+            count,
+            100.0 * count / Br.size,
+            os.path.basename(str(file_path)),
+        )
+    return count
 
 
 def read_first_fits_image(file_path: str) -> np.ndarray:
@@ -194,6 +351,33 @@ def read_fits_theta_axis(
     reversed. Missing coordinate metadata activates a warned product-specific
     fallback. Resizing preserves the source grid's outer physical edges.
     """
+    theta, flip_rows, native_coordinate = _read_native_theta_axis(file_path, map_type)
+    return _output_theta_axis(theta, native_coordinate, target_size), flip_rows
+
+
+def _output_theta_axis(
+    theta: np.ndarray,
+    native_coordinate: str,
+    target_size: int | None,
+) -> np.ndarray:
+    """Return native centers, or centers resized in the native coordinate."""
+    if target_size is None:
+        return theta
+    theta = _resample_theta_centers(theta, int(target_size), native_coordinate)
+    _validate_theta_axis(theta)
+    return theta
+
+
+def _read_native_theta_axis(
+    file_path: str,
+    map_type: str,
+) -> tuple[np.ndarray, bool, str]:
+    """Read native colatitude centers, the row flip, and the native coordinate.
+
+    Returns:
+        ``(theta, flip_rows, native_coordinate)`` where ``native_coordinate`` is
+        ``"sine"`` or ``"latitude"``.
+    """
     map_type = normalize_map_type(map_type)
     image_shape, header = _read_first_fits_shape_and_header(file_path)
     native_size = int(image_shape[-2])
@@ -220,10 +404,7 @@ def read_fits_theta_axis(
         )
 
     _validate_theta_axis(theta)
-    if target_size is not None:
-        theta = _resample_theta_centers(theta, int(target_size), native_coordinate)
-        _validate_theta_axis(theta)
-    return theta, flip_rows
+    return theta, flip_rows, native_coordinate
 
 
 def build_regular_theta_phi(
@@ -266,6 +447,7 @@ def _read_temporal_br_map_and_theta(
         )
     if flip_rows:
         Br = Br[::-1, :]
+    warn_nan_pixels(Br, file_path, map_type)
     Br = np.nan_to_num(Br)
 
     if carrington:
@@ -379,18 +561,27 @@ def read_interpolated_magnetogram(
             _read_temporal_br_map_and_theta(path, map_type, adapt_map)[0]
             for path in local_files
         ]
-    Br_maps = [resize_magnetogram_if_requested(Br, resize) for Br in Br_maps]
+    theta_coordinate = (
+        _read_native_theta_axis(local_files[0], map_type)[2] if resize else None
+    )
+    n_phi_native = Br_maps[0].shape[1]
+    Br_maps = [
+        resize_magnetogram_if_requested(
+            Br, resize, theta=reference_theta, theta_coordinate=theta_coordinate
+        )
+        for Br in Br_maps
+    ]
     Br, Br_linear = interpolate_br_maps(Br_maps, selection, interpolation_order)
-    theta = (
-        read_fits_theta_axis(
-            local_files[0],
-            map_type,
-            target_size=RESIZED_MAGNETOGRAM_SHAPE[0],
-        )[0]
-        if resize
-        else reference_theta
+    theta = _output_theta_axis(
+        reference_theta,
+        theta_coordinate,
+        RESIZED_MAGNETOGRAM_SHAPE[0] if resize else None,
     )
     phi = np.linspace(0.0, 2.0 * np.pi, Br.shape[1], endpoint=False)
+    if resize and not carrington:
+        order, phi = _resized_regular_longitude(n_phi_native, Br.shape[1])
+        Br = Br[:, order]
+        Br_linear = Br_linear[:, order]
     if carrington:
         longitude = resize_processed_longitude_axis(
             longitude_axes[0], Br.shape[1], preserve_cell_edges=True
@@ -445,14 +636,21 @@ def read_magnetogram(
         )
         if Br_map.ndim != 2:
             raise ValueError("A magnetogram must provide a single 2D field.")
-        theta, flip_rows = read_fits_theta_axis(
-            file_path, map_type,
-            target_size=RESIZED_MAGNETOGRAM_SHAPE[0] if resize else None,
+        warn_nan_pixels(Br_map, file_path, map_type)
+        theta_native, flip_rows, theta_coordinate = _read_native_theta_axis(
+            file_path, map_type
+        )
+        theta = _output_theta_axis(
+            theta_native,
+            theta_coordinate,
+            RESIZED_MAGNETOGRAM_SHAPE[0] if resize else None,
         )
         if flip_rows:
             Br_map = Br_map[::-1, :]
         Br_map, longitude = read_carrington_map(Br_map, file_path, map_type)
-        Br_map = resize_magnetogram_if_requested(Br_map, resize)
+        Br_map = resize_magnetogram_if_requested(
+            Br_map, resize, theta=theta_native, theta_coordinate=theta_coordinate
+        )
         longitude = resize_processed_longitude_axis(
             longitude, Br_map.shape[1], preserve_cell_edges=True
         )
@@ -467,10 +665,14 @@ def read_magnetogram(
                 "A custom magnetogram must be a single 2D FITS image; "
                 f"received shape {input_data.shape}."
             )
-        theta, flip_rows = read_fits_theta_axis(
-            file_path,
-            map_type,
-            target_size=RESIZED_MAGNETOGRAM_SHAPE[0] if resize else None,
+        warn_nan_pixels(input_data, file_path, map_type)
+        theta_native, flip_rows, theta_coordinate = _read_native_theta_axis(
+            file_path, map_type
+        )
+        theta = _output_theta_axis(
+            theta_native,
+            theta_coordinate,
+            RESIZED_MAGNETOGRAM_SHAPE[0] if resize else None,
         )
         phi, flip_columns, longitude_roll = _read_custom_longitude_axis(
             file_path,
@@ -483,7 +685,9 @@ def read_magnetogram(
             Br_map = Br_map[:, ::-1]
         if longitude_roll:
             Br_map = np.roll(Br_map, longitude_roll, axis=1)
-        Br_map = resize_magnetogram_if_requested(Br_map, resize)
+        Br_map = resize_magnetogram_if_requested(
+            Br_map, resize, theta=theta_native, theta_coordinate=theta_coordinate
+        )
         if resize:
             phi = np.radians(
                 resize_processed_longitude_axis(
@@ -499,17 +703,26 @@ def read_magnetogram(
         if map_type == "HMI_fdt":
             validate_hmi_fdt_carrington_frame(file_path)
         input_data = read_first_fits_image(file_path)
-        theta, flip_rows = read_fits_theta_axis(
-            file_path,
-            map_type,
-            target_size=RESIZED_MAGNETOGRAM_SHAPE[0] if resize else None,
+        theta_native, flip_rows, theta_coordinate = _read_native_theta_axis(
+            file_path, map_type
+        )
+        theta = _output_theta_axis(
+            theta_native,
+            theta_coordinate,
+            RESIZED_MAGNETOGRAM_SHAPE[0] if resize else None,
         )
         Br_map = input_data[adapt_map, :, :]
         if flip_rows:
             Br_map = Br_map[::-1, :]
         Br_map = ensure_increasing_longitude(Br_map, file_path, map_type)
-        Br_map = resize_magnetogram_if_requested(Br_map, resize)
+        n_phi_native = Br_map.shape[1]
+        Br_map = resize_magnetogram_if_requested(
+            Br_map, resize, theta=theta_native, theta_coordinate=theta_coordinate
+        )
         phi = np.linspace(0.0, 2.0 * np.pi, Br_map.shape[1], endpoint=False)
+        if resize:
+            order, phi = _resized_regular_longitude(n_phi_native, Br_map.shape[1])
+            Br_map = Br_map[:, order]
         Theta, Phi = build_theta_phi(theta, phi)
 
     elif map_type.lower() == "wso":
@@ -557,18 +770,28 @@ def read_magnetogram(
 
     else:
         input_data = read_first_fits_image(file_path)
-        theta, flip_rows = read_fits_theta_axis(
-            file_path,
-            map_type,
-            target_size=RESIZED_MAGNETOGRAM_SHAPE[0] if resize else None,
+        theta_native, flip_rows, theta_coordinate = _read_native_theta_axis(
+            file_path, map_type
         )
+        theta = _output_theta_axis(
+            theta_native,
+            theta_coordinate,
+            RESIZED_MAGNETOGRAM_SHAPE[0] if resize else None,
+        )
+        warn_nan_pixels(input_data, file_path, map_type)
         Br_data = input_data[::-1, :] if flip_rows else input_data
         if map_type in _HMI_DYNAMIC_MAP_TYPES:
             Br_data = roll_hmi_dynamic_to_zero_longitude(Br_data, file_path)
         else:
             Br_data = ensure_increasing_longitude(Br_data, file_path, map_type)
-        Br_data = resize_magnetogram_if_requested(Br_data, resize)
+        n_phi_native = Br_data.shape[1]
+        Br_data = resize_magnetogram_if_requested(
+            Br_data, resize, theta=theta_native, theta_coordinate=theta_coordinate
+        )
         phi = np.linspace(0.0, 2.0 * np.pi, Br_data.shape[1], endpoint=False)
+        if resize:
+            order, phi = _resized_regular_longitude(n_phi_native, Br_data.shape[1])
+            Br_data = Br_data[:, order]
         Theta, Phi = build_theta_phi(theta, phi)
         Br_map = np.nan_to_num(Br_data)
 

@@ -287,19 +287,18 @@ def read_fits_longitude_axis(
         longitude = np.degrees(longitude)
         longitude_step = np.degrees(longitude_step)
 
-    # JSOC updated synoptic frames encode decreasing Carrington *time*.
+    # JSOC synoptic products (daily synchronic frames and Carrington-rotation
+    # charts alike) encode decreasing Carrington *time* CT = 360*CR - L.
     # Physical longitude is -time modulo 360; negate the reference value
     # as well as the increment, without reversing the stored Br columns.
-    # LON_LAST labels the first stored column in these dynamic products.
+    # LON_LAST labels the first stored column in the dynamic products.
     # See JSOC-SDP/proj: mag/synop/apps/mrmlosdailysynframe_nrt.c.
-    if map_type in {"HMI_SYNC", "HMI_hourly"}:
+    # The former chart convention (reversing the CT values) was exact only
+    # when CRPIX1 = (NAXIS1 + 1) / 2 and labelled HMI_small/HMI_polfil
+    # columns 0.1 deg too low.
+    if map_type in {"HMI_SYNC", "HMI_hourly", "HMI_small", "HMI_polfil"}:
         if longitude_step < 0.0:
             longitude = -longitude
-            longitude_step = -longitude_step
-    # Keep the existing static-chart convention outside this dynamic fix.
-    elif map_type in {"HMI_small", "HMI_polfil"}:
-        if longitude_step < 0.0:
-            longitude = longitude[::-1]
             longitude_step = -longitude_step
 
     flip_columns = longitude_step < 0.0

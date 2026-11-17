@@ -213,3 +213,147 @@ def gaussian_filtering(
     if duplicate_endpoint:
         filtered = np.concatenate((filtered, filtered[:, :1]), axis=1)
     return filtered
+
+
+GEODESIC_TRUNCATE_SIGMA = 3.0
+"""Kernel support radius in units of sigma (the legacy template spans +-3 sigma)."""
+
+
+def geodesic_gaussian_filtering(
+    Br: np.ndarray,
+    phi: np.ndarray,
+    theta: np.ndarray,
+    sigma_deg: float,
+    truncate: float = GEODESIC_TRUNCATE_SIGMA,
+) -> np.ndarray:
+    """Smooth a global radial field with a Gaussian of great-circle distance.
+
+    The weight between two cell centres is ``exp(-d**2 / (2 sigma**2))`` where
+    ``d`` is their great-circle angle, truncated at ``d <= truncate * sigma``.
+    The physical width is therefore the same for every product, resolution and
+    latitude, the kernel is isotropic, periodic in longitude and continuous
+    across the poles.
+
+    Normalisation is on the source side: every source cell redistributes
+    exactly its own flux ``Br * area`` over its neighbours, proportionally to
+    ``weight * area`` of the receiving cells. The surface integral of ``Br``
+    is conserved to round-off (a uniform field is preserved only up to
+    discretisation error).
+
+    Implementation: ``phi`` must be uniform, so the weight between rows ``i``
+    and ``k`` depends only on the longitude offset; each output row is a sum of
+    circular FFT convolutions over the rows ``k`` with
+    ``|theta_i - theta_k| <= truncate * sigma``.
+
+    Args:
+        Br: Radial field with shape ``(theta.size, phi.size)``.
+        phi: Uniform, increasing cell-centre longitudes in radians, with an
+            optional duplicated endpoint at one full revolution.
+        theta: Increasing cell-centre colatitudes in radians (north to south);
+            any spacing (sine-latitude or latitude grids).
+        sigma_deg: Gaussian standard deviation in heliographic degrees
+            (1 deg ~ 12.15 Mm on the photosphere). Must be positive.
+        truncate: Support radius in units of ``sigma``.
+
+    Returns:
+        A float64 array with the same shape as ``Br``.
+
+    Raises:
+        ValueError: For invalid inputs or a non-uniform longitude axis.
+    """
+    field = np.asarray(Br, dtype=np.float64)
+    longitude = np.asarray(phi, dtype=np.float64)
+    colatitude = np.asarray(theta, dtype=np.float64)
+    if field.ndim != 2:
+        raise ValueError("Br must be a 2D array.")
+    if longitude.ndim != 1 or colatitude.ndim != 1:
+        raise ValueError("phi and theta must be 1D arrays.")
+    if field.shape != (colatitude.size, longitude.size):
+        raise ValueError(
+            f"Br shape {field.shape} does not match theta/phi sizes "
+            f"({colatitude.size}, {longitude.size})."
+        )
+    if not (
+        np.all(np.isfinite(field))
+        and np.all(np.isfinite(longitude))
+        and np.all(np.isfinite(colatitude))
+    ):
+        raise ValueError("Br, theta, and phi must contain only finite values.")
+    sigma_deg = float(sigma_deg)
+    if not np.isfinite(sigma_deg) or sigma_deg <= 0.0:
+        raise ValueError("sigma_deg must be a finite positive number.")
+    if not np.isfinite(truncate) or truncate <= 0.0:
+        raise ValueError("truncate must be a finite positive number.")
+
+    duplicate_endpoint = longitude.size > 1 and np.isclose(
+        longitude[-1] - longitude[0], 2.0 * np.pi, atol=1.0e-10, rtol=0.0
+    )
+    if duplicate_endpoint:
+        field = field[:, :-1]
+        longitude = longitude[:-1]
+
+    n_theta, n_phi = field.shape
+    if n_phi > 1:
+        steps = np.diff(np.unwrap(longitude))
+        if not np.allclose(steps, 2.0 * np.pi / n_phi, atol=1.0e-9, rtol=0.0):
+            raise ValueError(
+                "geodesic Gaussian filtering requires a uniform, complete, "
+                "increasing longitude axis."
+            )
+
+    sigma = np.radians(sigma_deg)
+    cutoff = truncate * sigma
+    cos_cutoff = np.cos(min(cutoff, np.pi))
+
+    row_area = spherical_pixel_areas(colatitude, longitude, field.shape)[:, 0]
+    sin_theta = np.sin(colatitude)
+    cos_theta = np.cos(colatitude)
+    # Longitude offsets of every column with respect to column 0.
+    cos_dphi = np.cos(np.arange(n_phi) * (2.0 * np.pi / n_phi))
+
+    def kernel_rows(i: int, rows: np.ndarray) -> np.ndarray:
+        """Weights between row ``i`` and ``rows`` for every longitude offset."""
+        cos_d = (
+            cos_theta[i] * cos_theta[rows, None]
+            + sin_theta[i] * sin_theta[rows, None] * cos_dphi[None, :]
+        )
+        cos_d = np.clip(cos_d, -1.0, 1.0)
+        distance = np.arccos(cos_d)
+        weights = np.exp(-0.5 * (distance / sigma) ** 2)
+        weights[cos_d < cos_cutoff] = 0.0
+        return weights
+
+    # Rows that can interact: the closest points of two rings are on the same
+    # meridian, at distance |theta_i - theta_k|. Pairs across the pole are
+    # included automatically (offset ~ pi gives distance theta_i + theta_k).
+    neighbours = [
+        np.nonzero(np.abs(colatitude - colatitude[i]) <= cutoff)[0]
+        for i in range(n_theta)
+    ]
+
+    # Pass 1: source normalisation N_k = sum_i area_i * sum_j w_ik(j).
+    # The kernel is symmetric, so row i contributes area_i * sum_j w_ik to N_k.
+    normalisation = np.zeros(n_theta)
+    for i in range(n_theta):
+        rows = neighbours[i]
+        normalisation[rows] += row_area[i] * kernel_rows(i, rows).sum(axis=1)
+    if np.any(normalisation <= 0.0):
+        raise ValueError("The supplied coordinates produce a zero-weight kernel.")
+
+    # Pass 2: B_out[i] = sum_k (area_k / N_k) * (B[k] circularly convolved
+    # with w_ik). Flux is conserved: sum_i area_i B_out[i] = sum_k area_k B[k].
+    weighted_spectrum = np.fft.rfft(
+        field * (row_area / normalisation)[:, None], axis=1
+    )
+    filtered = np.empty_like(field)
+    for i in range(n_theta):
+        rows = neighbours[i]
+        kernel_spectrum = np.fft.rfft(kernel_rows(i, rows), axis=1)
+        filtered[i] = np.fft.irfft(
+            np.sum(kernel_spectrum * weighted_spectrum[rows], axis=0),
+            n=n_phi,
+        )
+
+    if duplicate_endpoint:
+        filtered = np.concatenate((filtered, filtered[:, :1]), axis=1)
+    return filtered

@@ -165,6 +165,37 @@ def is_gong_temporal_map_type(map_type: str) -> bool:
     return is_gong_map_type(map_type) and not is_gong_diachronic_map_type(map_type)
 
 
+_NON_GONG_TEMPORAL_MAP_TYPES = {"ADAPT", "HMI_hourly", "HMI_fdt"}
+
+
+def resolve_temporal_interpolation(map_type: str, requested: bool) -> bool:
+    """Return whether four-map temporal interpolation is actually used.
+
+    Interpolation needs a dense series of synchronic maps (GONG mrzqs, mrbqs,
+    mrbqj, ADAPT, HMI_hourly, HMI_fdt). For other products a request is not an
+    error: a single magnetogram is used exactly as with ``interpolation=False``
+    and a message is logged.
+
+    Args:
+        map_type: Normalized map type.
+        requested: Whether interpolation was requested by the configuration.
+
+    Returns:
+        True only when interpolation is requested and supported.
+    """
+    supported = (
+        is_gong_temporal_map_type(map_type)
+        or map_type in _NON_GONG_TEMPORAL_MAP_TYPES
+    )
+    if requested and not supported:
+        logger.warning(
+            "Temporal interpolation is not possible for %s maps; using a single "
+            "magnetogram (same as interpolation=False).",
+            map_type,
+        )
+    return requested and supported
+
+
 def gong_file_id_from_map_type(map_type: str) -> str:
     """Resolve the GONG file identifier encoded by a map type."""
     map_type = normalize_map_type(map_type)
@@ -786,12 +817,19 @@ def magnetogram_display_date(
     interpolated: bool = False,
 ) -> datetime:
     """Return the date that should be displayed for a processed magnetogram."""
-    return magnetogram_effective_date(
+    return _magnetogram_observation_date(
         file_path,
         map_type,
         target_date,
         interpolated=interpolated,
     )
+
+
+# Above this offset between the target time and the time a magnetogram really
+# represents, a warning is logged (diagnostic only; nothing is changed).
+EFFECTIVE_DATE_WARNING_HOURS = 6.0
+# Mean synodic Carrington rotation rate, used only for the logged offset.
+_SYNODIC_ROTATION_DEG_PER_DAY = 360.0 / 27.2753
 
 
 def magnetogram_effective_date(
@@ -800,23 +838,134 @@ def magnetogram_effective_date(
     target_date: str | datetime,
     interpolated: bool = False,
 ) -> datetime:
-    """Return the timestamp represented by a processed magnetogram.
+    """Return the time a processed magnetogram physically represents.
 
-    Interpolated maps represent the requested target time. Non-interpolated
-    GONG, ADAPT, HMI_SYNC, HMI_hourly, and HMI_fdt maps represent the
-    observation time encoded in their filenames. HMI small/polar-filled and
-    WSO products use the requested target time by convention.
+    This time is used for the Carrington -> Stonyhurst (HEEQ) rotation, so the
+    map is placed where the Sun was when it was observed, never at a requested
+    time it does not represent. Only temporally interpolated maps represent
+    the target time. See ``_magnetogram_observation_date`` for the per-product
+    sources. The offset to the target time is logged, with a warning above
+    ``EFFECTIVE_DATE_WARNING_HOURS``.
+    """
+    target = parse_iso_datetime(target_date)
+    effective = _magnetogram_observation_date(
+        file_path,
+        map_type,
+        target,
+        interpolated=interpolated,
+    )
+    offset_hours = (effective - target).total_seconds() / 3600.0
+    rotation_degrees = abs(offset_hours) / 24.0 * _SYNODIC_ROTATION_DEG_PER_DAY
+    log = logger.warning if abs(offset_hours) > EFFECTIVE_DATE_WARNING_HOURS else logger.info
+    log(
+        "Magnetogram represents %s, %+.2f h from the target %s "
+        "(about %.1f deg of solar rotation); the Stonyhurst frame uses the "
+        "magnetogram time.",
+        effective.isoformat(),
+        offset_hours,
+        target.isoformat(),
+        rotation_degrees,
+    )
+    return effective
+
+
+def _fits_header_date(file_path: str, label: str) -> datetime | None:
+    """Return the FITS header time of a map, or ``None`` with a warning."""
+    from coconut_tools.magnetogram.io.metadata import read_fits_effective_time
+
+    try:
+        effective_time = read_fits_effective_time(file_path)
+    except (OSError, ValueError) as exc:
+        logger.warning("Could not read the %s time from %s: %s", label, file_path, exc)
+        return None
+    logger.info(
+        "%s time read from FITS %s=%s.",
+        label,
+        effective_time.keyword,
+        effective_time.raw_value,
+    )
+    return effective_time.value
+
+
+def _check_target_in_chart_rotation(
+    file_path: str,
+    map_type: str,
+    target: datetime,
+) -> None:
+    """Raise if ``target`` is outside the Carrington rotation of a chart.
+
+    The rotation of the chart is read from the FITS ``CAR_ROT`` keyword. The
+    target rotation uses the same convention as the download step,
+    ``int(sunpy.coordinates.sun.carrington_rotation_number(target))``.
+
+    Raises:
+        ValueError: If ``CAR_ROT`` is missing or the target time belongs to
+            another Carrington rotation.
+    """
+    from coconut_tools.magnetogram.io.metadata import _first_image_header
+
+    header = _first_image_header(file_path)
+    raw_rotation = header.get("CAR_ROT")
+    if raw_rotation in (None, ""):
+        raise ValueError(
+            f"{map_type} chart {file_path} has no CAR_ROT keyword; cannot check "
+            "that the target time lies in its Carrington rotation."
+        )
+    chart_rotation = int(raw_rotation)
+    target_rotation = int(sunpy.coordinates.sun.carrington_rotation_number(target))
+    if target_rotation != chart_rotation:
+        start = sunpy.coordinates.sun.carrington_rotation_time(chart_rotation)
+        end = sunpy.coordinates.sun.carrington_rotation_time(chart_rotation + 1)
+        raise ValueError(
+            f"Target time {target.isoformat()} is in Carrington rotation "
+            f"{target_rotation}, outside the rotation of the {map_type} chart "
+            f"{file_path} (CR {chart_rotation}: {start.utc.isot} to "
+            f"{end.utc.isot})."
+        )
+
+
+def _magnetogram_observation_date(
+    file_path: str,
+    map_type: str,
+    target_date: str | datetime,
+    interpolated: bool = False,
+) -> datetime:
+    """Return the time a magnetogram represents, per product.
+
+    - Interpolated maps: the target time.
+    - GONG synchronic (mrzqs, mrbqs, mrbqj), ADAPT, HMI_SYNC, HMI_hourly,
+      HMI_fdt: observation time in the filename.
+    - GONG mrmqs, mrnqs (one chart per Carrington rotation): the target time,
+      which must lie inside the chart's rotation (``ValueError`` otherwise).
+    - HMI_small, HMI_polfil (one chart per Carrington rotation): the target
+      time, which must lie inside the chart's rotation (``ValueError``
+      otherwise).
+    - Custom FITS: the configured date (explicit user choice); a differing
+      header time only triggers a warning.
+    - WSO: middle of the Carrington rotation given in the filename.
+
+    The target time is used only when none of these can be determined, with a
+    warning.
     """
     map_type = normalize_map_type(map_type)
     target = parse_iso_datetime(target_date)
     if interpolated:
         return target
     if map_type == "custom":
-        logger.info(
-            "Custom magnetogram display and rotation time comes from the "
-            "configured date: %s.",
-            target.isoformat(),
-        )
+        # Documented design: for a custom file the configured date is the
+        # user's explicit declaration of the map epoch. The header time is only
+        # compared, never substituted.
+        header_date = _fits_header_date(file_path, "Custom magnetogram")
+        if header_date is not None:
+            offset_hours = (header_date - target).total_seconds() / 3600.0
+            if abs(offset_hours) > EFFECTIVE_DATE_WARNING_HOURS:
+                logger.warning(
+                    "Custom magnetogram header time %s differs from the configured "
+                    "date %s by %+.2f h; the configured date is used as map time.",
+                    header_date.isoformat(),
+                    target.isoformat(),
+                    offset_hours,
+                )
         return target
     if map_type == "HMI_SYNC":
         parsed_date = parse_hmi_sync_filename_date(file_path)
@@ -831,13 +980,34 @@ def magnetogram_effective_date(
         if parsed_date is not None:
             return parsed_date
     if map_type in {"HMI_small", "HMI_polfil"}:
+        # One chart per Carrington rotation: it represents any time inside
+        # that rotation, so the target time is used, provided it lies in the
+        # chart's rotation.
+        _check_target_in_chart_rotation(file_path, map_type, target)
         return target
 
     name = os.path.basename(file_path)
     if is_gong_map_type(map_type):
-        file_id = gong_file_id_from_map_type(map_type)
+        # The product prefix is read from the file itself: ``map_type="GONG"``
+        # may point to any GONG product (e.g. mrbqs), not only the default id.
+        match = re.match(
+            r"^(?P<file_id>[a-z]{5})(?P<stamp>\d{6}t\d{4})c", name, flags=re.IGNORECASE
+        )
+        file_id = (
+            match.group("file_id").lower()
+            if match is not None
+            else gong_file_id_from_map_type(map_type)
+        )
+        if file_id in GONG_DIACHRONIC_FILE_IDS:
+            # One integral chart per Carrington rotation (same principle as
+            # HMI_small/HMI_polfil): the target time is used, provided it lies
+            # in the chart's rotation. The filename time is mid-rotation.
+            _check_target_in_chart_rotation(file_path, f"GONG {file_id}", target)
+            return target
         try:
-            return datetime.strptime(name.split("c")[0], file_id + "%y%m%dt%H%M")
+            if match is None:
+                raise ValueError("unexpected GONG filename pattern")
+            return datetime.strptime(match.group("stamp").lower(), "%y%m%dt%H%M")
         except ValueError as exc:
             logger.warning("Could not parse GONG observation date from %s: %s", name, exc)
     elif map_type == "ADAPT":
@@ -846,11 +1016,23 @@ def magnetogram_effective_date(
         except (IndexError, ValueError) as exc:
             logger.warning("Could not parse ADAPT observation date from %s: %s", name, exc)
     elif map_type.lower() == "wso":
-        logger.info(
-            "WSO filenames contain a Carrington rotation but no precise observation "
-            "time; using the target date for the figure."
-        )
-        return target
+        match = re.search(r"(\d{4})", name)
+        if match is not None:
+            rotation_number = int(match.group(1))
+            mid_rotation = sunpy.coordinates.sun.carrington_rotation_time(
+                rotation_number + 0.5
+            )
+            logger.info(
+                "WSO CR %d: using the middle of the rotation as map time.",
+                rotation_number,
+            )
+            return mid_rotation.utc.to_datetime().replace(tzinfo=None)
+        logger.warning("Could not parse the WSO Carrington rotation from %s.", name)
+
+    if map_type.lower() != "wso" and os.path.isfile(file_path):
+        header_date = _fits_header_date(file_path, f"{map_type} magnetogram")
+        if header_date is not None:
+            return header_date
 
     logger.warning(
         "Could not determine the observation date from %s; using target date %s.",
@@ -1304,6 +1486,58 @@ def resolve_figure_path(
     if use_unique_name:
         return append_timestamp_to_path(output_path_fig, date)
     return output_path_fig
+
+
+def resolve_boundary_output_name(
+    output_name: str,
+    effective_date: str | datetime,
+    use_unique_name: bool = False,
+) -> str:
+    """Return the boundary ``.dat`` path for one processed date.
+
+    A single-date run keeps the historical name ``map_<product>_<method>.dat``.
+    When several dates are processed, the effective magnetogram time is
+    appended (``map_<product>_<method>_<YYYYMMDDHHMMSS>.dat``) so that a time
+    series no longer overwrites one file. The ``.dat`` itself stores no time,
+    so the filename is the only place where the effective time is kept.
+
+    Two target dates that resolve to the same magnetogram share the same
+    effective time and therefore the same file: the pipeline is deterministic,
+    so the content written for both is identical.
+
+    Args:
+        output_name: Historical boundary path from ``build_output_name``.
+        effective_date: Time the processed magnetogram represents.
+        use_unique_name: Whether several dates are processed in this run.
+
+    Returns:
+        The boundary path to write.
+    """
+    if not use_unique_name:
+        return output_name
+    return append_timestamp_to_path(output_name, effective_date)
+
+
+def log_shared_output_files(results: list[dict]) -> None:
+    """Log target dates whose boundary file was already written by an earlier date.
+
+    Args:
+        results: Per-date result dictionaries in processing order. Each must
+            contain ``date``, ``effective_date`` and ``output_name``.
+    """
+    first_target_by_output = {}
+    for result in results:
+        output_name = result["output_name"]
+        first_target = first_target_by_output.setdefault(output_name, result["date"])
+        if first_target != result["date"]:
+            logger.info(
+                "Target %s uses the same magnetogram (effective time %s) as target "
+                "%s; both share %s.",
+                parse_iso_datetime(result["date"]).isoformat(),
+                parse_iso_datetime(result["effective_date"]).isoformat(),
+                parse_iso_datetime(first_target).isoformat(),
+                output_name,
+            )
 
 
 def generate_output_and_interpolation_map_names(

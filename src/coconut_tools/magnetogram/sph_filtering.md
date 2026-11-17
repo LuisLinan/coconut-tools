@@ -17,6 +17,14 @@ results = process_config(config)
 one-element list; a time-series configuration produces one result dictionary
 per target time.
 
+The run is configured in the `if __name__ == "__main__":` block of the entry
+script (or by calling `process_config(config)`). The common chain (reading,
+interpolation, dates, Stonyhurst rotation, flux correction, `/2.2 * amp`,
+boundary file, figure) is shared by the four filters in
+`processing.pipeline.run_magnetogram_pipeline`; the entry script only supplies
+its filter step (`SPH_STEP`) and keeps `process_magnetogram_date` /
+`process_config` with unchanged signatures and returned keys.
+
 ## Complete call cycle
 
 ```mermaid
@@ -96,9 +104,12 @@ flowchart TD
 - The misspelled legacy key `candence` is accepted when `cadence_hours` is not
   present.
 
-For several target dates, an explicitly supplied figure filename receives a
-timestamp before its extension. Default figure names already contain the
-effective timestamp.
+For several target dates, the `.dat` boundary file and an explicitly supplied
+figure filename receive the effective magnetogram time
+(`_YYYYMMDDHHMMSS`) before their extension. Default and directory figure
+names also use the effective time. A single-date run keeps the historical
+names. Targets that resolve to the same magnetogram share one file (identical
+content), which is logged by `io.downloads.log_shared_output_files`.
 
 ## Stage 2: product selection and acquisition
 
@@ -234,7 +245,12 @@ cell-centered product grid:
 
 No artificial pole center is inserted. With `resize=True`, the image is
 resampled to `360 x 720`, while the new theta centers preserve the original
-outer cell edges in the native coordinate (`mu` or `theta`).
+outer cell edges in the native coordinate (`mu` or `theta`). The resampling is
+a conservative remap (`io.readers.resize_magnetogram_if_requested`): each new
+pixel is the solid-angle-weighted mean of the pixels it overlaps, so the flux
+is preserved and no smoothing is added; NaN pixels count as zero field. The
+resized longitude centers keep the native outer cell edges in every mode, so
+the first center is generally not 0 (e.g. 0.2 deg for HMI, 0.25 deg for GONG).
 
 WSO follows its historical text-reader path. Its duplicate longitude endpoint
 is retained and its sine-latitude variant is interpolated by that dedicated
@@ -281,6 +297,24 @@ Custom Stonyhurst maps first convert to Carrington using source observer
 metadata or the source FITS date; missing conversion metadata raises an error.
 The final rotation uses the configured effective time. Unknown frames are rejected.
 
+The effective time is the time the map physically represents, never a
+requested time it does not represent (`io.downloads.magnetogram_effective_date`):
+interpolated maps use the target time; GONG, ADAPT, HMI_SYNC, HMI_fdt use the
+observation time in the filename; HMI_small/HMI_polfil and GONG
+mrmqs/mrnqs (one chart per Carrington rotation) use the target time, which
+must lie inside the chart's rotation (`CAR_ROT`), otherwise a `ValueError` is
+raised; WSO uses the middle
+of its Carrington rotation (pending review); other products whose filename cannot be parsed (e.g. HMI_hourly NRT
+names) use the FITS header time (`T_REC`...). Custom inputs keep
+`config["date"]`. The offset to the target time and its rotation equivalent
+are logged, with a warning above `EFFECTIVE_DATE_WARNING_HOURS` (6 h).
+
+Temporal interpolation is only possible for GONG mrzqs/mrbqs/mrbqj, ADAPT,
+HMI_hourly and HMI_fdt (`io.downloads.resolve_temporal_interpolation`).
+Requesting `interpolation=True` for another product is not an error: a single
+magnetogram is used, exactly as with `interpolation=False`, and a warning
+"Temporal interpolation is not possible for ... maps" is logged.
+
 Temporal interpolation validates the full physical Carrington grids of all four
 maps before combining columns. Different fractional centers are rejected even
 in legacy output mode. See [the longitude validation report](../../../docs/longitude_validation.md)
@@ -314,6 +348,18 @@ Gaussian filter before spherical-harmonic projection. `template_size` is the
 odd kernel side length and defaults to `9`, corresponding to `k=4` and
 `sigma=1.5` pixels. Gaussian smoothing is disabled by default.
 
+Setting `sigma_deg` instead selects the physical Gaussian
+(`filters.gaussian_filter.geodesic_gaussian_filtering`): weights
+`exp(-d^2 / 2 sigma^2)` of the great-circle distance `d`, truncated at
+`3 sigma`, with source-side normalisation (each cell redistributes exactly its
+flux). Its width is the same for every product, resolution and latitude
+(isotropic, periodic, continuous across the poles), whereas the pixel template
+corresponds to `template_size/6` pixels (1.5 deg on GONG/ADAPT but 0.15 deg on
+full-resolution HMI) and becomes strongly elongated north-south at high
+latitude. Giving both `sigma_deg` and `template_size` raises `ValueError`.
+Known limit: where grid cells are taller than `sigma` (sine-latitude polar
+rows, |lat| > ~76 deg) a uniform field is preserved only to 0.5-2.5 %.
+
 ## Stage 7: spherical-harmonic filter
 
 `processing.spherical_harmonics.project_and_reconstruct` validates that `Br`,
@@ -338,6 +384,19 @@ doubles contributions for `m > 0`. Finally:
 ```text
 Br_mode = reconstructed_field / 2.2 * amp
 ```
+
+Implementation note: the grid is a tensor product (`Theta` varies only along
+rows, `Phi` only along columns), so the code uses the exact factorization
+`Y_lm(theta, phi) = Y_lm(theta, 0) exp(i m phi)`. Azimuthal sums for every `m`
+are two real matrix products, and `Y_lm` is evaluated only on the 1D
+colatitude axis. This is the same discrete quadrature as the formula above
+(results agree with the former 2D-loop implementation to round-off), but a
+full-resolution HMI map (1440x3600) at `lmax=70` takes seconds instead of
+about ten hours. SHTns is not used because its analysis requires its own
+latitude grid, whereas HMI maps are uniform in sine-latitude; interpolating
+would change the results. Grids that are not tensor products raise a
+`ValueError` (the pixel areas were already built from `Theta[:, 0]` and
+`Phi[0, :]`).
 
 Increasing `lmax` retains smaller angular scales. Increasing `alpha` damps
 high-degree structure more strongly. The returned `coefbr` array contains the
@@ -391,9 +450,11 @@ the harmonic filter.
 | `carrington` | `False` | Return physical Carrington centers when rotation is disabled |
 | `rotate_to_stonyhurst` | `True` | Roll field columns into the Stonyhurst frame |
 | `flux_correct` | `False` | Apply an area-aware net-flux correction before SPH |
-| `flux_correction_method` | `surface_mean` | `surface_mean` or `polarity_scaling` |
+| `flux_correction_method` | `surface_mean` | `surface_mean` or `polarity_scaling`. `surface_mean` does not change `Br_mode` (the projection removes `l=0`); only `polarity_scaling` does |
+| `flux_correction_stage` | ignored | SPH always corrects before the projection; `Br_mode` already has zero net flux, so a correction after would be a no-op |
 | `gaussian_filtering` | `False` | Apply area-weighted Gaussian smoothing before SPH |
-| `template_size` | `9` | Positive odd side length of the Gaussian kernel |
+| `template_size` | `9` | Positive odd side length of the legacy pixel Gaussian kernel (used when `sigma_deg` is absent) |
+| `sigma_deg` | unset | Physical Gaussian width in heliographic degrees (1 deg ~ 12.15 Mm); replaces `template_size` |
 | `write_map` | `True` | Write the COCONUT boundary file |
 | `show_map` | `True` | Save the diagnostic figure |
 | `visu_type` | `sinlat` | `lat` for latitude or any other value for sine latitude |
@@ -421,9 +482,10 @@ Each list element contains:
 
 ## Operational notes
 
-- The `.dat` filename is based on product and method, not target time. A
-  multi-date run with one unchanged `output_dir` writes successive dates to the
-  same path; the last write replaces the earlier boundary file.
+- The `.dat` filename is `map_<product>_<method>.dat` for a single date and
+  `map_<product>_<method>_<effective time>.dat` for a multi-date run
+  (`io.downloads.resolve_boundary_output_name`). The `.dat` content holds no
+  time, so the filename is where the effective time is kept.
 - Figures are closed after saving, so large time series do not accumulate open
   Matplotlib figures.
 - Invalid WCS metadata, incompatible interpolation grids, unsupported map

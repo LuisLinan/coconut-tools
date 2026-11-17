@@ -16,6 +16,14 @@ results = process_config(config)
 
 The return value is always a list of per-date metadata dictionaries.
 
+The run is configured in the `if __name__ == "__main__":` block of the entry
+script (or by calling `process_config(config)`). The common chain (reading,
+interpolation, dates, Stonyhurst rotation, flux correction, `/2.2 * amp`,
+boundary file, figure) is shared by the four filters in
+`processing.pipeline.run_magnetogram_pipeline`; the entry script only supplies
+its filter step (`NLD_STEP`) and keeps `process_magnetogram_date` /
+`process_config` with unchanged signatures and returned keys.
+
 ## Complete call cycle
 
 ```mermaid
@@ -95,9 +103,12 @@ flowchart TD
   `current < start + total_hours`.
 - `candence` remains accepted as a legacy spelling of `cadence_hours`.
 
-If an explicit figure filename is used for several dates,
-`resolve_figure_path` appends a compact timestamp to prevent figure
-overwriting.
+For several target dates, the `.dat` boundary file and an explicitly supplied
+figure filename receive the effective magnetogram time
+(`_YYYYMMDDHHMMSS`) before their extension. Default and directory figure
+names also use the effective time. A single-date run keeps the historical
+names. Targets that resolve to the same magnetogram share one file (identical
+content), which is logged by `io.downloads.log_shared_output_files`.
 
 ## Stage 2: acquisition and temporal interpolation
 
@@ -209,7 +220,9 @@ When the metadata are insufficient, the warned product fallback is:
 
 No pole center is manufactured. `resize=True` resamples the map to `360 x 720`
 and rebuilds theta centers while retaining the original physical outer cell
-edges in the native coordinate.
+edges in the native coordinate. The resampling is a flux-conserving,
+solid-angle-weighted remap without extra smoothing (see
+`io.readers.resize_magnetogram_if_requested`).
 
 Physical longitude modes use the common Carrington normalization before
 resizing, carrying the exact centers with Br. Historical product rolls remain
@@ -328,6 +341,44 @@ into a fully spherical diffusion equation. `dx_override` and `dy_override`
 should therefore be interpreted as numerical filter scales, not automatically
 derived physical distances.
 
+## Stage 7b: spherical (physical) NLD, selected by `diffusion_length_deg`
+
+Setting `diffusion_length_deg` replaces stages 6-7 by
+`filter_radial_field_spherical` (`filters.nonlinear_diffusion.spherical_nonlinear_diffusion`):
+
+- optional pre-smoothing with the great-circle Gaussian
+  (`gaussian_sigma_deg`, required when `apply_gaussian=True`);
+- `dB/dt = div_s(g grad_s B)` on the sphere with the same diffusivity
+  `g = 1/sqrt(1 + |grad_s B|^2/lambda^2)`, discretised by finite volumes with
+  exact cell areas, face lengths (`delta_theta`, `sin(theta_face) delta_phi`)
+  and centre distances; periodic in longitude, zero-length polar faces;
+- semi-implicit additive operator splitting (AOS, Weickert et al. 1998):
+  `B_new = 1/2 [(M - 2 tau K_theta)^-1 + (M - 2 tau K_phi)^-1] M B_old`, each
+  direction solved exactly as a batch of (periodic) tridiagonal systems, so a
+  step costs O(cells): ~1 s for 28 steps on 360x720, ~23 s on full HMI
+  1440x3600 (a conjugate-gradient solve of the unsplit system took > 10 min
+  per step at full resolution, algebraic multigrid 36 min for 7 steps);
+- total time `T = L^2/2` (`L = diffusion_length_deg` in radians), so the
+  filter is a Gaussian of width `L` where `g ~ 1`; `iterations` is the number
+  of AOS time steps (numerical accuracy only, default 28 in this mode),
+  `tau = T / iterations`. Splitting + time error vs the converged solution on
+  a 360x720 HMI map with `L = 2 deg`: 4.5 % RMS with 7 steps, 2.3 % with 14,
+  1.0 % with 28;
+- `lambda` in G/deg: `lambda_g_per_deg` if given, otherwise
+  `1.4826 * MAD(|grad_s B|)` with an area-weighted median, excluding cells
+  where the field is exactly 0. It is logged and returned in `nld_info`. Fix it
+  explicitly to keep a time series or a product comparison consistent.
+
+Properties checked: isotropic width equal to `L` (N-S/E-W within 1-2 % up to
+75 deg) on sine-latitude and latitude grids, flux conserved to round-off
+(~1e-16) on any grid, longitude-shift invariance to round-off (legacy: 1.85 %
+at the seam), no sign-flipping of grid-scale noise; full-resolution vs
+360x720 result of the same HMI map within 3.3 % RMS (|lat| < 60 deg, fixed
+lambda; the remainder comes from grid-scale gradients entering `g`).
+The legacy keys `tau`, `gaussian_sigma`, `dx_override`, `dy_override` are
+rejected in this mode; `gaussian_sigma_deg`/`lambda_g_per_deg` are rejected
+without `diffusion_length_deg`.
+
 ## Stage 8: normalization, output, and plotting
 
 After filtering, the pipeline applies:
@@ -366,14 +417,18 @@ uses robust symmetric color limits based on the 99th absolute percentile.
 | `resize` | `False` | Resample to `360 x 720` while preserving latitude bounds |
 | `carrington` | `False` | Return physical Carrington centers when rotation is disabled |
 | `rotate_to_stonyhurst` | `True` | Roll field columns into the Stonyhurst frame |
-| `flux_correct` | `False` | Balance integrated flux before NLD |
+| `flux_correct` | `False` | Balance integrated flux (see `flux_correction_stage`) |
 | `flux_correction_method` | `surface_mean` | `surface_mean` or `polarity_scaling` |
+| `flux_correction_stage` | `after` | `after`: correct the filtered field (written map has zero net flux); `before`: correct the NLD input (historical; NLD reintroduces net flux on non-equal-area grids such as ADAPT) |
 | `apply_gaussian` | `True` | Enable the Gaussian prefilter |
 | `gaussian_sigma` | `1.0` | Gaussian width in pixels |
 | `tau` | `5` | Implicit diffusion time step |
-| `iterations` | `7` | Number of nonlinear diffusion iterations |
+| `iterations` | `7` (legacy) / `28` (spherical) | Number of nonlinear diffusion iterations; in spherical mode, number of AOS time steps |
 | `dx_override` | `1.0` | Constant horizontal numerical spacing |
 | `dy_override` | `1.0` | Constant vertical numerical spacing |
+| `diffusion_length_deg` | unset | Selects the spherical NLD; diffusion length in heliographic degrees (1 deg ~ 12.15 Mm) |
+| `gaussian_sigma_deg` | unset | Spherical mode: great-circle pre-smoothing width in degrees (required if `apply_gaussian`) |
+| `lambda_g_per_deg` | auto | Spherical mode: contrast threshold in G/deg; automatic area-weighted MAD estimate when absent |
 | `amp` | `1` | Multiplicative amplitude after `/2.2` |
 | `r_st` | `1.0` | Boundary-sphere radius |
 | `write_map` | `True` | Write the `.dat` boundary file |
@@ -398,7 +453,9 @@ Each processed target returns:
 | `figure_path` | Saved figure path, or `None` |
 | `selection` | Interpolation stencil and weights, or `None` |
 | `Br_linear` | Linear temporal interpolation, or `None` |
-| `timestep` | `tau` returned by the NLD solver |
+| `timestep` | `tau` returned by the NLD solver (pixel units; rad^2 in spherical mode) |
+| `nld_mode` | `"legacy"` or `"spherical"` |
+| `nld_info` | Spherical mode: `lambda_g_per_deg`, `lambda_source`, `tau_rad2`, `total_time_rad2`, `steps`, `scheme` (`"AOS"`); `None` in legacy mode |
 | `rotation_angle` | Applied longitude rotation in degrees, or `None` |
 
 The filtered arrays themselves are written/plotted but are not included in the
@@ -414,8 +471,10 @@ metadata dictionary.
   positive time step, and a non-negative iteration count.
 - A GMRES nonzero exit code is logged but does not currently raise an
   exception.
-- The `.dat` filename contains product and method but no target timestamp. In a
-  multi-date run using one `output_dir`, later outputs replace earlier ones.
+- The `.dat` filename is `map_<product>_<method>.dat` for a single date and
+  `map_<product>_<method>_<effective time>.dat` for a multi-date run
+  (`io.downloads.resolve_boundary_output_name`). The `.dat` content holds no
+  time, so the filename is where the effective time is kept.
 
 ## Module ownership
 

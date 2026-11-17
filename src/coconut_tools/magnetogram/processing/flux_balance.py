@@ -87,6 +87,48 @@ def _correct_net_flux_polarity_scaling(
     return np.where(Br > 0, Br / balancing_factor, Br * balancing_factor)
 
 
+FLUX_CORRECTION_STAGES = ("before", "after")
+DEFAULT_FLUX_CORRECTION_STAGE = "after"
+
+
+def resolve_flux_correction_stage(stage: str | None) -> str:
+    """Validate the ``flux_correction_stage`` configuration value.
+
+    ``"after"`` (default) corrects the filtered field, so the written boundary
+    map has zero net flux whatever the filter. ``"before"`` corrects the input
+    of the filter (historical behaviour); the filter may then reintroduce net
+    flux.
+
+    Args:
+        stage: Configured value, or ``None`` for the default.
+
+    Returns:
+        ``"before"`` or ``"after"``.
+
+    Raises:
+        ValueError: For any other value.
+    """
+    if stage is None:
+        return DEFAULT_FLUX_CORRECTION_STAGE
+    normalized = str(stage).strip().lower()
+    if normalized not in FLUX_CORRECTION_STAGES:
+        raise ValueError(
+            "flux_correction_stage must be 'before' or 'after'; "
+            f"received {stage!r}."
+        )
+    return normalized
+
+
+def log_flux_summary(
+    label: str,
+    Br: np.ndarray,
+    theta: np.ndarray,
+    phi: np.ndarray,
+) -> None:
+    """Log positive, negative and net flux of ``Br`` with exact cell areas."""
+    _log_flux_summary(label, Br, spherical_pixel_areas(theta, phi, Br.shape))
+
+
 def correct_net_flux(
     Br: np.ndarray,
     theta: np.ndarray,

@@ -13,33 +13,38 @@ from typing import Any
 import os
 
 import numpy as np
-from coconut_tools.magnetogram.io.downloads import (
-    build_output_name,
-    build_processing_dates,
-    generate_output_and_interpolation_map_names,
-    generate_output_and_map_names,
-    is_gong_temporal_map_type,
-    magnetogram_effective_date,
-    magnetogram_display_date,
-    normalize_map_type,
-    parse_iso_datetime,
-    resolve_figure_path,
+
+from coconut_tools.magnetogram.filters.gaussian_filter import (
+    gaussian_filtering,
+    geodesic_gaussian_filtering,
 )
-from coconut_tools.magnetogram.filters.gaussian_filter import gaussian_filtering
-from coconut_tools.magnetogram.core.config import _as_bool
-from coconut_tools.magnetogram.io.readers import (
-    read_interpolated_magnetogram,
-    read_magnetogram,
+from coconut_tools.magnetogram.processing.pipeline import (
+    FilterStep,
+    run_config,
+    run_magnetogram_pipeline,
 )
-from coconut_tools.magnetogram.io.writers import write_bc_file
-from coconut_tools.magnetogram.processing.flux_balance import correct_net_flux
-from coconut_tools.magnetogram.processing.longitude import (
-    apply_configured_longitude_rotation,
-)
-from coconut_tools.magnetogram.visualization.plotting import plot_maps
 from coconut_tools.tools.logger_config import setup_logger
 
 logger = setup_logger(__name__)
+
+
+def resolve_gaussian_width(config: dict[str, Any]) -> tuple[int, float | None]:
+    """Return ``(template_size, sigma_deg)`` from a configuration.
+
+    ``sigma_deg`` (heliographic degrees) selects the physical great-circle
+    Gaussian. Without it, the legacy pixel template ``template_size``
+    (default 9) is used exactly as before.
+
+    Raises:
+        ValueError: If both ``sigma_deg`` and ``template_size`` are given.
+    """
+    sigma_deg = config.get("sigma_deg")
+    if sigma_deg is not None and config.get("template_size") is not None:
+        raise ValueError(
+            "Give either sigma_deg (physical Gaussian, degrees) or template_size "
+            "(legacy pixel template), not both."
+        )
+    return config.get("template_size", 9), sigma_deg
 
 
 def filter_radial_field(
@@ -47,22 +52,66 @@ def filter_radial_field(
     phi: np.ndarray,
     theta: np.ndarray,
     template_size: int = 9,
+    sigma_deg: float | None = None,
 ) -> np.ndarray:
-    """Apply surface-area-weighted Gaussian smoothing to a radial field.
+    """Apply Gaussian smoothing to a radial field.
 
     Args:
         Br (np.ndarray): 2D radial magnetic-field map.
         phi (np.ndarray): 1D endpoint-free longitude centres in radians.
         theta (np.ndarray): 1D colatitude centres in radians, north to south.
-        template_size (int): Odd side length of the Gaussian template.
+        template_size (int): Odd side length of the legacy pixel template,
+            used when ``sigma_deg`` is None (historical behaviour).
+        sigma_deg (float | None): Standard deviation in heliographic degrees.
+            When given, the great-circle Gaussian with source-side (flux
+            conserving) normalisation is used and ``template_size`` ignored.
 
     Returns:
         np.ndarray: Smoothed radial magnetic field.
     """
     logger.info("Begin Gaussian filtering")
-    filtered = gaussian_filtering(Br, phi, theta, template_size=template_size)
+    if sigma_deg is not None:
+        logger.info("Great-circle Gaussian, sigma = %.4g deg", float(sigma_deg))
+        filtered = geodesic_gaussian_filtering(Br, phi, theta, sigma_deg)
+    else:
+        logger.info("Legacy pixel Gaussian template, template_size = %s", template_size)
+        filtered = gaussian_filtering(Br, phi, theta, template_size=template_size)
     logger.info("End Gaussian filtering")
     return filtered
+
+
+def _resolve_gaussian_settings(config: dict[str, Any]) -> dict[str, Any]:
+    """Return the Gaussian widths of a configuration (see ``resolve_gaussian_width``)."""
+    template_size, sigma_deg = resolve_gaussian_width(config)
+    return {"template_size": template_size, "sigma_deg": sigma_deg}
+
+
+def _apply_gaussian(
+    Br: np.ndarray,
+    Theta: np.ndarray,
+    Phi: np.ndarray,
+    settings: dict[str, Any],
+) -> tuple[np.ndarray, dict[str, Any]]:
+    """Gaussian filtering step of the shared pipeline."""
+    filtered = filter_radial_field(
+        Br,
+        Phi[0, :],
+        Theta[:, 0],
+        template_size=settings["template_size"],
+        sigma_deg=settings["sigma_deg"],
+    )
+    sigma_deg = settings["sigma_deg"]
+    return filtered, {
+        "template_size": None if sigma_deg is not None else settings["template_size"],
+        "sigma_deg": sigma_deg,
+    }
+
+
+GAUSSIAN_STEP = FilterStep(
+    resolve_settings=_resolve_gaussian_settings,
+    apply=_apply_gaussian,
+)
+"""Gaussian filter step for ``processing.pipeline.run_magnetogram_pipeline``."""
 
 
 def process_magnetogram_date(
@@ -70,210 +119,50 @@ def process_magnetogram_date(
     target_date,
     method_used: str = "Gaussian",
     output_path_fig: str | None = None,
+    unique_names: bool = False,
 ) -> dict[str, Any]:
     """Process one target time with the Gaussian-smoothing pipeline.
 
-    The function downloads or reuses a magnetogram, optionally interpolates a
-    four-map stencil, computes and logs the effective magnetogram time,
-    optionally rotates to Stonyhurst, optionally balances net flux, applies the
-    surface-area-weighted Gaussian filter, writes the boundary file, and optionally saves
-    a diagnostic figure.
+    Runs the shared pipeline (``processing.pipeline.run_magnetogram_pipeline``):
+    read or interpolate the magnetogram, effective time, optional Stonyhurst
+    rotation, optional net-flux correction (``flux_correction_stage``), Gaussian
+    filter, ``/2.2 * amp``, boundary file and optional figure.
 
     Args:
-        config (dict[str, Any]): Processing configuration. Common keys are
-            ``map_type``, ``output_dir``, ``download_dir``, ``r_st``,
-            ``amp``, ``adapt_map``, ``write_map``, ``show_map``, ``visu_type``,
-            ``interpolation_order``, ``interpolation``, ``resize``,
-            ``rotate_to_stonyhurst``, ``flux_correct``,
-            ``flux_correction_method``, ``drms_email`` or ``jsoc_email``, and
-            ``template_size``.
+        config (dict[str, Any]): Processing configuration: the common keys of
+            ``run_magnetogram_pipeline`` plus ``template_size`` (legacy pixel
+            width) or ``sigma_deg`` (physical width in degrees).
         target_date: Requested processing time.
         method_used (str): Method label used in output filenames.
-        output_path_fig (str | None): Explicit diagnostic figure path. If
-            omitted, the figure name is built from the effective time.
+        output_path_fig (str | None): Figure file or directory, resolved with
+            ``resolve_figure_path`` at the effective time. If omitted, the
+            figure name is built from the effective time.
+        unique_names (bool): Append the effective time to the ``.dat`` and
+            figure names; set by ``process_config`` when several dates are
+            processed so a time series does not overwrite its outputs.
 
     Returns:
         dict[str, Any]: Processing metadata, including target ``date``,
         ``effective_date``, output paths, selected local file or interpolation
-        stencil, optional ``Br_linear``, Gaussian template size, and rotation
-        angle.
+        stencil, optional ``Br_linear``, ``template_size``/``sigma_deg``,
+        rotation angle and ``flux_correction_stage``.
     """
-    custom_magnetogram = config.get("custom_magnetogram")
-    map_type = (
-        "custom"
-        if custom_magnetogram is not None
-        else normalize_map_type(config["map_type"])
-    )
-    if custom_magnetogram is not None:
-        custom_magnetogram = os.fspath(custom_magnetogram)
-    output_dir = config.get("output_dir", "../")
-    download_dir = config.get("download_dir", output_dir)
-    r_st = config.get("r_st", 1.0)
-    amp = config.get("amp", 1)
-    adapt_map = config.get("adapt_map", 6)
-    write_map = _as_bool(config.get("write_map", True))
-    show_map = _as_bool(config.get("show_map", True))
-    visu_type = config.get("visu_type", "sinlat")
-    interpolation_order = config.get("interpolation_order", config.get("Interp_order", 2))
-    requested_interpolation = _as_bool(
-        config.get("interpolation", is_gong_temporal_map_type(map_type) or map_type == "ADAPT")
-    )
-    use_interpolation = requested_interpolation and custom_magnetogram is None
-    if custom_magnetogram is not None and requested_interpolation:
-        logger.info("Temporal interpolation is disabled for a custom magnetogram.")
-    rotate_to_stonyhurst = _as_bool(config.get("rotate_to_stonyhurst", True))
-    carrington = _as_bool(config.get("carrington", False))
-    physical_longitude = (carrington or rotate_to_stonyhurst) and map_type.lower() != "wso"
-    flux_correction_method = config.get("flux_correction_method", "surface_mean")
-    drms_email = config.get("drms_email", config.get("jsoc_email"))
-    resize = _as_bool(config.get("resize", False))
-    template_size = config.get("template_size", 9)
-
-    interpolated = use_interpolation and (
-        is_gong_temporal_map_type(map_type)
-        or map_type in {"ADAPT", "HMI_hourly", "HMI_fdt"}
-    )
-
-    if custom_magnetogram is not None:
-        output_name = build_output_name(
-            map_type,
-            output_dir,
-            method_used=method_used,
-        )
-        local_file = custom_magnetogram
-        Br, Theta, Phi = read_magnetogram(
-            local_file,
-            map_type,
-            adapt_map,
-            resize=resize,
-            carrington=physical_longitude,
-        )
-        Br_linear = None
-        selection = None
-    elif interpolated:
-        output_name, local_files, selection = generate_output_and_interpolation_map_names(
-            target_date,
-            map_type,
-            output_dir,
-            method_used=method_used,
-            download_dir=download_dir,
-            drms_email=drms_email,
-        )
-        Br, Theta, Phi, Br_linear = read_interpolated_magnetogram(
-            local_files,
-            map_type,
-            selection,
-            adapt_map=adapt_map,
-            interpolation_order=interpolation_order,
-            resize=resize,
-            carrington=physical_longitude,
-        )
-        local_file = local_files
-    else:
-        output_name, local_file = generate_output_and_map_names(
-            target_date,
-            map_type,
-            output_dir,
-            method_used=method_used,
-            drms_email=drms_email,
-        )
-        Br, Theta, Phi = read_magnetogram(local_file, map_type, adapt_map, resize=resize, carrington=physical_longitude)
-        Br_linear = None
-        selection = None
-
-    source_file = local_file[0] if isinstance(local_file, list) else local_file
-    effective_date = magnetogram_effective_date(
-        source_file,
-        map_type,
+    return run_magnetogram_pipeline(
+        config,
         target_date,
-        interpolated=interpolated,
+        GAUSSIAN_STEP,
+        method_used=method_used,
+        output_path_fig=output_path_fig,
+        unique_names=unique_names,
     )
-    logger.info(
-        "Magnetogram timing: target_time: %s, effective_time: %s",
-        parse_iso_datetime(target_date).isoformat(),
-        effective_date.isoformat(),
-    )
-    figure_date = magnetogram_display_date(
-        source_file,
-        map_type,
-        target_date,
-        interpolated=interpolated,
-    )
-    Br, Br_linear, Phi, rotation_angle = apply_configured_longitude_rotation(
-        Br,
-        Br_linear,
-        local_file,
-        map_type,
-        target_date,
-        use_interpolation,
-        rotate_to_stonyhurst,
-        effective_date=effective_date,
-        resize=resize,
-        Phi=Phi,
-    )
-
-    if _as_bool(config.get("flux_correct", False)):
-        Br = correct_net_flux(
-            Br,
-            Theta[:, 0],
-            Phi[0, :],
-            method=flux_correction_method,
-        )
-
-    Br_filtered = filter_radial_field(
-        Br,
-        Phi[0, :],
-        Theta[:, 0],
-        template_size=template_size,
-    )
-
-    Br_filtered = Br_filtered / 2.2
-    Br_filtered *= amp
-
-    if write_map:
-        write_bc_file(output_name, Br_filtered, Theta[:, 0], Phi[0, :], r_st)
-
-    if show_map:
-        figure_path = resolve_figure_path(
-            output_path_fig,
-            output_dir,
-            map_type,
-            effective_date,
-        )
-        plot_maps(
-            Br,
-            Br_filtered,
-            Theta[:, 0],
-            Phi[0, :],
-            map_type,
-            visu_type,
-            output_path=figure_path,
-            date=figure_date,
-        )
-    else:
-        figure_path = None
-
-    return {
-        "date": parse_iso_datetime(target_date),
-        "effective_date": effective_date,
-        "magnetogram_date": figure_date,
-        "output_name": output_name,
-        "local_file": local_file,
-        "figure_path": figure_path,
-        "selection": selection,
-        "Br_linear": Br_linear,
-        "template_size": template_size,
-        "rotation_angle": rotation_angle,
-    }
 
 
 def process_config(config: dict[str, Any], method_used: str = "Gaussian") -> list[dict[str, Any]]:
     """Process all target times described by one Gaussian smoothing config.
 
-    With only ``date`` set, one target time is processed. With
-    ``cadence_hours`` and ``total_hours``, the function builds a time sequence
-    and processes each target independently. When ``output_path_fig`` is omitted
-    each figure is named from the effective magnetogram time.
+    See ``processing.pipeline.run_config``: one target, or a time series with
+    ``cadence_hours`` and ``total_hours`` whose outputs receive the effective
+    magnetogram time.
 
     Args:
         config (dict[str, Any]): Processing configuration.
@@ -282,40 +171,7 @@ def process_config(config: dict[str, Any], method_used: str = "Gaussian") -> lis
     Returns:
         list[dict[str, Any]]: Per-date processing results.
     """
-    target_dates = build_processing_dates(
-        config["date"],
-        cadence_hours=config.get("cadence_hours", config.get("candence")),
-        total_hours=config.get("total_hours"),
-    )
-    output_path_fig = config.get("output_path_fig")
-    use_unique_figures = len(target_dates) > 1
-    figure_map_type = (
-        "custom"
-        if config.get("custom_magnetogram") is not None
-        else config["map_type"]
-    )
-    results = []
-    for target_date in target_dates:
-        figure_path = (
-            resolve_figure_path(
-                output_path_fig,
-                config.get("output_dir", "../"),
-                figure_map_type,
-                target_date,
-                use_unique_name=use_unique_figures,
-            )
-            if output_path_fig
-            else None
-        )
-        results.append(
-            process_magnetogram_date(
-                config,
-                target_date,
-                method_used=method_used,
-                output_path_fig=figure_path,
-            )
-        )
-    return results
+    return run_config(config, process_magnetogram_date, method_used)
 
 
 if __name__ == "__main__":
@@ -339,12 +195,14 @@ if __name__ == "__main__":
         "resize": True,
         "flux_correct": False,
         "flux_correction_method": "surface_mean", #surface_mean' or 'polarity_scaling'
+        "flux_correction_stage": "after",  # "after" (default) or "before"
         "map_type": "hmi_polfil",
         "output_dir": output_dir,
         "download_dir": output_dir,
         "output_path_fig": os.path.join(figure_output_dir, f"{label}.png"),
         "drms_email": "luis.linan@kuleuven.be",
         "template_size": 35,
+        # "sigma_deg": 2.0,  # geodesic Gaussian width in degrees (1 deg ~ 12.15 Mm); remove "template_size" to use it
         }]
 
     # for time evolving add : cadence_hours and total_hours to the config dictionary, e.g.:

@@ -15,6 +15,14 @@ results = process_config(config)
 
 `results` is always a list containing one metadata dictionary per target date.
 
+The run is configured in the `if __name__ == "__main__":` block of the entry
+script (or by calling `process_config(config)`). The common chain (reading,
+interpolation, dates, Stonyhurst rotation, flux correction, `/2.2 * amp`,
+boundary file, figure) is shared by the four filters in
+`processing.pipeline.run_magnetogram_pipeline`; the entry script only supplies
+its filter step (`YAROSLAVSKY_STEP`) and keeps `process_magnetogram_date` /
+`process_config` with unchanged signatures and returned keys.
+
 ## Complete call cycle
 
 ```mermaid
@@ -97,9 +105,12 @@ flowchart TD
 - The time interval is end-exclusive.
 - The legacy misspelling `candence` is accepted if `cadence_hours` is absent.
 
-When several dates share an explicit figure filename, a target timestamp is
-inserted before the extension. Default figure names use the effective
-magnetogram time.
+For several target dates, the `.dat` boundary file and an explicitly supplied
+figure filename receive the effective magnetogram time
+(`_YYYYMMDDHHMMSS`) before their extension. Default and directory figure
+names also use the effective time. A single-date run keeps the historical
+names. Targets that resolve to the same magnetogram share one file (identical
+content), which is logged by `io.downloads.log_shared_output_files`.
 
 ## Stage 2: map selection and interpolation
 
@@ -210,7 +221,9 @@ If metadata are incomplete, a warning precedes the product-specific fallback:
 
 These are cell centers, not manufactured poles. When `resize=True`, the field
 becomes `360 x 720` and the new theta centers preserve the source grid's outer
-physical edges in its native coordinate.
+physical edges in its native coordinate. The resampling is a flux-conserving,
+solid-angle-weighted remap without extra smoothing (see
+`io.readers.resize_magnetogram_if_requested`).
 
 Physical longitude modes use the common Carrington normalization before
 resizing, carrying the exact centers with Br. Historical product rolls remain
@@ -334,6 +347,35 @@ Thus, the new FITS-aware theta is used consistently by the wrapper and by all
 common geometry, but this implementation is not a full geodesic spherical
 Yaroslavsky operator.
 
+## Stage 7b: spherical (physical) Yaroslavsky, selected by `radius_deg`
+
+Setting `radius_deg` replaces stages 6-7 by `filter_radial_field_spherical`
+(`filters.yaroslavsky.spherical_yaroslavsky`):
+
+- optional pre-smoothing with the great-circle Gaussian (`sig_deg`, 0 = off);
+- for every cell, weighted mean over the cells whose centre lies within the
+  great-circle distance `radius_deg` (sharp disk, as in the original filter),
+  weights `area_k * exp(-((B_k - B_i)/h)^2)`, plain sums (no Simpson
+  integration, which gave a 1/0.5/0.25 checkerboard of weights with the
+  central pixel at 0.25 in the legacy kernel);
+- periodic in longitude and continuous across the poles; the same physical
+  disk for every product and latitude;
+- `h` in Gauss: `h_gauss` if given, otherwise the noise level
+  `1.4826 * MAD(B)` with an area-weighted median, excluding cells where the
+  field is exactly 0 (e.g. 3.5 G on HMI_polfil 360x720, 5.1 G on ADAPT, 2.7 G
+  on GONG mrzqs). Logged and returned in `yaroslavsky_info`; fix it to keep a
+  time series or a product comparison consistent;
+- not flux conserving by nature: use `flux_correct=True` with the default
+  `flux_correction_stage="after"`.
+
+Checked: uniform field preserved; disk radius equal to `radius_deg` at 0, 45
+and 75 deg on sine-latitude and latitude grids; coupling across the pole;
+longitude-shift invariance exact (legacy: up to 1.7 G for a 10 G field at the
+seam); 0.4 s on 360x720 (R = 2 deg), 29 s on full HMI 1440x3600 (R = 1 deg);
+full-resolution vs 360x720 result within 3.6 % RMS (|lat| < 60 deg, fixed h).
+The legacy keys `Rn`, `alpha`, `sig` are rejected in this mode; `h_gauss` and
+`sig_deg` are rejected without `radius_deg`.
+
 ## Stage 8: normalization, writing, and visualization
 
 The filtered result is normalized as
@@ -371,12 +413,16 @@ show whether extremes were clipped.
 | `resize` | `False` | Resample to `360 x 720` while preserving latitude bounds |
 | `carrington` | `False` | Return physical Carrington centers when rotation is disabled |
 | `rotate_to_stonyhurst` | `True` | Roll columns to the Stonyhurst zero meridian |
-| `flux_correct` | `False` | Correct integrated flux before filtering |
+| `flux_correct` | `False` | Correct integrated flux (see `flux_correction_stage`) |
 | `flux_correction_method` | `surface_mean` | `surface_mean` or `polarity_scaling` |
+| `flux_correction_stage` | `after` | `after`: correct the filtered field (written map has zero net flux); `before`: correct the filter input (historical; the filter reintroduces net flux) |
 | `alpha` | `1.0` | Exponent in `h = Rn^alpha` |
 | `Rn` | `5.0` | Neighborhood radius in global grid-spacing units |
 | `sig` | `0.0` | Gaussian prefilter sigma in pixels; zero disables it |
 | `write_gaussian_prepass` | `False` | Save the Gaussian intermediate `.npy` in the working directory |
+| `radius_deg` | unset | Selects the spherical filter; disk radius in heliographic degrees (1 deg ~ 12.15 Mm) |
+| `h_gauss` | auto | Spherical mode: radiometric scale in Gauss; automatic area-weighted noise estimate when absent |
+| `sig_deg` | `0.0` | Spherical mode: great-circle Gaussian pre-smoothing width in degrees; 0 disables it |
 | `amp` | `1` | Multiplicative amplitude after `/2.2` |
 | `r_st` | `1.0` | Boundary-sphere radius |
 | `write_map` | `True` | Write the COCONUT boundary file |
@@ -401,6 +447,8 @@ Each target produces:
 | `selection` | Four-map temporal selection, or `None` |
 | `Br_linear` | Linear temporal interpolation, or `None` |
 | `rotation_angle` | Applied longitude rotation, or `None` |
+| `yaroslavsky_mode` | `"legacy"` or `"spherical"` |
+| `yaroslavsky_info` | Spherical mode: `h_gauss`, `h_source`, `radius_deg`; `None` in legacy mode |
 
 The filtered array is written and plotted but is not returned in the metadata
 dictionary.
@@ -414,8 +462,10 @@ dictionary.
   sphere.
 - Because flux correction precedes the nonlinear local average, the final
   filtered field is not explicitly rebalanced before writing.
-- Boundary filenames contain product and method but no target timestamp. A
-  multi-date run in one output directory overwrites the preceding `.dat` file.
+- The `.dat` filename is `map_<product>_<method>.dat` for a single date and
+  `map_<product>_<method>_<effective time>.dat` for a multi-date run
+  (`io.downloads.resolve_boundary_output_name`). The `.dat` content holds no
+  time, so the filename is where the effective time is kept.
 
 ## Module ownership
 
