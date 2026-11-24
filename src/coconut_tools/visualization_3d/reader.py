@@ -325,9 +325,9 @@ def Quick_Vr_Viewer(
         phi_degrees=phi_degrees,
         cam_dist=cam_dist,
         clean_invalid=clean_invalid,
-        AlfvSurf=AlfvSurf
+        AlfvSurf=AlfvSurf,
+        scalar_bar_args=dict(label_font_size=90,title_font_size=90),
     )
-
 
 
 def Quick_Ra_viewer(
@@ -599,6 +599,7 @@ def visualize_yplane_disk(
     clean_invalid: bool = False,
     AlfvSurf: bool = False,
     verbose=True,
+    scalar_bar_args=None,
 ) -> None:
     """Produce a centered, full-disk 2D visualization of the y=0 plane.
 
@@ -625,6 +626,7 @@ def visualize_yplane_disk(
         phi: longitude value (deg or rad), used if plane=="lon"
         phi_degrees: interpret phi as degrees if True
         cam_dist: camera distance (your current 100)
+        scalar_abr_args: dictionnary of color bar options, e.g. dict(label_font_size=24,title_font_size=28) 
 
     Returns:
         None.
@@ -713,8 +715,9 @@ def visualize_yplane_disk(
         clim=plot_clim,
         log_scale=log_colorbar,
         show_edges=False,
+        scalar_bar_args=scalar_bar_args,
     )
-
+    
     if do_fieldlines:
         # 1) Build an orthonormal basis (e1, e2) spanning the plane perpendicular to n, to get the seeds in there
         n_hat = n / np.linalg.norm(n)
