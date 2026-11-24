@@ -85,7 +85,7 @@ def merge_all_snapshots(
     use_pool: bool = True,
     stat: bool=False,
     input_str: str='corona-flow0',
-    remove: bool=True
+    remove: bool=False
 ) -> None:
     """Launch merging of distributed VTU snapshots, optionally using multiprocessing.
 
