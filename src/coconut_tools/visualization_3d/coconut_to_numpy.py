@@ -720,7 +720,11 @@ def plot_radial_profiles(
     Simple matplotlib plot for one or more radial profile curves.
 
     If interpolate_nans=True, NaN gaps in the curves are linearly
-    interpolated for visualization purposes.
+    interpolated for visualization purposes. When logy=True, the
+    interpolation is done on log(y) (i.e. geometric between neighbours,
+    a straight segment on the log axis), using only the positive values;
+    linear interpolation in y would bulge upward on a log axis and create
+    spurious bumps wherever several consecutive bins are empty.
     """
     r = np.asarray(profiles[x_key], float)
 
@@ -736,9 +740,15 @@ def plot_radial_profiles(
 
         if interpolate_nans:
             m = np.isfinite(r) & np.isfinite(y)
+            if logy:
+                m &= y > 0
             if m.sum() >= 2:
                 y = y.copy()
-                y[~np.isfinite(y)] = np.interp(r[~np.isfinite(y)], r[m], y[m])
+                gap = ~np.isfinite(y)
+                if logy:
+                    y[gap] = np.exp(np.interp(r[gap], r[m], np.log(y[m])))
+                else:
+                    y[gap] = np.interp(r[gap], r[m], y[m])
 
         ax.plot(r, y, label=k if label is None else label)
 
@@ -859,7 +869,8 @@ def radial_profiles_volume2_weighted(
 ):
     """
     Radial shell statistics of q using per-cell volume weights.
-
+    Binning on uniform radial spacing
+    
     stats: any of ("mean","std","min","max","skewness","kurtosis")
       - mean/std/skewness/kurtosis are volume-weighted
       - min/max are plain extrema among finite values
@@ -904,6 +915,145 @@ def radial_profiles_volume2_weighted(
     return out
 
 
+def radial_profiles_by_layer(
+    r,
+    vol,
+    fields,
+    key,
+    *,
+    ncell_layer=20480,
+    stats=("mean",),
+    check=True,
+):
+    """
+    Radial statistics of fields[key] computed over each radial layer of the mesh.
+
+    Unlike radial_profiles_volume2_weighted (uniform bins in r), each output
+    value is exactly one mesh layer: no empty bins and no mixing of layers.
+    Binning by radius cannot do this reliably near the inner boundary, where
+    the layers are thinner than the inward offset of the cell centres (flat
+    prism faces), so cell centres can fall below their own inner sphere.
+
+    This relies on the CFmesh storing the prism cells layer by layer, from the
+    inner to the outer boundary, with the same number of cells per layer:
+    ncell_layer = NB_GEOM_ENTS of the Inlet TRS in the CFmesh header
+    (20480 for a level-5 icosphere surface mesh).
+
+    Parameters
+    ----------
+    r, vol : (N,) arrays
+        Cell-centre radius and cell volume, as returned by read_cfmesh_cells.
+    fields : dict of (N,) arrays
+        As returned by read_cfmesh_cells.
+    key : str
+        Name of the quantity in fields (e.g. "Manchester", "rho", "T").
+    ncell_layer : int
+        Number of cells per radial layer.
+    stats : any of ("mean","std","min","max","skewness","kurtosis")
+      - mean/std/skewness/kurtosis are volume-weighted (kurtosis is excess kurtosis)
+      - min/max are plain extrema among finite values
+    check : bool
+        Check that the layer radii increase, i.e. that the cells are really
+        stored layer by layer with ncell_layer cells per layer.
+
+    Returns
+    -------
+    dict with
+      "r"   : (nlayer,) volume-weighted mean radius of each layer (r_l)
+      "vol" : (nlayer,) volume of each layer (Vl)
+      + one (nlayer,) array per requested stat.
+    Directly usable with plot_radial_profiles.
+
+    Example
+    -------
+    centers, r, vol, fields, ncell_layer = read_cfmesh_cells(
+        "corona.CFmesh", readstruct_fn=readstruct,
+        extra_field_names=["RadiativeLossTerm", "Manchester"])
+    prof = radial_profiles_by_layer(r, vol, fields, "Manchester", ncell_layer=ncell_layer,
+                                    stats=("mean", "std", "min", "max"))
+    plot_radial_profiles(prof, keys=("mean",), logy=True)
+
+    Core idea
+    ---------
+    import numpy as np
+    ncell_layer = 20480                      # = NB_GEOM_ENTS de l'Inlet
+    lay = np.arange(len(r)) // ncell_layer   # indice de couche de chaque cellule (0..163)
+    Vl  = np.bincount(lay, weights=vol)                          # volume de chaque couche
+    r_l = np.bincount(lay, weights=vol * r) / Vl                 # rayon moyen de la couche
+    Q_l = np.bincount(lay, weights=vol * fields["Manchester"]) / Vl   # moyenne pondérée volume
+    plt.semilogy(r_l, Q_l, "o-", ms=2)
+    """
+    allowed = ("mean", "std", "min", "max", "skewness", "kurtosis")
+    unknown = set(stats) - set(allowed)
+    if unknown:
+        raise ValueError(f"Unknown stats {sorted(unknown)}. Allowed: {allowed}")
+    if key not in fields:
+        raise KeyError(f"'{key}' not in fields. Available: {list(fields.keys())}")
+
+    r = np.asarray(r, float)
+    vol = np.asarray(vol, float)
+    q = np.asarray(fields[key], float)
+    n = r.size
+    if vol.size != n or q.size != n:
+        raise ValueError(f"r, vol and fields['{key}'] must have the same size ({n}, {vol.size}, {q.size})")
+    if n % ncell_layer != 0:
+        raise ValueError(
+            f"{n} cells is not a multiple of ncell_layer={ncell_layer}: "
+            "check NB_GEOM_ENTS of the Inlet TRS in the CFmesh header."
+        )
+
+    # Layers are contiguous blocks of ncell_layer cells -> one row per layer
+    nl = n // ncell_layer
+    R = r.reshape(nl, ncell_layer)
+    W = vol.reshape(nl, ncell_layer)
+    Q = q.reshape(nl, ncell_layer)
+
+    wgeo = np.where(np.isfinite(W) & (W > 0), W, 0.0)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        Vl = wgeo.sum(axis=1)
+        r_l = (wgeo * R).sum(axis=1) / Vl
+
+    if check and not np.all(np.diff(r_l) > 0):
+        raise ValueError(
+            "Layer radii are not increasing: the cells do not seem to be stored layer by "
+            f"layer with {ncell_layer} cells per layer. Check ncell_layer, or use "
+            "radial_profiles_volume2_weighted instead."
+        )
+
+    # Same masking as radial_profiles_volume2_weighted: finite q, finite vol > 0
+    valid = (wgeo > 0) & np.isfinite(Q)
+    w = np.where(valid, wgeo, 0.0)
+    x = np.where(valid, Q, 0.0)
+    has = valid.any(axis=1)
+
+    out = {"r": r_l, "vol": Vl}
+    with np.errstate(invalid="ignore", divide="ignore"):
+        wsum = w.sum(axis=1)
+        mu = (w * x).sum(axis=1) / wsum                      # NaN for layers without valid cells
+        if {"std", "skewness", "kurtosis"} & set(stats):
+            xc = np.where(valid, x - mu[:, None], 0.0)
+            std = np.sqrt((w * xc**2).sum(axis=1) / wsum)
+            nonzero = np.isfinite(std) & (std > 0)
+
+        for k in stats:
+            if k == "mean":
+                out[k] = mu
+            elif k == "std":
+                out[k] = std
+            elif k == "skewness":
+                m3 = (w * xc**3).sum(axis=1) / wsum
+                out[k] = np.where(nonzero, m3 / std**3, np.nan)
+            elif k == "kurtosis":
+                m4 = (w * xc**4).sum(axis=1) / wsum
+                out[k] = np.where(nonzero, m4 / std**4 - 3.0, np.nan)
+            elif k == "min":
+                out[k] = np.where(has, np.where(valid, Q, np.inf).min(axis=1), np.nan)
+            elif k == "max":
+                out[k] = np.where(has, np.where(valid, Q, -np.inf).max(axis=1), np.nan)
+
+    return out
+
+
 # ---------------------------------------
 # CFmesh reader (generalized + vectorized)
 # ---------------------------------------
@@ -925,12 +1075,23 @@ def read_cfmesh_cells(
     fields : dict
         rho, p, T, Vx,Vy,Vz, Bx,By,Bz, vr,vlon,vclt, br,blon,bclt, x,y,z
     + extras if necessary
+    ncell_layer : int or None
+        Number of cells per radial layer = NB_GEOM_ENTS of the Inlet TRS
+        (for radial_profiles_by_layer). None if there is no Inlet TRS.
     """
     with open(inputfile, "r") as f:
         lines = f.readlines()
 
     # readstruct(lines) is from coconut_tools.toheliosphere.create_dat
     idx0, idx1, idx2, idx3, nbelements, nend, comment = readstruct_fn(lines)
+
+    # Number of cells per radial layer = number of Inlet boundary faces
+    ncell_layer = None
+    for j, (_, line) in enumerate(comment):
+        if line.split()[:2] == ["!TRS_NAME", "Inlet"]:
+            ncell_layer = next((int(l.split()[1]) for _, l in comment[j + 1:]
+                                if l.startswith("!NB_GEOM_ENTS")), None)
+            break
 
     connectivity = np.loadtxt(lines[idx0:idx0 + nbelements], dtype=int)
     coordinates = np.loadtxt(lines[idx1:idx2 - 1], dtype=float)
@@ -1006,7 +1167,7 @@ def read_cfmesh_cells(
                 name = f"extra_{j}"
             fields[name] = Init[:, j]
 
-    return centers, r, volumes, fields
+    return centers, r, volumes, fields, ncell_layer
 
 
 """
@@ -1014,7 +1175,7 @@ from coconut_tools.visualization_3d.coconut_to_numpy import read_cfmesh_cells, r
 
 from coconut_tools.toheliosphere.create_dat import readstruct
 
-centers, r, vol, fields = read_cfmesh_cells("corona.CFmesh", readstruct_fn=readstruct)
+centers, r, vol, fields, ncell_layer = read_cfmesh_cells("corona.CFmesh", readstruct_fn=readstruct)
 
 prof = radial_profiles_volume2_weighted(
     r, fields["rho"], vol,
@@ -1144,7 +1305,7 @@ def compute_cfmesh_unstructured_cartesian_gradients(
     The mesh stencil is inferred from shared CFmesh node connectivity.
     Gradients are returned in the global Cartesian basis (d/dx, d/dy, d/dz).
     """
-    centers, _, _, fields = read_cfmesh_cells(inputfile, readstruct_fn=readstruct_fn)
+    centers, _, _, fields, _ = read_cfmesh_cells(inputfile, readstruct_fn=readstruct_fn)
     connectivity = _read_cfmesh_connectivity(inputfile, readstruct_fn=readstruct_fn)
     neighbors = _cell_neighbors_from_connectivity(
         connectivity,
@@ -1507,7 +1668,7 @@ def plot_hist2d_pdf(
 """
 import coconut_tools.visualization_3d.coconut_to_numpy as ctn
 from coconut_tools.toheliosphere.create_dat import readstruct
-centers, r, vol, fields = ctn.read_cfmesh_cells("corona.CFmesh", readstruct_fn=readstruct)
+centers, r, vol, fields, ncell_layer = ctn.read_cfmesh_cells("corona.CFmesh", readstruct_fn=readstruct)
 H, xed, yed = ctn.hist2d_pdf(fields["r"], fields["rho"], bins_x=3000, bins_y=300, weights=vol, density=True,logy=True)
 plt.ion()
 ctn.plot_hist2d_pdf(H, xed, yed,
