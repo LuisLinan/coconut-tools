@@ -223,7 +223,7 @@ def visualize(
         slice_plane_cmap='viridis'
         opac=1.
     elif slice_plane_scalar=="rho_dim":
-        slice_plane_tit=r"Density [g/cm$^3$]"
+        slice_plane_tit=r"Density [CGS]"
         plane_log_scale=True
         slice_plane_cmap='plasma'
         # discretizes
@@ -319,15 +319,16 @@ def visualize(
         stream_tube,
         cmap="binary",
         clim=stream_clim,
-        scalar_bar_args={
-            "height": 0.25,
-            "vertical": True,
-            "title_font_size": 20,
-            "width": 0.05,
-            "title": "B-field Streamlines",
-            "position_x": 0.85,
-            "position_y": 0.05,
-        },
+        show_scalar_bar=False,
+        #scalar_bar_args={
+        #    "height": 0.25,
+        #    "vertical": True,
+        #    "title_font_size": 20,
+        #    "width": 0.05,
+        #    "title": "B-field Streamlines",
+        #    "position_x": 0.85,
+        #    "position_y": 0.05,
+        #},
     )
 
     # --------------------------------------------------------------------------
